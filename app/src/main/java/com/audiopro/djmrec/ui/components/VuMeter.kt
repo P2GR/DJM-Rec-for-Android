@@ -34,17 +34,17 @@ import com.audiopro.djmrec.ui.theme.MeterRed
 import kotlinx.coroutines.delay
 
 private const val METER_FLOOR_DB = -60f
-private const val METER_CEILING_DB = 0f
+private const val METER_CEILING_DB = 3f  // +3 dB headroom above 0 dBFS
 private const val CLIP_LATCH_MS = 1500L
 
-/** Converts a dBFS value in [-60, 0] to a fill fraction in [0, 1]. */
+/** Converts a dBFS value in [-60, +3] to a fill fraction in [0, 1]. */
 private fun dbToFraction(db: Float): Float =
     ((db - METER_FLOOR_DB) / (METER_CEILING_DB - METER_FLOOR_DB)).coerceIn(0f, 1f)
 
 private fun colorForFraction(fraction: Float): Color = when {
-    fraction >= dbToFraction(-3f) -> MeterRed
-    fraction >= dbToFraction(-12f) -> MeterAmber
-    else -> MeterGreen
+    fraction >= dbToFraction(0f) -> MeterRed     // above 0 dB = hot
+    fraction >= dbToFraction(-6f) -> MeterAmber   // -6 to 0 = warming
+    else -> MeterGreen                             // below -6 = clean
 }
 
 /**
@@ -54,7 +54,7 @@ private fun colorForFraction(fraction: Float): Color = when {
 @Composable
 fun StereoVuMeter(levels: StereoLevels, modifier: Modifier = Modifier) {
     Row(
-        modifier = modifier.height(220.dp),
+        modifier = modifier.height(155.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.Bottom
     ) {
@@ -66,14 +66,18 @@ fun StereoVuMeter(levels: StereoLevels, modifier: Modifier = Modifier) {
 
 @Composable
 private fun DbScale(modifier: Modifier = Modifier) {
-    val marks = listOf(0, -6, -12, -24, -48, -60)
+    val marks = listOf(3, 0, -6, -12, -24, -48, -60)
     Column(
         modifier = modifier.width(28.dp),
         verticalArrangement = Arrangement.SpaceBetween
     ) {
         marks.forEach { db ->
+            val label = when {
+                db > 0 -> "+$db"
+                else -> "$db"
+            }
             Text(
-                text = "$db",
+                text = label,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
