@@ -21,6 +21,7 @@ import com.audiopro.djmrec.audio.RecordingFormat
 @Composable
 fun FormatSelector(
     selected: RecordingFormat,
+    formats: List<RecordingFormat>,
     enabled: Boolean,
     onSelect: (RecordingFormat) -> Unit,
     modifier: Modifier = Modifier
@@ -29,7 +30,7 @@ fun FormatSelector(
         modifier = modifier.fillMaxWidth().selectableGroup(),
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
-        RecordingFormat.entries.filter { it != RecordingFormat.MP3 }.forEach { format ->
+        formats.forEach { format ->
             val labelRes = when (format) {
                 RecordingFormat.WAV -> R.string.format_wav
                 RecordingFormat.FLAC -> R.string.format_flac

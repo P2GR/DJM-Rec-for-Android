@@ -3,6 +3,8 @@
 #include <android/log.h>
 #include <libusb.h>
 
+#include <algorithm>
+#include <climits>
 #include <cstring>
 
 #define TAG "UsbIsoAudioSource"
@@ -115,13 +117,14 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
         return libusbErrorString("libusb_set_interface_alt_setting", rc);
     }
 
+    const std::string channelDescription = config.extractChannelOffset < 0
+        ? "auto stereo pair"
+        : std::string("ch ") + std::to_string(config.extractChannelOffset + 1) + "-" +
+            std::to_string(config.extractChannelOffset + 2);
     LOGI("Claimed iface %d alt %d, endpoint 0x%02x, maxPacketSize=%d, wire=%dch/%dbit (subframe %d "
          "bytes), extracting %s",
          config.interfaceNumber, config.alternateSetting, config.endpointAddress, config.maxPacketSize,
-         config.totalChannels, config.bitResolution, config.subframeSize,
-         config.extractChannelOffset < 0 ? "auto stereo pair" :
-         (std::string("ch ") + std::to_string(config.extractChannelOffset + 1) + "-" +
-          std::to_string(config.extractChannelOffset + 2)).c_str());
+         config.totalChannels, config.bitResolution, config.subframeSize, channelDescription.c_str());
 
     mTransfers.reserve(kNumTransfers);
     for (int i = 0; i < kNumTransfers; ++i) {

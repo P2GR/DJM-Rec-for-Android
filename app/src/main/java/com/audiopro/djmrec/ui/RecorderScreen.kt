@@ -200,6 +200,7 @@ fun RecorderScreen(viewModel: MainViewModel) {
 
             FormatSelector(
                 selected = selectedFormat,
+                formats = viewModel.availableFormats,
                 enabled = recordingState is RecordingState.Idle,
                 onSelect = viewModel::selectFormat
             )

@@ -74,6 +74,8 @@ object AudioEngine {
      */
     external fun startRecording(outputPath: String, format: Int, mp3BitrateKbps: Int): Boolean
 
+    external fun isMp3EncodingAvailable(): Boolean
+
     external fun pauseRecording()
 
     external fun resumeRecording()

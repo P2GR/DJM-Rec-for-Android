@@ -54,6 +54,15 @@ Java_com_audiopro_djmrec_audio_AudioEngine_startRecording(
     return UsbAudioEngine::instance().startRecording(path, container, mp3BitrateKbps) ? JNI_TRUE : JNI_FALSE;
 }
 
+JNIEXPORT jboolean JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_isMp3EncodingAvailable(JNIEnv* /*env*/, jobject /*thiz*/) {
+#if HAVE_LAME
+    return JNI_TRUE;
+#else
+    return JNI_FALSE;
+#endif
+}
+
 JNIEXPORT void JNICALL
 Java_com_audiopro_djmrec_audio_AudioEngine_pauseRecording(JNIEnv* /*env*/, jobject /*thiz*/) {
     UsbAudioEngine::instance().pauseRecording();

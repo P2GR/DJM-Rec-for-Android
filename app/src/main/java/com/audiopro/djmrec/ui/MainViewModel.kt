@@ -10,6 +10,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.audiopro.djmrec.DjmRecApplication
+import com.audiopro.djmrec.audio.AudioEngine
 import com.audiopro.djmrec.audio.ChannelLevel
 import com.audiopro.djmrec.audio.RecordingFormat
 import com.audiopro.djmrec.audio.RecordingState
@@ -55,6 +56,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _selectedFormat = MutableStateFlow(RecordingFormat.WAV)
     val selectedFormat: StateFlow<RecordingFormat> = _selectedFormat.asStateFlow()
+    val availableFormats: List<RecordingFormat> = RecordingFormat.entries.filter {
+        it != RecordingFormat.MP3 || AudioEngine.isMp3EncodingAvailable()
+    }
 
     private val _rootUsbMode = MutableStateFlow(prefs.getBoolean(KEY_ROOT_USB_MODE, false))
     val rootUsbMode: StateFlow<Boolean> = _rootUsbMode.asStateFlow()
@@ -88,7 +92,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectFormat(format: RecordingFormat) {
-        if (_recordingState.value is RecordingState.Idle && format != RecordingFormat.MP3) {
+        if (_recordingState.value is RecordingState.Idle && format in availableFormats) {
             _selectedFormat.value = format
         }
     }
