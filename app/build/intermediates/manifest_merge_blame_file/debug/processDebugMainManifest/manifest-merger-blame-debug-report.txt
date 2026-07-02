@@ -1,0 +1,221 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.audiopro.djmrec.debug"
+4    android:versionCode="1"
+5    android:versionName="1.0.0" >
+6
+7    <uses-sdk
+8        android:minSdkVersion="29"
+9        android:targetSdkVersion="34" />
+10
+11    <!-- USB host mode: required to enumerate and open the UAC2 mixer as an audio input. -->
+12    <uses-feature
+12-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:5:5-86
+13        android:name="android.hardware.usb.host"
+13-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:5:19-59
+14        android:required="true" />
+14-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:5:60-83
+15    <uses-feature
+15-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:6:5-89
+16        android:name="android.hardware.microphone"
+16-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:6:19-61
+17        android:required="false" />
+17-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:6:62-86
+18
+19    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+19-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:8:5-71
+19-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:8:22-68
+20    <uses-permission android:name="android.permission.WAKE_LOCK" />
+20-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:9:5-68
+20-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:9:22-65
+21    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+21-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:10:5-77
+21-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:10:22-74
+22    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+22-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:11:5-88
+22-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:11:22-85
+23    <!-- Android 13+ runtime notification permission for the persistent recording notification. -->
+24    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+24-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:13:5-77
+24-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:13:22-74
+25
+26    <permission
+26-->[androidx.core:core:1.13.1] C:\Users\lenna\.gradle\caches\transforms-4\0e12637407c5f4960f45542b38d7c0b2\transformed\core-1.13.1\AndroidManifest.xml:22:5-24:47
+27        android:name="com.audiopro.djmrec.debug.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+27-->[androidx.core:core:1.13.1] C:\Users\lenna\.gradle\caches\transforms-4\0e12637407c5f4960f45542b38d7c0b2\transformed\core-1.13.1\AndroidManifest.xml:23:9-81
+28        android:protectionLevel="signature" />
+28-->[androidx.core:core:1.13.1] C:\Users\lenna\.gradle\caches\transforms-4\0e12637407c5f4960f45542b38d7c0b2\transformed\core-1.13.1\AndroidManifest.xml:24:9-44
+29
+30    <uses-permission android:name="com.audiopro.djmrec.debug.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+30-->[androidx.core:core:1.13.1] C:\Users\lenna\.gradle\caches\transforms-4\0e12637407c5f4960f45542b38d7c0b2\transformed\core-1.13.1\AndroidManifest.xml:26:5-97
+30-->[androidx.core:core:1.13.1] C:\Users\lenna\.gradle\caches\transforms-4\0e12637407c5f4960f45542b38d7c0b2\transformed\core-1.13.1\AndroidManifest.xml:26:22-94
+31
+32    <application
+32-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:15:5-60:19
+33        android:name="com.audiopro.djmrec.DjmRecApplication"
+33-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:16:9-42
+34        android:allowBackup="false"
+34-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:17:9-36
+35        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
+35-->[androidx.core:core:1.13.1] C:\Users\lenna\.gradle\caches\transforms-4\0e12637407c5f4960f45542b38d7c0b2\transformed\core-1.13.1\AndroidManifest.xml:28:18-86
+36        android:debuggable="true"
+37        android:extractNativeLibs="false"
+38        android:hardwareAccelerated="true"
+38-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:23:9-43
+39        android:icon="@mipmap/ic_launcher"
+39-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:18:9-43
+40        android:label="@string/app_name"
+40-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:19:9-41
+41        android:roundIcon="@mipmap/ic_launcher_round"
+41-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:20:9-54
+42        android:supportsRtl="true"
+42-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:21:9-35
+43        android:theme="@style/Theme.DjmRec" >
+43-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:22:9-44
+44        <activity
+44-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:25:9-43:20
+45            android:name="com.audiopro.djmrec.MainActivity"
+45-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:26:13-41
+46            android:exported="true"
+46-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:27:13-36
+47            android:launchMode="singleTop"
+47-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:28:13-43
+48            android:screenOrientation="portrait"
+48-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:29:13-49
+49            android:theme="@style/Theme.DjmRec" >
+49-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:30:13-48
+50            <intent-filter>
+50-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:31:13-34:29
+51                <action android:name="android.intent.action.MAIN" />
+51-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:32:17-69
+51-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:32:25-66
+52
+53                <category android:name="android.intent.category.LAUNCHER" />
+53-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:33:17-77
+53-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:33:27-74
+54            </intent-filter>
+55
+56            <!-- Launch (or foreground) the app automatically when the mixer is plugged in. -->
+57            <intent-filter>
+57-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:37:13-39:29
+58                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+58-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:38:17-90
+58-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:38:25-87
+59            </intent-filter>
+60
+61            <meta-data
+61-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:40:13-42:61
+62                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+62-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:41:17-79
+63                android:resource="@xml/usb_device_filter" />
+63-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:42:17-58
+64        </activity>
+65
+66        <service
+66-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:45:9-48:58
+67            android:name="com.audiopro.djmrec.service.RecordingService"
+67-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:46:13-53
+68            android:exported="false"
+68-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:47:13-37
+69            android:foregroundServiceType="microphone" />
+69-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:48:13-55
+70
+71        <provider
+72            android:name="androidx.core.content.FileProvider"
+72-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:51:13-62
+73            android:authorities="com.audiopro.djmrec.debug.fileprovider"
+73-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:52:13-64
+74            android:exported="false"
+74-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:53:13-37
+75            android:grantUriPermissions="true" >
+75-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:54:13-47
+76            <meta-data
+76-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:55:13-57:54
+77                android:name="android.support.FILE_PROVIDER_PATHS"
+77-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:56:17-67
+78                android:resource="@xml/file_paths" />
+78-->C:\Web\djmrec\app\src\main\AndroidManifest.xml:57:17-51
+79        </provider>
+80
+81        <activity
+81-->[androidx.compose.ui:ui-tooling-android:1.6.8] C:\Users\lenna\.gradle\caches\transforms-4\3ffc055d0aeb0831dfb7019b9872298b\transformed\ui-tooling-release\AndroidManifest.xml:23:9-25:39
+82            android:name="androidx.compose.ui.tooling.PreviewActivity"
+82-->[androidx.compose.ui:ui-tooling-android:1.6.8] C:\Users\lenna\.gradle\caches\transforms-4\3ffc055d0aeb0831dfb7019b9872298b\transformed\ui-tooling-release\AndroidManifest.xml:24:13-71
+83            android:exported="true" />
+83-->[androidx.compose.ui:ui-tooling-android:1.6.8] C:\Users\lenna\.gradle\caches\transforms-4\3ffc055d0aeb0831dfb7019b9872298b\transformed\ui-tooling-release\AndroidManifest.xml:25:13-36
+84
+85        <provider
+85-->[androidx.emoji2:emoji2:1.3.0] C:\Users\lenna\.gradle\caches\transforms-4\0ac9cdfb307af8fbe8c06cb1e42a9a91\transformed\emoji2-1.3.0\AndroidManifest.xml:24:9-32:20
+86            android:name="androidx.startup.InitializationProvider"
+86-->[androidx.emoji2:emoji2:1.3.0] C:\Users\lenna\.gradle\caches\transforms-4\0ac9cdfb307af8fbe8c06cb1e42a9a91\transformed\emoji2-1.3.0\AndroidManifest.xml:25:13-67
+87            android:authorities="com.audiopro.djmrec.debug.androidx-startup"
+87-->[androidx.emoji2:emoji2:1.3.0] C:\Users\lenna\.gradle\caches\transforms-4\0ac9cdfb307af8fbe8c06cb1e42a9a91\transformed\emoji2-1.3.0\AndroidManifest.xml:26:13-68
+88            android:exported="false" >
+88-->[androidx.emoji2:emoji2:1.3.0] C:\Users\lenna\.gradle\caches\transforms-4\0ac9cdfb307af8fbe8c06cb1e42a9a91\transformed\emoji2-1.3.0\AndroidManifest.xml:27:13-37
+89            <meta-data
+89-->[androidx.emoji2:emoji2:1.3.0] C:\Users\lenna\.gradle\caches\transforms-4\0ac9cdfb307af8fbe8c06cb1e42a9a91\transformed\emoji2-1.3.0\AndroidManifest.xml:29:13-31:52
+90                android:name="androidx.emoji2.text.EmojiCompatInitializer"
+90-->[androidx.emoji2:emoji2:1.3.0] C:\Users\lenna\.gradle\caches\transforms-4\0ac9cdfb307af8fbe8c06cb1e42a9a91\transformed\emoji2-1.3.0\AndroidManifest.xml:30:17-75
+91                android:value="androidx.startup" />
+91-->[androidx.emoji2:emoji2:1.3.0] C:\Users\lenna\.gradle\caches\transforms-4\0ac9cdfb307af8fbe8c06cb1e42a9a91\transformed\emoji2-1.3.0\AndroidManifest.xml:31:17-49
+92            <meta-data
+92-->[androidx.lifecycle:lifecycle-process:2.8.4] C:\Users\lenna\.gradle\caches\transforms-4\1f3c245237bee18e87a01cce1a1d80e3\transformed\lifecycle-process-2.8.4\AndroidManifest.xml:29:13-31:52
+93                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
+93-->[androidx.lifecycle:lifecycle-process:2.8.4] C:\Users\lenna\.gradle\caches\transforms-4\1f3c245237bee18e87a01cce1a1d80e3\transformed\lifecycle-process-2.8.4\AndroidManifest.xml:30:17-78
+94                android:value="androidx.startup" />
+94-->[androidx.lifecycle:lifecycle-process:2.8.4] C:\Users\lenna\.gradle\caches\transforms-4\1f3c245237bee18e87a01cce1a1d80e3\transformed\lifecycle-process-2.8.4\AndroidManifest.xml:31:17-49
+95            <meta-data
+95-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\lenna\.gradle\caches\transforms-4\967352968f26fe11f7e83589b7e797ca\transformed\profileinstaller-1.3.1\AndroidManifest.xml:29:13-31:52
+96                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
+96-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\lenna\.gradle\caches\transforms-4\967352968f26fe11f7e83589b7e797ca\transformed\profileinstaller-1.3.1\AndroidManifest.xml:30:17-85
+97                android:value="androidx.startup" />
+97-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\lenna\.gradle\caches\transforms-4\967352968f26fe11f7e83589b7e797ca\transformed\profileinstaller-1.3.1\AndroidManifest.xml:31:17-49
+98        </provider>
+99
+100        <activity
+100-->[androidx.compose.ui:ui-test-manifest:1.6.8] C:\Users\lenna\.gradle\caches\transforms-4\ff8a1b946302750419a9df51e8ddcbf6\transformed\ui-test-manifest-1.6.8\AndroidManifest.xml:23:9-25:39
+101            android:name="androidx.activity.ComponentActivity"
+101-->[androidx.compose.ui:ui-test-manifest:1.6.8] C:\Users\lenna\.gradle\caches\transforms-4\ff8a1b946302750419a9df51e8ddcbf6\transformed\ui-test-manifest-1.6.8\AndroidManifest.xml:24:13-63
+102            android:exported="true" />
+102-->[androidx.compose.ui:ui-test-manifest:1.6.8] C:\Users\lenna\.gradle\caches\transforms-4\ff8a1b946302750419a9df51e8ddcbf6\transformed\ui-test-manifest-1.6.8\AndroidManifest.xml:25:13-36
+103
+104        <receiver
+104-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\lenna\.gradle\caches\transforms-4\967352968f26fe11f7e83589b7e797ca\transformed\profileinstaller-1.3.1\AndroidManifest.xml:34:9-52:20
+105            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+105-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\lenna\.gradle\caches\transforms-4\967352968f26fe11f7e83589b7e797ca\transformed\profileinstaller-1.3.1\AndroidManifest.xml:35:13-76
+106            android:directBootAware="false"
+106-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\lenna\.gradle\caches\transforms-4\967352968f26fe11f7e83589b7e797ca\transformed\profileinstaller-1.3.1\AndroidManifest.xml:36:13-44
+107            android:enabled="true"
+107-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\lenna\.gradle\caches\transforms-4\967352968f26fe11f7e83589b7e797ca\transformed\profileinstaller-1.3.1\AndroidManifest.xml:37:13-35
+108            android:exported="true"
+108-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\lenna\.gradle\caches\transforms-4\967352968f26fe11f7e83589b7e797ca\transformed\profileinstaller-1.3.1\AndroidManifest.xml:38:13-36
+109            android:permission="android.permission.DUMP" >
+109-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\lenna\.gradle\caches\transforms-4\967352968f26fe11f7e83589b7e797ca\transformed\profileinstaller-1.3.1\AndroidManifest.xml:39:13-57
+110            <intent-filter>
+110-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\lenna\.gradle\caches\transforms-4\967352968f26fe11f7e83589b7e797ca\transformed\profileinstaller-1.3.1\AndroidManifest.xml:40:13-42:29
+111                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
+111-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\lenna\.gradle\caches\transforms-4\967352968f26fe11f7e83589b7e797ca\transformed\profileinstaller-1.3.1\AndroidManifest.xml:41:17-91
+111-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\lenna\.gradle\caches\transforms-4\967352968f26fe11f7e83589b7e797ca\transformed\profileinstaller-1.3.1\AndroidManifest.xml:41:25-88
+112            </intent-filter>
+113            <intent-filter>
+113-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\lenna\.gradle\caches\transforms-4\967352968f26fe11f7e83589b7e797ca\transformed\profileinstaller-1.3.1\AndroidManifest.xml:43:13-45:29
+114                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
+114-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\lenna\.gradle\caches\transforms-4\967352968f26fe11f7e83589b7e797ca\transformed\profileinstaller-1.3.1\AndroidManifest.xml:44:17-85
+114-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\lenna\.gradle\caches\transforms-4\967352968f26fe11f7e83589b7e797ca\transformed\profileinstaller-1.3.1\AndroidManifest.xml:44:25-82
+115            </intent-filter>
+116            <intent-filter>
+116-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\lenna\.gradle\caches\transforms-4\967352968f26fe11f7e83589b7e797ca\transformed\profileinstaller-1.3.1\AndroidManifest.xml:46:13-48:29
+117                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
+117-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\lenna\.gradle\caches\transforms-4\967352968f26fe11f7e83589b7e797ca\transformed\profileinstaller-1.3.1\AndroidManifest.xml:47:17-88
+117-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\lenna\.gradle\caches\transforms-4\967352968f26fe11f7e83589b7e797ca\transformed\profileinstaller-1.3.1\AndroidManifest.xml:47:25-85
+118            </intent-filter>
+119            <intent-filter>
+119-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\lenna\.gradle\caches\transforms-4\967352968f26fe11f7e83589b7e797ca\transformed\profileinstaller-1.3.1\AndroidManifest.xml:49:13-51:29
+120                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
+120-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\lenna\.gradle\caches\transforms-4\967352968f26fe11f7e83589b7e797ca\transformed\profileinstaller-1.3.1\AndroidManifest.xml:50:17-95
+120-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\lenna\.gradle\caches\transforms-4\967352968f26fe11f7e83589b7e797ca\transformed\profileinstaller-1.3.1\AndroidManifest.xml:50:25-92
+121            </intent-filter>
+122        </receiver>
+123    </application>
+124
+125</manifest>

@@ -1,0 +1,30 @@
+[
+    {
+        "merged": "C:\\Users\\lenna\\.gradle\\daemon\\8.7\\com.audiopro.djmrec.app-debug-47:\\mipmap-anydpi-v26_ic_launcher.xml.flat",
+        "source": "C:\\Users\\lenna\\.gradle\\daemon\\8.7\\com.audiopro.djmrec.app-main-49:\\mipmap-anydpi-v26\\ic_launcher.xml"
+    },
+    {
+        "merged": "C:\\Users\\lenna\\.gradle\\daemon\\8.7\\com.audiopro.djmrec.app-debug-47:\\drawable_ic_launcher_background.xml.flat",
+        "source": "C:\\Users\\lenna\\.gradle\\daemon\\8.7\\com.audiopro.djmrec.app-main-49:\\drawable\\ic_launcher_background.xml"
+    },
+    {
+        "merged": "C:\\Users\\lenna\\.gradle\\daemon\\8.7\\com.audiopro.djmrec.app-debug-47:\\drawable_ic_launcher_foreground.xml.flat",
+        "source": "C:\\Users\\lenna\\.gradle\\daemon\\8.7\\com.audiopro.djmrec.app-main-49:\\drawable\\ic_launcher_foreground.xml"
+    },
+    {
+        "merged": "C:\\Users\\lenna\\.gradle\\daemon\\8.7\\com.audiopro.djmrec.app-debug-47:\\mipmap-anydpi-v26_ic_launcher_round.xml.flat",
+        "source": "C:\\Users\\lenna\\.gradle\\daemon\\8.7\\com.audiopro.djmrec.app-main-49:\\mipmap-anydpi-v26\\ic_launcher_round.xml"
+    },
+    {
+        "merged": "C:\\Users\\lenna\\.gradle\\daemon\\8.7\\com.audiopro.djmrec.app-debug-47:\\xml_usb_device_filter.xml.flat",
+        "source": "C:\\Users\\lenna\\.gradle\\daemon\\8.7\\com.audiopro.djmrec.app-main-49:\\xml\\usb_device_filter.xml"
+    },
+    {
+        "merged": "C:\\Users\\lenna\\.gradle\\daemon\\8.7\\com.audiopro.djmrec.app-debug-47:\\drawable_ic_notification.xml.flat",
+        "source": "C:\\Users\\lenna\\.gradle\\daemon\\8.7\\com.audiopro.djmrec.app-main-49:\\drawable\\ic_notification.xml"
+    },
+    {
+        "merged": "com.audiopro.djmrec.app-debug-47:/xml_file_paths.xml.flat",
+        "source": "com.audiopro.djmrec.app-main-49:/xml/file_paths.xml"
+    }
+]

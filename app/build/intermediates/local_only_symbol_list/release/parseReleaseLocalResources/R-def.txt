@@ -1,0 +1,27 @@
+R_DEF: Internal format may change without notice
+local
+drawable ic_launcher_background
+drawable ic_launcher_foreground
+drawable ic_notification
+mipmap ic_launcher
+mipmap ic_launcher_round
+string action_pause
+string action_record
+string action_resume
+string action_stop
+string app_name
+string format_flac
+string format_mp3
+string format_wav
+string notification_channel_desc
+string notification_channel_name
+string notification_text_elapsed
+string notification_title_paused
+string notification_title_recording
+string status_device_connected
+string status_no_device
+string status_permission_denied
+string usb_permission_action
+style Theme.DjmRec
+xml file_paths
+xml usb_device_filter

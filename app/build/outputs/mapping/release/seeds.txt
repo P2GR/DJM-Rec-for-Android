@@ -1,0 +1,1145 @@
+androidx.compose.ui.focus.FocusTargetNode$FocusTargetElement
+androidx.compose.foundation.layout.OffsetPxElement
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo
+androidx.compose.foundation.HoverableElement
+com.audiopro.djmrec.audio.RecordingState$Error
+androidx.emoji2.text.EmojiCompatInitializer
+androidx.core.app.RemoteActionCompatParcelizer
+android.support.v4.graphics.drawable.IconCompatParcelizer
+androidx.profileinstaller.ProfileInstallReceiver
+com.audiopro.djmrec.audio.RecordingState$Preparing
+com.audiopro.djmrec.audio.AudioEngine
+androidx.compose.ui.layout.LayoutElement
+androidx.compose.ui.semantics.EmptySemanticsElement
+androidx.versionedparcelable.ParcelImpl
+androidx.compose.ui.semantics.AppendedSemanticsElement
+androidx.compose.foundation.FocusableKt$FocusableInNonTouchModeElement$1
+androidx.profileinstaller.ProfileInstallerInitializer
+androidx.compose.foundation.layout.PaddingElement
+androidx.compose.foundation.text.modifiers.SelectableTextAnnotatedStringElement
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle
+androidx.compose.foundation.layout.BoxChildDataElement
+androidx.compose.foundation.text.modifiers.TextAnnotatedStringElement
+androidx.core.app.RemoteActionCompat
+kotlin.coroutines.jvm.internal.BaseContinuationImpl
+androidx.startup.InitializationProvider
+com.audiopro.djmrec.audio.RecordingFormat
+com.audiopro.djmrec.audio.RecordingState
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo
+com.audiopro.djmrec.audio.ChannelLevel
+androidx.compose.ui.input.pointer.SuspendPointerInputElement
+androidx.compose.foundation.BackgroundElement
+com.audiopro.djmrec.usb.UsbAudioManager$Companion
+androidx.compose.foundation.ClickableElement
+androidx.compose.ui.graphics.GraphicsLayerElement
+com.audiopro.djmrec.usb.UsbAudioManager$usbDeviceReceiver$1
+androidx.compose.foundation.text.modifiers.TextStringSimpleElement
+androidx.annotation.Keep
+androidx.compose.material3.MinimumInteractiveModifier
+androidx.compose.foundation.layout.SizeElement
+androidx.compose.ui.focus.FocusOwnerImpl$modifier$1
+com.audiopro.djmrec.audio.BitDepth
+com.audiopro.djmrec.usb.UsbAudioManager$permissionReceiver$1
+kotlinx.coroutines.internal.StackTraceRecoveryKt
+androidx.lifecycle.ProcessLifecycleInitializer
+com.audiopro.djmrec.audio.RecordingState$Idle
+androidx.compose.ui.input.rotary.RotaryInputElement
+com.audiopro.djmrec.audio.RecordingState$Paused
+androidx.compose.foundation.layout.WrapContentElement
+com.audiopro.djmrec.usb.UsbAudioDescriptorParser$selectBestStereoInterface$$inlined$thenBy$2
+com.audiopro.djmrec.audio.StereoLevels
+androidx.versionedparcelable.CustomVersionedParcelable
+com.audiopro.djmrec.usb.RootUsbHostController$CommandResult
+androidx.core.app.CoreComponentFactory
+com.audiopro.djmrec.service.RecordingService
+com.audiopro.djmrec.usb.RootUsbHostController
+com.audiopro.djmrec.usb.PioneerVendorControl
+androidx.compose.foundation.layout.PaddingValuesElement
+androidx.compose.foundation.FocusableElement
+com.audiopro.djmrec.usb.UsbAudioDescriptorParser$selectBestStereoInterface$$inlined$compareBy$1
+androidx.compose.ui.platform.DragAndDropModifierOnDragListener$modifier$1
+androidx.compose.ui.node.ForceUpdateElement
+com.audiopro.djmrec.MainActivity
+com.audiopro.djmrec.usb.UsbAudioDescriptorParser
+androidx.compose.foundation.BorderModifierNodeElement
+com.audiopro.djmrec.usb.UsbAudioManager
+kotlinx.coroutines.android.AndroidDispatcherFactory
+androidx.compose.foundation.layout.FillElement
+com.audiopro.djmrec.audio.RecordingState$Recording
+androidx.compose.foundation.layout.LayoutWeightElement
+androidx.compose.ui.draw.PainterElement
+com.audiopro.djmrec.DjmRecApplication
+androidx.core.content.FileProvider
+androidx.core.graphics.drawable.IconCompatParcelizer
+androidx.compose.foundation.layout.HorizontalAlignElement
+androidx.core.graphics.drawable.IconCompat
+androidx.compose.ui.input.pointer.PointerHoverIconModifierElement
+com.audiopro.djmrec.usb.UsbAudioDescriptorParser$selectBestStereoInterface$$inlined$thenBy$1
+android.support.v4.app.RemoteActionCompatParcelizer
+androidx.compose.ui.draw.DrawBehindElement
+androidx.compose.foundation.layout.UnspecifiedConstraintsElement
+androidx.compose.ui.input.key.KeyInputElement
+com.audiopro.djmrec.usb.PioneerVendorControl: int $stable
+kotlinx.coroutines.CancellableContinuationImpl: int _decisionAndIndex
+kotlinx.coroutines.CancellableContinuationImpl: java.lang.Object _parentHandle
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int activeAlternateSetting
+kotlinx.coroutines.CompletedExceptionally: int _handled
+kotlinx.coroutines.scheduling.CoroutineScheduler$Worker: java.lang.Object nextParkedWorker
+com.audiopro.djmrec.usb.UsbAudioDescriptorParser: com.audiopro.djmrec.usb.UsbAudioDescriptorParser INSTANCE
+com.audiopro.djmrec.usb.UsbAudioManager: android.content.Context context
+com.audiopro.djmrec.usb.UsbAudioDescriptorParser: int SUBCLASS_AUDIOSTREAMING
+com.audiopro.djmrec.audio.StereoLevels: int $stable
+androidx.lifecycle.Lifecycle$Event: androidx.lifecycle.Lifecycle$Event ON_CREATE
+com.audiopro.djmrec.audio.AudioEngine: int $stable
+kotlinx.coroutines.DefaultExecutor: int debugStatus
+com.audiopro.djmrec.audio.RecordingFormat: com.audiopro.djmrec.audio.RecordingFormat FLAC
+kotlinx.coroutines.channels.BufferedChannel: long bufferEnd
+kotlinx.coroutines.internal.LockFreeLinkedListNode: java.lang.Object _next
+com.audiopro.djmrec.usb.PioneerVendorControl: int UNVERIFIED_REQUEST_REROUTE_REC_OUT
+kotlinx.coroutines.internal.DispatchedContinuation: java.lang.Object _reusableCancellableContinuation
+kotlinx.coroutines.android.HandlerDispatcherKt: android.view.Choreographer choreographer
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: int maxPacketSize
+androidx.concurrent.futures.AbstractResolvableFuture$Waiter: java.lang.Thread thread
+com.audiopro.djmrec.audio.RecordingState$Paused: int $stable
+com.audiopro.djmrec.usb.RootUsbHostController$CommandResult: boolean timedOut
+kotlinx.coroutines.JobSupport$Finishing: java.lang.Object _exceptionsHolder
+com.audiopro.djmrec.audio.AudioEngine: com.audiopro.djmrec.audio.AudioEngine INSTANCE
+com.audiopro.djmrec.usb.UsbAudioManager: java.lang.String TAG
+androidx.versionedparcelable.ParcelImpl: android.os.Parcelable$Creator CREATOR
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: int interfaceNumber
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: int bitResolution
+kotlinx.coroutines.sync.SemaphoreImpl: int _availablePermits
+com.audiopro.djmrec.usb.UsbAudioDescriptorParser: int ENDPOINT_ATTR_TRANSFER_TYPE_ISOCHRONOUS
+com.audiopro.djmrec.usb.UsbAudioManager$usbDeviceReceiver$1: com.audiopro.djmrec.usb.UsbAudioManager this$0
+kotlinx.coroutines.scheduling.WorkQueue: int producerIndex
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: int alternateSetting
+com.audiopro.djmrec.audio.BitDepth: com.audiopro.djmrec.audio.BitDepth PCM_24
+com.audiopro.djmrec.audio.RecordingFormat: java.lang.String extension
+com.audiopro.djmrec.usb.UsbAudioManager: kotlinx.coroutines.flow.StateFlow deviceState
+kotlinx.coroutines.flow.StateFlowImpl: java.lang.Object _state
+kotlinx.coroutines.sync.SemaphoreImpl: long deqIdx
+com.audiopro.djmrec.usb.UsbAudioDescriptorParser: int DT_INTERFACE
+com.audiopro.djmrec.usb.UsbAudioManager: com.audiopro.djmrec.usb.UsbAudioManager$permissionReceiver$1 permissionReceiver
+kotlinx.coroutines.channels.BufferedChannel: java.lang.Object _closeCause
+com.audiopro.djmrec.usb.UsbAudioManager: boolean rootModeEnabled
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo: int bitResolution
+com.audiopro.djmrec.usb.UsbAudioDescriptorParser: int DT_ENDPOINT
+androidx.concurrent.futures.AbstractResolvableFuture: androidx.concurrent.futures.AbstractResolvableFuture$Waiter waiters
+com.audiopro.djmrec.audio.RecordingState$Paused: com.audiopro.djmrec.audio.RecordingState$Paused INSTANCE
+com.audiopro.djmrec.audio.RecordingState: int $stable
+androidx.compose.runtime.ParcelableSnapshotMutableFloatState: android.os.Parcelable$Creator CREATOR
+kotlinx.coroutines.JobSupport$Finishing: java.lang.Object _rootCause
+com.audiopro.djmrec.usb.PioneerVendorControl: int REQUEST_TYPE_VENDOR_OUT
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: java.lang.String productName
+kotlinx.coroutines.scheduling.CoroutineScheduler: int _isTerminated
+com.audiopro.djmrec.audio.ChannelLevel: float peakDb
+com.audiopro.djmrec.audio.ChannelLevel: boolean isClipping
+kotlinx.coroutines.scheduling.WorkQueue: java.lang.Object lastScheduledTask
+kotlinx.coroutines.EventLoopImplBase$DelayedTask: java.lang.Object _heap
+androidx.concurrent.futures.AbstractResolvableFuture$Waiter: androidx.concurrent.futures.AbstractResolvableFuture$Waiter next
+kotlinx.coroutines.DefaultExecutor: java.lang.Thread _thread
+com.audiopro.djmrec.audio.RecordingFormat: com.audiopro.djmrec.audio.RecordingFormat WAV
+com.audiopro.djmrec.audio.BitDepth: kotlin.enums.EnumEntries $ENTRIES
+kotlinx.coroutines.channels.BufferedChannel: long completedExpandBuffersAndPauseFlag
+com.audiopro.djmrec.audio.RecordingState$Idle: int $stable
+com.audiopro.djmrec.usb.UsbAudioManager: java.lang.String ACTION_USB_PERMISSION
+kotlinx.coroutines.internal.LockFreeLinkedListNode: java.lang.Object _prev
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: java.lang.String deviceName
+androidx.lifecycle.ProcessLifecycleOwner$attach$1: androidx.lifecycle.ProcessLifecycleOwner this$0
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo: int alternateSetting
+androidx.lifecycle.Lifecycle$Event: androidx.lifecycle.Lifecycle$Event ON_STOP
+com.audiopro.djmrec.usb.UsbAudioDescriptorParser$selectBestStereoInterface$$inlined$thenBy$2: java.util.Comparator $this_thenBy
+com.audiopro.djmrec.audio.BitDepth: com.audiopro.djmrec.audio.BitDepth PCM_16
+kotlinx.coroutines.scheduling.CoroutineScheduler: long parkedWorkersStack
+androidx.lifecycle.Lifecycle$Event: androidx.lifecycle.Lifecycle$Event ON_ANY
+androidx.concurrent.futures.AbstractResolvableFuture: androidx.concurrent.futures.AbstractResolvableFuture$Listener listeners
+androidx.lifecycle.Lifecycle$Event: androidx.lifecycle.Lifecycle$Event ON_DESTROY
+kotlinx.coroutines.EventLoopImplBase: java.lang.Object _queue
+com.audiopro.djmrec.audio.RecordingState$Recording: com.audiopro.djmrec.audio.RecordingState$Recording INSTANCE
+com.audiopro.djmrec.audio.BitDepth: int bits
+com.audiopro.djmrec.usb.PioneerVendorControl: java.lang.String TAG
+com.audiopro.djmrec.usb.UsbAudioManager: kotlinx.coroutines.flow.MutableStateFlow _deviceState
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: boolean isPioneer
+com.audiopro.djmrec.usb.PioneerVendorControl: com.audiopro.djmrec.usb.PioneerVendorControl INSTANCE
+androidx.lifecycle.ReportFragment$LifecycleCallbacks: androidx.lifecycle.ReportFragment$LifecycleCallbacks$Companion Companion
+com.audiopro.djmrec.audio.RecordingState$Preparing: com.audiopro.djmrec.audio.RecordingState$Preparing INSTANCE
+kotlinx.coroutines.CancelledContinuation: int _resumed
+com.audiopro.djmrec.usb.UsbAudioManager: int $stable
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo: int interfaceNumber
+kotlinx.coroutines.internal.ThreadSafeHeap: int _size
+com.audiopro.djmrec.audio.BitDepth: com.audiopro.djmrec.audio.BitDepth[] $VALUES
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int bitResolution
+com.audiopro.djmrec.audio.RecordingState$Idle: com.audiopro.djmrec.audio.RecordingState$Idle INSTANCE
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int isochronousInEndpointAddress
+kotlinx.coroutines.channels.BufferedChannel: java.lang.Object sendSegment
+kotlinx.coroutines.internal.AtomicOp: java.lang.Object _consensus
+kotlinx.coroutines.scheduling.CoroutineScheduler$Worker: int indexInArray
+kotlinx.coroutines.scheduling.WorkQueue: int consumerIndex
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int negotiatedSampleRate
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: boolean hasPermission
+kotlinx.coroutines.internal.LockFreeTaskQueueCore: long _state
+kotlin.coroutines.SafeContinuation: java.lang.Object result
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo: int channelCount
+com.audiopro.djmrec.usb.UsbAudioDescriptorParser: int ENDPOINT_ATTR_TRANSFER_TYPE_MASK
+kotlinx.coroutines.EventLoopImplBase: java.lang.Object _delayed
+com.audiopro.djmrec.usb.UsbAudioDescriptorParser: int DT_CS_INTERFACE
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int audioManagerDeviceId
+kotlinx.coroutines.JobSupport: java.lang.Object _parentHandle
+com.audiopro.djmrec.usb.UsbAudioManager: android.hardware.usb.UsbManager usbManager
+androidx.concurrent.futures.AbstractResolvableFuture: java.lang.Object value
+kotlinx.coroutines.sync.SemaphoreImpl: long enqIdx
+com.audiopro.djmrec.audio.RecordingState$Recording: int $stable
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int $stable
+kotlinx.coroutines.scheduling.WorkQueue: int blockingTasksInBuffer
+kotlinx.coroutines.UndispatchedCoroutine: boolean threadLocalIsSet
+kotlinx.coroutines.sync.SemaphoreImpl: java.lang.Object head
+com.audiopro.djmrec.usb.UsbAudioDescriptorParser: int ENDPOINT_DIR_IN_MASK
+com.audiopro.djmrec.usb.PioneerVendorControl: int UNVERIFIED_VALUE
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: int endpointAddress
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int vendorId
+kotlinx.coroutines.internal.Segment: int cleanedAndPointers
+com.audiopro.djmrec.usb.UsbAudioDescriptorParser: int $stable
+com.audiopro.djmrec.usb.UsbAudioDescriptorParser: int AS_DESCRIPTOR_SUBTYPE_GENERAL
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo: java.lang.Integer isochronousInMaxPacketSize
+kotlinx.coroutines.internal.ConcurrentLinkedListNode: java.lang.Object _prev
+kotlinx.coroutines.sync.MutexImpl: java.lang.Object owner
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: int totalChannels
+com.audiopro.djmrec.usb.UsbAudioManager: java.util.Set PIONEER_VENDOR_IDS
+kotlinx.coroutines.internal.LimitedDispatcher: int runningWorkers
+kotlin.SafePublicationLazyImpl: java.lang.Object _value
+com.audiopro.djmrec.usb.UsbAudioManager: com.audiopro.djmrec.usb.UsbAudioManager$usbDeviceReceiver$1 usbDeviceReceiver
+com.audiopro.djmrec.audio.RecordingFormat: com.audiopro.djmrec.audio.RecordingFormat[] $VALUES
+kotlinx.coroutines.scheduling.CoroutineScheduler: long controlState
+kotlinx.coroutines.sync.SemaphoreImpl: java.lang.Object tail
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int streamingInterfaceNumber
+com.audiopro.djmrec.usb.UsbAudioDescriptorParser: int USB_CLASS_AUDIO
+androidx.compose.runtime.ParcelableSnapshotMutableIntState: android.os.Parcelable$Creator CREATOR
+com.audiopro.djmrec.usb.UsbAudioManager$permissionReceiver$1: com.audiopro.djmrec.usb.UsbAudioManager this$0
+com.audiopro.djmrec.usb.UsbAudioManager: int MASTER_MIX_CHANNEL_OFFSET
+com.audiopro.djmrec.audio.ChannelLevel: int $stable
+com.audiopro.djmrec.usb.UsbAudioDescriptorParser: int AS_DESCRIPTOR_SUBTYPE_FORMAT_TYPE
+kotlinx.coroutines.channels.BufferedChannel: long sendersAndCloseStatus
+com.audiopro.djmrec.audio.StereoLevels: com.audiopro.djmrec.audio.ChannelLevel right
+kotlinx.coroutines.channels.BufferedChannel: java.lang.Object receiveSegment
+kotlinx.coroutines.internal.LockFreeLinkedListNode: java.lang.Object _removedRef
+androidx.lifecycle.Lifecycle$Event: androidx.lifecycle.Lifecycle$Event ON_RESUME
+com.audiopro.djmrec.audio.RecordingFormat: int nativeValue
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: java.util.List supportedSampleRates
+kotlinx.coroutines.channels.BufferedChannel: long receivers
+kotlinx.coroutines.InvokeOnCancelling: int _invoked
+kotlinx.coroutines.JobSupport: java.lang.Object _state
+androidx.activity.result.ActivityResult: android.os.Parcelable$Creator CREATOR
+kotlinx.coroutines.CancellableContinuationImpl: java.lang.Object _state
+com.audiopro.djmrec.usb.UsbAudioDescriptorParser$selectBestStereoInterface$$inlined$thenBy$1: java.util.Comparator $this_thenBy
+com.audiopro.djmrec.audio.RecordingState$Error: int $stable
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo: int $stable
+androidx.lifecycle.Lifecycle$Event: androidx.lifecycle.Lifecycle$Event ON_START
+androidx.compose.runtime.ParcelableSnapshotMutableState: android.os.Parcelable$Creator CREATOR
+com.audiopro.djmrec.usb.RootUsbHostController$CommandResult: int $stable
+com.audiopro.djmrec.usb.UsbAudioManager: boolean registered
+kotlinx.coroutines.EventLoopImplBase: int _isCompleted
+com.audiopro.djmrec.usb.UsbAudioManager: android.media.AudioManager audioManager
+com.audiopro.djmrec.audio.ChannelLevel: float rmsDb
+kotlinx.coroutines.channels.BufferedChannel: java.lang.Object bufferEndSegment
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: int $stable
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: int fd
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int channelCount
+com.audiopro.djmrec.usb.PioneerVendorControl: int UNVERIFIED_INDEX
+com.audiopro.djmrec.usb.RootUsbHostController: com.audiopro.djmrec.usb.RootUsbHostController INSTANCE
+kotlinx.coroutines.channels.BufferedChannel: java.lang.Object closeHandler
+com.audiopro.djmrec.usb.UsbAudioManager: com.audiopro.djmrec.usb.UsbAudioManager$Companion Companion
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: int subframeSize
+androidx.lifecycle.ProcessLifecycleOwner$attach$1$onActivityPreCreated$1: androidx.lifecycle.ProcessLifecycleOwner this$0
+com.audiopro.djmrec.usb.RootUsbHostController$CommandResult: java.lang.String output
+com.audiopro.djmrec.usb.RootUsbHostController: java.lang.String ROLE_SWITCH_SCRIPT
+kotlinx.coroutines.internal.ResizableAtomicArray: java.util.concurrent.atomic.AtomicReferenceArray array
+kotlinx.coroutines.android.AndroidExceptionPreHandler: java.lang.Object _preHandler
+androidx.lifecycle.Lifecycle$Event: androidx.lifecycle.Lifecycle$Event[] $VALUES
+com.audiopro.djmrec.usb.UsbAudioManager: android.hardware.usb.UsbDeviceConnection activeIsoConnection
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo: java.lang.Integer isochronousInEndpointAddress
+com.audiopro.djmrec.usb.UsbAudioDescriptorParser: int DT_CS_ENDPOINT
+androidx.lifecycle.Lifecycle$Event: androidx.lifecycle.Lifecycle$Event ON_PAUSE
+kotlinx.coroutines.android.HandlerContext: kotlinx.coroutines.android.HandlerContext _immediate
+com.audiopro.djmrec.audio.BitDepth: com.audiopro.djmrec.audio.BitDepth PCM_32
+kotlinx.coroutines.internal.LockFreeTaskQueueCore: java.lang.Object _next
+androidx.activity.result.IntentSenderRequest: android.os.Parcelable$Creator CREATOR
+com.audiopro.djmrec.audio.RecordingFormat: kotlin.enums.EnumEntries $ENTRIES
+kotlinx.coroutines.internal.LockFreeTaskQueue: java.lang.Object _cur
+kotlinx.coroutines.flow.StateFlowSlot: java.lang.Object _state
+kotlinx.coroutines.JobSupport$Finishing: int _isCompleting
+com.audiopro.djmrec.audio.RecordingFormat: com.audiopro.djmrec.audio.RecordingFormat MP3
+com.audiopro.djmrec.audio.StereoLevels: com.audiopro.djmrec.audio.ChannelLevel left
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo: int subframeSize
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int subframeSize
+com.audiopro.djmrec.usb.RootUsbHostController: int $stable
+androidx.lifecycle.Lifecycle$Event: androidx.lifecycle.Lifecycle$Event$Companion Companion
+com.audiopro.djmrec.audio.RecordingState$Error: java.lang.String message
+kotlinx.coroutines.scheduling.CoroutineScheduler$Worker: int workerCtl
+com.audiopro.djmrec.usb.RootUsbHostController$CommandResult: int exitCode
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int isochronousInMaxPacketSize
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int productId
+com.audiopro.djmrec.audio.RecordingState$Preparing: int $stable
+kotlinx.coroutines.DispatchedCoroutine: int _decision
+kotlinx.coroutines.internal.ConcurrentLinkedListNode: java.lang.Object _next
+androidx.core.view.WindowInsetsCompat$BuilderImpl20: void setStableInsets(androidx.core.graphics.Insets)
+androidx.core.view.WindowInsetsCompat$BuilderImpl20: androidx.core.view.WindowInsetsCompat build()
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.focus.FocusOwner getFocusOwner()
+androidx.compose.ui.platform.ComposeView: java.lang.CharSequence getAccessibilityClassName()
+androidx.core.app.ServiceCompat$Api34Impl: void startForeground(android.app.Service,int,android.app.Notification,int)
+androidx.lifecycle.LifecycleDispatcher$DispatcherActivityCallback: LifecycleDispatcher$DispatcherActivityCallback()
+androidx.core.view.WindowInsetsCompat$Impl20: androidx.core.graphics.Insets getSystemWindowInsets()
+com.audiopro.djmrec.audio.AudioEngine: float[] getLevels()
+androidx.compose.ui.autofill.AutofillApi26Helper: java.lang.CharSequence textValue(android.view.autofill.AutofillValue)
+kotlin.collections.AbstractMutableList: AbstractMutableList()
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int component13()
+androidx.profileinstaller.ProfileInstallerInitializer$Handler28Impl: android.os.Handler createAsync(android.os.Looper)
+androidx.compose.ui.autofill.AutofillCallback: void register(androidx.compose.ui.autofill.AndroidAutofill)
+com.audiopro.djmrec.usb.UsbAudioManager$Companion: java.util.Set getPIONEER_VENDOR_IDS()
+androidx.core.app.NotificationManagerCompat$Api26Impl: java.util.List getNotificationChannels(android.app.NotificationManager)
+androidx.core.view.WindowInsetsCompat$Impl21: WindowInsetsCompat$Impl21(androidx.core.view.WindowInsetsCompat,androidx.core.view.WindowInsetsCompat$Impl21)
+androidx.core.graphics.drawable.IconCompatParcelizer: androidx.core.graphics.drawable.IconCompat read(androidx.versionedparcelable.VersionedParcel)
+androidx.lifecycle.ReportFragment$LifecycleCallbacks: ReportFragment$LifecycleCallbacks()
+androidx.compose.ui.platform.coreshims.ViewStructureCompat$Api23Impl: void setDimens(android.view.ViewStructure,int,int,int,int,int,int)
+androidx.compose.foundation.layout.Direction: androidx.compose.foundation.layout.Direction valueOf(java.lang.String)
+androidx.compose.material.ripple.UnprojectedRipple$MRadiusHelper: void setRadius(android.graphics.drawable.RippleDrawable,int)
+com.audiopro.djmrec.usb.RootUsbHostController$CommandResult: int getExitCode()
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo: java.lang.Integer getIsochronousInMaxPacketSize()
+androidx.core.app.NotificationChannelCompat$Api26Impl: void setShowBadge(android.app.NotificationChannel,boolean)
+androidx.lifecycle.ProcessLifecycleOwner$attach$1$onActivityPreCreated$1: ProcessLifecycleOwner$attach$1$onActivityPreCreated$1(androidx.lifecycle.ProcessLifecycleOwner)
+androidx.compose.foundation.layout.SizeMode: androidx.compose.foundation.layout.SizeMode[] values()
+androidx.core.view.accessibility.AccessibilityNodeInfoCompat$Api33Impl: java.lang.String getCollectionItemRowTitle(java.lang.Object)
+com.audiopro.djmrec.usb.RootUsbHostController: boolean isRootAvailable()
+com.audiopro.djmrec.audio.RecordingFormat: com.audiopro.djmrec.audio.RecordingFormat[] values()
+androidx.core.app.NotificationManagerCompat$Api26Impl: java.lang.String getId(android.app.NotificationChannelGroup)
+kotlin.time.DurationUnit: kotlin.time.DurationUnit valueOf(java.lang.String)
+androidx.core.app.RemoteInput$Api26Impl: void addDataResultToIntent(androidx.core.app.RemoteInput,android.content.Intent,java.util.Map)
+androidx.compose.ui.platform.ViewLayer: void setInvalidated(boolean)
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: java.lang.String getProductName()
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.unit.LayoutDirection getLayoutDirection()
+androidx.compose.ui.platform.coreshims.ContentCaptureSessionCompat$Api29Impl: android.view.ViewStructure newViewStructure(android.view.contentcapture.ContentCaptureSession,android.view.View)
+androidx.compose.ui.platform.RenderNodeVerificationHelper24: void discardDisplayList(android.view.RenderNode)
+androidx.core.view.WindowInsetsCompat$BuilderImpl: void setSystemWindowInsets(androidx.core.graphics.Insets)
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.platform.AndroidComposeView$ViewTreeOwners getViewTreeOwners()
+com.audiopro.djmrec.usb.RootUsbHostController$CommandResult: boolean equals(java.lang.Object)
+androidx.core.app.NotificationChannelCompat$Api26Impl: void setLightColor(android.app.NotificationChannel,int)
+androidx.core.graphics.drawable.IconCompatParcelizer: void write(androidx.core.graphics.drawable.IconCompat,androidx.versionedparcelable.VersionedParcel)
+androidx.core.view.ViewCompat$Api21Impl: void stopNestedScroll(android.view.View)
+androidx.core.view.WindowInsetsCompat$Impl20: void copyWindowDataInto(androidx.core.view.WindowInsetsCompat)
+com.audiopro.djmrec.usb.UsbAudioManager$permissionReceiver$1: void onReceive(android.content.Context,android.content.Intent)
+androidx.compose.ui.autofill.AutofillApi26Helper: boolean isToggle(android.view.autofill.AutofillValue)
+androidx.core.view.ViewCompat$Api21Impl: void setNestedScrollingEnabled(android.view.View,boolean)
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.platform.AndroidComposeView$ViewTreeOwners get_viewTreeOwners()
+kotlin.coroutines.intrinsics.CoroutineSingletons: kotlin.coroutines.intrinsics.CoroutineSingletons valueOf(java.lang.String)
+androidx.compose.ui.platform.AndroidComposeView: kotlin.jvm.functions.Function1 getConfigurationChangeObserver()
+androidx.startup.InitializationProvider: InitializationProvider()
+com.audiopro.djmrec.audio.RecordingState$Error: com.audiopro.djmrec.audio.RecordingState$Error copy$default(com.audiopro.djmrec.audio.RecordingState$Error,java.lang.String,int,java.lang.Object)
+androidx.core.view.accessibility.AccessibilityNodeInfoCompat$Api34Impl: boolean isAccessibilityDataSensitive(android.view.accessibility.AccessibilityNodeInfo)
+androidx.core.view.ViewCompat$Api21Impl: boolean hasNestedScrollingParent(android.view.View)
+com.audiopro.djmrec.audio.StereoLevels: com.audiopro.djmrec.audio.StereoLevels copy$default(com.audiopro.djmrec.audio.StereoLevels,com.audiopro.djmrec.audio.ChannelLevel,com.audiopro.djmrec.audio.ChannelLevel,int,java.lang.Object)
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo: int getChannelCount()
+androidx.core.view.accessibility.AccessibilityNodeInfoCompat$Api33Impl: androidx.core.view.accessibility.AccessibilityNodeInfoCompat$CollectionItemInfoCompat buildCollectionItemInfoCompat(boolean,int,int,int,int,boolean,java.lang.String,java.lang.String)
+androidx.core.view.accessibility.AccessibilityNodeInfoCompat$Api34Impl: void setContainerTitle(android.view.accessibility.AccessibilityNodeInfo,java.lang.CharSequence)
+androidx.compose.animation.core.RepeatMode: androidx.compose.animation.core.RepeatMode[] values()
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int component6()
+androidx.core.view.WindowInsetsCompat$Impl: void copyWindowDataInto(androidx.core.view.WindowInsetsCompat)
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo: com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo copy(int,int,int,int,int,java.lang.Integer,java.lang.Integer)
+androidx.core.app.NotificationCompatBuilder$Api20Impl: android.app.Notification$Builder setSortKey(android.app.Notification$Builder,java.lang.String)
+androidx.core.app.NotificationCompatBuilder$Api20Impl: android.app.Notification$Builder setLocalOnly(android.app.Notification$Builder,boolean)
+androidx.core.app.AppOpsManagerCompat$Api29Impl: int checkOpNoThrow(android.app.AppOpsManager,java.lang.String,int,java.lang.String)
+androidx.lifecycle.ReportFragment$LifecycleCallbacks: void registerIn(android.app.Activity)
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int getIsochronousInEndpointAddress()
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: int component7()
+androidx.core.view.WindowInsetsCompat$Impl: androidx.core.graphics.Insets getInsets(int)
+com.audiopro.djmrec.audio.ChannelLevel: java.lang.String toString()
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo: int getBitResolution()
+com.audiopro.djmrec.audio.RecordingState$Preparing: RecordingState$Preparing()
+androidx.core.app.NotificationChannelCompat$Api26Impl: int getLockscreenVisibility(android.app.NotificationChannel)
+androidx.compose.ui.platform.AbstractComposeView: void setPreviousAttachedWindowToken(android.os.IBinder)
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: boolean getHasPermission()
+androidx.core.app.AppOpsManagerCompat$Api23Impl: java.lang.Object getSystemService(android.content.Context,java.lang.Class)
+androidx.lifecycle.EmptyActivityLifecycleCallbacks: void onActivityResumed(android.app.Activity)
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: java.util.List getSupportedSampleRates()
+com.audiopro.djmrec.audio.ChannelLevel: float getPeakDb()
+androidx.core.app.NotificationCompatBuilder$Api20Impl: java.lang.String getGroup(android.app.Notification)
+androidx.compose.ui.platform.AbstractComposeView: void getDisposeViewCompositionStrategy$annotations()
+androidx.compose.ui.platform.AndroidComposeView: void setLayoutDirection(androidx.compose.ui.unit.LayoutDirection)
+androidx.lifecycle.EmptyActivityLifecycleCallbacks: void onActivityCreated(android.app.Activity,android.os.Bundle)
+androidx.core.view.ViewCompat$Api30Impl: int getImportantForContentCapture(android.view.View)
+androidx.compose.ui.platform.AndroidComposeView: void setLastMatrixRecalculationAnimationTime$ui_release(long)
+com.audiopro.djmrec.audio.RecordingState$Idle: boolean equals(java.lang.Object)
+androidx.core.view.WindowInsetsCompat$Impl20: androidx.core.graphics.Insets getRootStableInsets()
+androidx.core.view.accessibility.AccessibilityNodeInfoCompat$Api34Impl: void getBoundsInWindow(android.view.accessibility.AccessibilityNodeInfo,android.graphics.Rect)
+com.audiopro.djmrec.audio.RecordingState$Error: boolean equals(java.lang.Object)
+androidx.compose.ui.autofill.AutofillType: androidx.compose.ui.autofill.AutofillType[] values()
+androidx.compose.ui.graphics.ColorSpaceVerificationHelper: android.graphics.ColorSpace androidColorSpace(androidx.compose.ui.graphics.colorspace.ColorSpace)
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int hashCode()
+com.audiopro.djmrec.audio.ChannelLevel: float component1()
+androidx.core.view.ViewCompat$Api30Impl: boolean isImportantForContentCapture(android.view.View)
+androidx.core.view.WindowInsetsCompat$BuilderImpl: androidx.core.view.WindowInsetsCompat build()
+androidx.core.view.WindowInsetsCompat$Impl: int hashCode()
+com.audiopro.djmrec.usb.RootUsbHostController: com.audiopro.djmrec.usb.RootUsbHostController$CommandResult captureKernelUsbLog()
+com.audiopro.djmrec.audio.ChannelLevel: int hashCode()
+com.audiopro.djmrec.usb.UsbAudioManager$Companion: boolean access$isPioneerDevice(com.audiopro.djmrec.usb.UsbAudioManager$Companion,android.hardware.usb.UsbDevice)
+androidx.core.view.ViewCompat$Api21Impl$1: ViewCompat$Api21Impl$1(android.view.View,androidx.core.view.OnApplyWindowInsetsListener)
+androidx.core.graphics.drawable.IconCompatParcelizer: IconCompatParcelizer()
+androidx.compose.ui.autofill.AutofillApi26Helper: android.view.autofill.AutofillId getAutofillId(android.view.ViewStructure)
+androidx.compose.ui.text.style.ResolvedTextDirection: androidx.compose.ui.text.style.ResolvedTextDirection[] values()
+androidx.compose.ui.platform.ViewLayerVerificationHelper28: void setOutlineAmbientShadowColor(android.view.View,int)
+androidx.compose.ui.platform.TextToolbarStatus: androidx.compose.ui.platform.TextToolbarStatus valueOf(java.lang.String)
+androidx.core.app.RemoteInput$Api20Impl: android.os.Bundle getResultsFromIntent(android.content.Intent)
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: int component2()
+com.audiopro.djmrec.usb.RootUsbHostController: com.audiopro.djmrec.usb.RootUsbHostController$CommandResult runSu(java.lang.String,long)
+androidx.core.view.WindowInsetsCompat$Impl20: boolean equals(java.lang.Object)
+androidx.core.app.AppOpsManagerCompat$Api29Impl: android.app.AppOpsManager getSystemService(android.content.Context)
+androidx.core.app.NotificationChannelCompat$Api26Impl: java.lang.CharSequence getName(android.app.NotificationChannel)
+androidx.core.graphics.drawable.IconCompat$Api26Impl: android.graphics.drawable.Icon createWithAdaptiveBitmap(android.graphics.Bitmap)
+androidx.compose.animation.core.MutatePriority: androidx.compose.animation.core.MutatePriority[] values()
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo: boolean equals(java.lang.Object)
+androidx.compose.ui.platform.AbstractComposeView: void setShowLayoutBounds(boolean)
+androidx.core.view.WindowInsetsCompat$Impl: androidx.core.view.DisplayCutoutCompat getDisplayCutout()
+kotlin.random.Random: Random()
+androidx.lifecycle.ReportFragment$LifecycleCallbacks: void onActivityPreDestroyed(android.app.Activity)
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo: com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo copy$default(com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo,int,int,int,int,int,java.lang.Integer,java.lang.Integer,int,java.lang.Object)
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo: java.lang.Integer component7()
+androidx.compose.foundation.layout.Direction: androidx.compose.foundation.layout.Direction[] values()
+androidx.compose.ui.platform.coreshims.ContentCaptureSessionCompat$Api34Impl: void notifyViewsAppeared(android.view.contentcapture.ContentCaptureSession,java.util.List)
+androidx.core.view.WindowInsetsCompat$Impl: androidx.core.graphics.Insets getStableInsets()
+com.audiopro.djmrec.usb.UsbAudioManager: com.audiopro.djmrec.usb.UsbIsoCaptureHandle openIsoCaptureHandle()
+androidx.core.view.accessibility.AccessibilityNodeInfoCompat$Api34Impl: void setQueryFromAppProcessEnabled(android.view.accessibility.AccessibilityNodeInfo,android.view.View,boolean)
+androidx.core.view.WindowInsetsCompat$Impl29: androidx.core.graphics.Insets getTappableElementInsets()
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int component9()
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo: int component1()
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: java.lang.String component2()
+androidx.compose.ui.text.android.StaticLayoutFactoryImpl: android.text.StaticLayout create(androidx.compose.ui.text.android.StaticLayoutParams)
+androidx.core.app.ServiceCompat$Api29Impl: void startForeground(android.app.Service,int,android.app.Notification,int)
+androidx.core.view.ViewCompat$Api21Impl: boolean dispatchNestedPreScroll(android.view.View,int,int,int[],int[])
+androidx.core.view.WindowInsetsCompat$Impl28: androidx.core.view.WindowInsetsCompat consumeDisplayCutout()
+androidx.core.view.ViewCompat$Api20Impl: android.view.WindowInsets dispatchApplyWindowInsets(android.view.View,android.view.WindowInsets)
+androidx.core.view.WindowInsetsCompat$Impl28: WindowInsetsCompat$Impl28(androidx.core.view.WindowInsetsCompat,androidx.core.view.WindowInsetsCompat$Impl28)
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: boolean component15()
+androidx.compose.ui.window.SecureFlagPolicy: androidx.compose.ui.window.SecureFlagPolicy valueOf(java.lang.String)
+androidx.core.app.NotificationChannelCompat$Api30Impl: java.lang.String getConversationId(android.app.NotificationChannel)
+androidx.core.view.WindowInsetsCompat$Impl20: androidx.core.graphics.Insets getInsetsForType(int,boolean)
+androidx.core.view.ViewCompat$Api21Impl: void setZ(android.view.View,float)
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int component11()
+androidx.core.app.NotificationManagerCompat$Api24Impl: int getImportance(android.app.NotificationManager)
+com.audiopro.djmrec.audio.RecordingFormat: com.audiopro.djmrec.audio.RecordingFormat valueOf(java.lang.String)
+androidx.core.app.NotificationCompatBuilder$Api20Impl: android.app.Notification$Action build(android.app.Notification$Action$Builder)
+androidx.core.view.DisplayCutoutCompat$Api30Impl: android.graphics.Insets getWaterfallInsets(android.view.DisplayCutout)
+androidx.core.app.NotificationChannelCompat$Api26Impl: boolean canBypassDnd(android.app.NotificationChannel)
+androidx.core.view.WindowInsetsCompat$Impl30: androidx.core.graphics.Insets getInsets(int)
+androidx.compose.ui.platform.RenderNodeVerificationHelper28: void setAmbientShadowColor(android.view.RenderNode,int)
+androidx.compose.ui.platform.ViewLayer: float getCameraDistancePx()
+androidx.core.app.RemoteActionCompatParcelizer: RemoteActionCompatParcelizer()
+androidx.emoji2.text.EmojiExclusions$EmojiExclusions_Api34: java.util.Set getExclusions()
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.platform.ViewConfiguration getViewConfiguration()
+androidx.core.view.ViewCompat$Api21Impl: float getZ(android.view.View)
+androidx.core.view.ViewCompat$Api21Impl: void setOnApplyWindowInsetsListener(android.view.View,androidx.core.view.OnApplyWindowInsetsListener)
+androidx.core.view.WindowInsetsCompat$BuilderImpl20: void setSystemWindowInsets(androidx.core.graphics.Insets)
+androidx.core.app.NotificationChannelCompat$Api26Impl: long[] getVibrationPattern(android.app.NotificationChannel)
+androidx.core.view.WindowInsetsCompat$Impl20: boolean isTypeVisible(int)
+androidx.core.graphics.drawable.IconCompat$Api28Impl: int getResId(java.lang.Object)
+kotlinx.coroutines.android.AndroidExceptionPreHandler: AndroidExceptionPreHandler()
+androidx.core.view.ViewCompat$Api23Impl: int getScrollIndicators(android.view.View)
+androidx.core.view.WindowInsetsCompat$BuilderImpl: WindowInsetsCompat$BuilderImpl()
+androidx.core.app.CoreComponentFactory: CoreComponentFactory()
+androidx.profileinstaller.ProfileVerifier$Api33Impl: android.content.pm.PackageInfo getPackageInfo(android.content.pm.PackageManager,android.content.Context)
+androidx.lifecycle.ReportFragment$LifecycleCallbacks: void onActivityResumed(android.app.Activity)
+kotlinx.coroutines.channels.BufferOverflow: kotlinx.coroutines.channels.BufferOverflow valueOf(java.lang.String)
+androidx.core.app.RemoteInput$Api29Impl: int getEditChoicesBeforeSending(java.lang.Object)
+androidx.core.view.WindowInsetsCompat$Impl20: void copyRootViewBounds(android.view.View)
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.unit.Density getDensity()
+androidx.core.app.NotificationCompatBuilder$Api29Impl: android.app.Notification$Builder setBubbleMetadata(android.app.Notification$Builder,android.app.Notification$BubbleMetadata)
+androidx.compose.ui.platform.AbstractComposeView: void getShowLayoutBounds$annotations()
+com.audiopro.djmrec.audio.RecordingState$Preparing: int hashCode()
+androidx.compose.ui.autofill.AutofillApi26Helper: void setAutofillHints(android.view.ViewStructure,java.lang.String[])
+com.audiopro.djmrec.audio.RecordingState$Preparing: java.lang.String toString()
+androidx.core.view.accessibility.AccessibilityNodeInfoCompat$Api33Impl: androidx.core.view.accessibility.AccessibilityNodeInfoCompat getChild(android.view.accessibility.AccessibilityNodeInfo,int,int)
+com.audiopro.djmrec.usb.RootUsbHostController: com.audiopro.djmrec.usb.RootUsbHostController$CommandResult collectRootStatus()
+androidx.compose.ui.state.ToggleableState: androidx.compose.ui.state.ToggleableState[] values()
+androidx.core.view.WindowInsetsCompat$Impl: androidx.core.graphics.Insets getSystemWindowInsets()
+androidx.compose.ui.platform.coreshims.ContentCaptureSessionCompat$Api23Impl: android.os.Bundle getExtras(android.view.ViewStructure)
+androidx.core.view.WindowInsetsCompat$Impl: WindowInsetsCompat$Impl(androidx.core.view.WindowInsetsCompat)
+androidx.core.view.WindowInsetsCompat$Impl: androidx.core.graphics.Insets getTappableElementInsets()
+kotlin.collections.AbstractList: AbstractList()
+androidx.core.app.NotificationCompatBuilder$Api31Impl: android.app.Notification$Builder setForegroundServiceBehavior(android.app.Notification$Builder,int)
+androidx.core.view.WindowInsetsCompat$Impl20: void loadReflectionField()
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.node.RootForTest getRootForTest()
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int getVendorId()
+androidx.compose.ui.platform.AndroidComposeViewForceDarkModeQ: void disallowForceDark(android.view.View)
+com.audiopro.djmrec.audio.AudioEngine: void close()
+androidx.compose.ui.platform.coreshims.ViewCompatShims$Api30Impl: void setImportantForContentCapture(android.view.View,int)
+androidx.core.app.RemoteActionCompatParcelizer: androidx.core.app.RemoteActionCompat read(androidx.versionedparcelable.VersionedParcel)
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int getAudioManagerDeviceId()
+androidx.core.view.WindowInsetsCompat$Impl20: androidx.core.graphics.Insets getInsets(int,boolean)
+androidx.core.view.accessibility.AccessibilityNodeInfoCompat$Api30Impl: java.lang.Object createRangeInfo(int,float,float,float)
+androidx.core.app.AppOpsManagerCompat$Api29Impl: java.lang.String getOpPackageName(android.content.Context)
+androidx.core.app.RemoteInput$Api26Impl: java.util.Set getAllowedDataTypes(java.lang.Object)
+com.audiopro.djmrec.audio.BitDepth: kotlin.enums.EnumEntries getEntries()
+androidx.core.view.WindowInsetsCompat$Impl28: androidx.core.view.DisplayCutoutCompat getDisplayCutout()
+androidx.core.view.ViewCompat$Api28Impl: void setAccessibilityHeading(android.view.View,boolean)
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.autofill.Autofill getAutofill()
+com.audiopro.djmrec.audio.StereoLevels: com.audiopro.djmrec.audio.ChannelLevel component2()
+androidx.core.view.WindowInsetsCompat$BuilderImpl: void setSystemGestureInsets(androidx.core.graphics.Insets)
+androidx.core.app.NotificationCompatBuilder$Api29Impl: android.app.Notification$Builder setLocusId(android.app.Notification$Builder,java.lang.Object)
+com.audiopro.djmrec.usb.UsbAudioManager$usbDeviceReceiver$1: UsbAudioManager$usbDeviceReceiver$1(com.audiopro.djmrec.usb.UsbAudioManager)
+androidx.compose.ui.platform.ComposeView: boolean getShouldCreateCompositionOnAttachedToWindow()
+androidx.core.view.ViewCompat$Api28Impl: void setAutofillId(android.view.View,androidx.core.view.autofill.AutofillIdCompat)
+androidx.core.view.WindowInsetsCompat$BuilderImpl29: void setTappableElementInsets(androidx.core.graphics.Insets)
+com.audiopro.djmrec.usb.UsbAudioManager: java.lang.CharSequence inspectAndPublish$lambda$6(com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo)
+androidx.lifecycle.ProcessLifecycleOwner$attach$1$onActivityPreCreated$1: void onActivityPostResumed(android.app.Activity)
+androidx.compose.ui.autofill.AutofillApi23Helper: void setDimens(android.view.ViewStructure,int,int,int,int,int,int)
+androidx.compose.ui.platform.CalculateMatrixToWindowApi29: void calculateMatrixToWindow-EL8BTi8(android.view.View,float[])
+androidx.core.view.accessibility.AccessibilityNodeInfoCompat$Api34Impl: void setRequestInitialAccessibilityFocus(android.view.accessibility.AccessibilityNodeInfo,boolean)
+androidx.core.view.ViewCompat$Api28Impl: void setAccessibilityPaneTitle(android.view.View,java.lang.CharSequence)
+androidx.core.view.ViewConfigurationCompat$Api26Impl: float getScaledVerticalScrollFactor(android.view.ViewConfiguration)
+com.audiopro.djmrec.audio.RecordingState$Paused: RecordingState$Paused()
+androidx.compose.ui.platform.ViewLayer: androidx.compose.ui.platform.DrawChildContainer getContainer()
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int component14()
+androidx.core.view.WindowInsetsCompat$Impl29: androidx.core.graphics.Insets getMandatorySystemGestureInsets()
+androidx.core.view.ViewCompat$Api28Impl: void removeOnUnhandledKeyEventListener(android.view.View,androidx.core.view.ViewCompat$OnUnhandledKeyEventListenerCompat)
+androidx.core.view.ViewCompat$Api21Impl: void setTranslationZ(android.view.View,float)
+androidx.compose.material3.MinimumInteractiveModifier: MinimumInteractiveModifier()
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: com.audiopro.djmrec.usb.UsbAudioDeviceInfo copy(java.lang.String,java.lang.String,int,int,int,int,int,int,int,int,int,java.util.List,int,int,boolean,boolean)
+androidx.compose.ui.node.LayoutNode$LayoutState: androidx.compose.ui.node.LayoutNode$LayoutState[] values()
+com.audiopro.djmrec.audio.AudioEngine: int open(int,int,int,int)
+com.audiopro.djmrec.usb.RootUsbHostController$CommandResult: RootUsbHostController$CommandResult(int,java.lang.String,boolean)
+androidx.compose.ui.unit.LayoutDirection: androidx.compose.ui.unit.LayoutDirection[] values()
+androidx.lifecycle.LifecycleDispatcher$DispatcherActivityCallback: void onActivityCreated(android.app.Activity,android.os.Bundle)
+androidx.core.os.BundleCompat$Api33Impl: java.util.ArrayList getParcelableArrayList(android.os.Bundle,java.lang.String,java.lang.Class)
+androidx.core.view.ViewCompat$Api21Impl: boolean dispatchNestedPreFling(android.view.View,float,float)
+androidx.core.view.WindowInsetsCompat$Impl30: androidx.core.graphics.Insets getInsetsIgnoringVisibility(int)
+androidx.lifecycle.ReportFragment$LifecycleCallbacks: void onActivityStopped(android.app.Activity)
+androidx.compose.ui.platform.AndroidComposeViewAccessibilityDelegateCompat$ViewTranslationHelperMethodsS: void onCreateVirtualViewTranslationRequests(androidx.compose.ui.platform.AndroidComposeViewAccessibilityDelegateCompat,long[],int[],java.util.function.Consumer)
+androidx.compose.animation.core.RepeatMode: androidx.compose.animation.core.RepeatMode valueOf(java.lang.String)
+androidx.core.view.DisplayCutoutCompat$Api28Impl: java.util.List getBoundingRects(android.view.DisplayCutout)
+androidx.core.view.accessibility.AccessibilityNodeInfoCompat$Api33Impl: void setTextSelectable(android.view.accessibility.AccessibilityNodeInfo,boolean)
+androidx.core.view.WindowInsetsCompat$Impl30: boolean isVisible(int)
+androidx.core.view.WindowInsetsCompat$BuilderImpl: void setTappableElementInsets(androidx.core.graphics.Insets)
+com.audiopro.djmrec.usb.RootUsbHostController$CommandResult: java.lang.String toString()
+com.audiopro.djmrec.usb.UsbAudioManager: java.util.Set access$getPIONEER_VENDOR_IDS$cp()
+com.audiopro.djmrec.usb.UsbAudioManager: void requestPermission(android.hardware.usb.UsbDevice)
+kotlinx.coroutines.android.AndroidDispatcherFactory: AndroidDispatcherFactory()
+androidx.core.app.NotificationCompatBuilder$Api28Impl: android.app.Notification$Builder addPerson(android.app.Notification$Builder,android.app.Person)
+androidx.lifecycle.EmptyActivityLifecycleCallbacks: void onActivityStarted(android.app.Activity)
+androidx.compose.ui.platform.RenderNodeVerificationHelper28: int getAmbientShadowColor(android.view.RenderNode)
+com.audiopro.djmrec.usb.RootUsbHostController: com.audiopro.djmrec.usb.RootUsbHostController$CommandResult tryForceHostMode()
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int component5()
+androidx.core.view.WindowInsetsCompat$Impl20: boolean isRound()
+androidx.compose.ui.autofill.AutofillApi23Helper: void setId(android.view.ViewStructure,int,java.lang.String,java.lang.String,java.lang.String)
+androidx.compose.ui.platform.ComposeView: void setContent(kotlin.jvm.functions.Function2)
+androidx.core.app.NotificationChannelCompat$Api26Impl: void enableLights(android.app.NotificationChannel,boolean)
+androidx.compose.ui.text.android.BoringLayoutFactory33: android.text.BoringLayout$Metrics isBoring(java.lang.CharSequence,android.text.TextPaint,android.text.TextDirectionHeuristic)
+kotlinx.coroutines.selects.TrySelectDetailedResult: kotlinx.coroutines.selects.TrySelectDetailedResult[] values()
+androidx.compose.foundation.FocusableKt$FocusableInNonTouchModeElement$1: FocusableKt$FocusableInNonTouchModeElement$1()
+androidx.core.view.ViewCompat$Api21Impl: boolean startNestedScroll(android.view.View,int)
+androidx.core.app.NotificationManagerCompat$Api26Impl: void createNotificationChannelGroups(android.app.NotificationManager,java.util.List)
+androidx.compose.ui.graphics.Api26Bitmap: android.graphics.Bitmap createBitmap-x__-hDU$ui_graphics_release(int,int,int,boolean,androidx.compose.ui.graphics.colorspace.ColorSpace)
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int getProductId()
+androidx.profileinstaller.ProfileInstallReceiver: ProfileInstallReceiver()
+androidx.core.view.WindowInsetsCompat$BuilderImpl29: WindowInsetsCompat$BuilderImpl29()
+androidx.compose.ui.platform.AbstractComposeView: void setTransitionGroup(boolean)
+com.audiopro.djmrec.audio.BitDepth: com.audiopro.djmrec.audio.BitDepth[] values()
+com.audiopro.djmrec.usb.UsbAudioDescriptorParser$selectBestStereoInterface$$inlined$thenBy$2: int compare(java.lang.Object,java.lang.Object)
+androidx.lifecycle.EmptyActivityLifecycleCallbacks: void onActivitySaveInstanceState(android.app.Activity,android.os.Bundle)
+androidx.compose.ui.window.SecureFlagPolicy: androidx.compose.ui.window.SecureFlagPolicy[] values()
+androidx.core.app.NotificationCompatBuilder$Api28Impl: android.app.Notification$Action$Builder setSemanticAction(android.app.Notification$Action$Builder,int)
+androidx.compose.foundation.layout.LayoutOrientation: androidx.compose.foundation.layout.LayoutOrientation[] values()
+androidx.core.view.ViewCompat$Api28Impl: boolean isScreenReaderFocusable(android.view.View)
+androidx.core.app.AppOpsManagerCompat$Api23Impl: java.lang.String permissionToOp(java.lang.String)
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.platform.AndroidClipboardManager getClipboardManager()
+androidx.core.view.WindowInsetsCompat$BuilderImpl: void applyInsetTypes()
+androidx.compose.material.ripple.RippleHostView: void setRippleState$lambda$2(androidx.compose.material.ripple.RippleHostView)
+androidx.compose.ui.platform.AndroidComposeView: void setShowLayoutBounds(boolean)
+androidx.compose.ui.platform.AndroidComposeViewStartDragAndDropN: boolean startDragAndDrop(android.view.View,androidx.compose.ui.draganddrop.DragAndDropTransferData,androidx.compose.ui.draganddrop.ComposeDragShadowBuilder)
+com.audiopro.djmrec.service.RecordingService: RecordingService()
+androidx.core.app.NotificationChannelCompat$Api26Impl: boolean shouldShowLights(android.app.NotificationChannel)
+com.audiopro.djmrec.audio.BitDepth: int getBits()
+com.audiopro.djmrec.usb.PioneerVendorControl: boolean tryRerouteRecOutToUsb12(android.hardware.usb.UsbDeviceConnection)
+com.audiopro.djmrec.usb.UsbAudioManager: void releaseIsoCaptureConnection()
+com.audiopro.djmrec.usb.RootUsbHostController$CommandResult: int hashCode()
+com.audiopro.djmrec.audio.RecordingState$Error: int hashCode()
+androidx.lifecycle.ReportFragment$LifecycleCallbacks: void onActivityPaused(android.app.Activity)
+androidx.compose.ui.autofill.AutofillApi23Helper: int addChildCount(android.view.ViewStructure,int)
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.platform.TextToolbar getTextToolbar()
+androidx.core.app.RemoteInput$Api20Impl: void addResultsToIntent(java.lang.Object,android.content.Intent,android.os.Bundle)
+androidx.lifecycle.ProcessLifecycleInitializer: ProcessLifecycleInitializer()
+androidx.core.view.ViewConfigurationCompat$Api26Impl: float getScaledHorizontalScrollFactor(android.view.ViewConfiguration)
+androidx.compose.ui.platform.RenderNodeVerificationHelper28: void setSpotShadowColor(android.view.RenderNode,int)
+androidx.core.view.ViewCompat$Api21Impl: android.content.res.ColorStateList getBackgroundTintList(android.view.View)
+androidx.compose.ui.platform.AndroidComposeView: long getMeasureIteration()
+com.audiopro.djmrec.audio.RecordingFormat: int getNativeValue()
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo: java.lang.Integer component6()
+android.support.v4.graphics.drawable.IconCompatParcelizer: void write(androidx.core.graphics.drawable.IconCompat,androidx.versionedparcelable.VersionedParcel)
+androidx.core.app.RemoteInput$Api26Impl: android.app.RemoteInput$Builder setAllowDataType(android.app.RemoteInput$Builder,java.lang.String,boolean)
+androidx.core.app.NotificationChannelCompat$Api26Impl: android.net.Uri getSound(android.app.NotificationChannel)
+androidx.core.view.accessibility.AccessibilityNodeInfoCompat$Api34Impl: void setBoundsInWindow(android.view.accessibility.AccessibilityNodeInfo,android.graphics.Rect)
+androidx.compose.material3.tokens.ColorSchemeKeyTokens: androidx.compose.material3.tokens.ColorSchemeKeyTokens[] values()
+androidx.core.view.WindowInsetsCompat$Impl: void setRootWindowInsets(androidx.core.view.WindowInsetsCompat)
+androidx.core.graphics.drawable.IconCompat$Api23Impl: android.graphics.drawable.Drawable loadDrawable(android.graphics.drawable.Icon,android.content.Context)
+androidx.core.app.NotificationCompatBuilder$Api20Impl: android.app.Notification$Builder setGroupSummary(android.app.Notification$Builder,boolean)
+androidx.compose.ui.focus.CustomDestinationResult: androidx.compose.ui.focus.CustomDestinationResult[] values()
+com.audiopro.djmrec.usb.UsbAudioDescriptorParser$selectBestStereoInterface$$inlined$compareBy$1: UsbAudioDescriptorParser$selectBestStereoInterface$$inlined$compareBy$1()
+com.audiopro.djmrec.audio.RecordingState$Paused: int hashCode()
+androidx.core.app.NotificationCompatBuilder$Api24Impl: android.app.Notification$Builder setCustomBigContentView(android.app.Notification$Builder,android.widget.RemoteViews)
+androidx.lifecycle.ReportFragment$LifecycleCallbacks: void onActivityCreated(android.app.Activity,android.os.Bundle)
+androidx.compose.ui.node.TraversableNode$Companion$TraverseDescendantsAction: androidx.compose.ui.node.TraversableNode$Companion$TraverseDescendantsAction[] values()
+androidx.lifecycle.ReportFragment$LifecycleCallbacks: void onActivityPostResumed(android.app.Activity)
+android.support.v4.graphics.drawable.IconCompatParcelizer: IconCompatParcelizer()
+androidx.core.app.NotificationChannelCompat$Api26Impl: void setSound(android.app.NotificationChannel,android.net.Uri,android.media.AudioAttributes)
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.platform.AndroidViewsHandler getAndroidViewsHandler$ui_release()
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: int component3()
+kotlin.LazyThreadSafetyMode: kotlin.LazyThreadSafetyMode valueOf(java.lang.String)
+androidx.core.app.NotificationCompatBuilder$Api24Impl: android.app.Notification$Action$Builder setAllowGeneratedReplies(android.app.Notification$Action$Builder,boolean)
+com.audiopro.djmrec.MainActivity: MainActivity()
+com.audiopro.djmrec.usb.UsbAudioManager$permissionReceiver$1: UsbAudioManager$permissionReceiver$1(com.audiopro.djmrec.usb.UsbAudioManager)
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int getChannelCount()
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: int component1()
+androidx.core.view.WindowInsetsCompat$BuilderImpl20: android.view.WindowInsets createWindowInsetsInstance()
+androidx.core.view.WindowInsetsCompat$Impl21: androidx.core.view.WindowInsetsCompat consumeStableInsets()
+androidx.core.os.BundleCompat$Api33Impl: java.io.Serializable getSerializable(android.os.Bundle,java.lang.String,java.lang.Class)
+androidx.core.app.ActivityCompat$Api23Impl: void onSharedElementsReady(java.lang.Object)
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: UsbAudioDeviceInfo(java.lang.String,java.lang.String,int,int,int,int,int,int,int,int,int,java.util.List,int,int,boolean,boolean,int,kotlin.jvm.internal.DefaultConstructorMarker)
+androidx.compose.ui.focus.FocusTargetNode$FocusTargetElement: FocusTargetNode$FocusTargetElement()
+androidx.core.view.WindowInsetsCompat$Impl: androidx.core.graphics.Insets getMandatorySystemGestureInsets()
+androidx.core.view.WindowInsetsCompat$Impl: void setStableInsets(androidx.core.graphics.Insets)
+androidx.core.view.ViewCompat$Api29Impl: java.util.List getSystemGestureExclusionRects(android.view.View)
+androidx.core.view.accessibility.AccessibilityNodeInfoCompat$Api34Impl: java.lang.CharSequence getContainerTitle(android.view.accessibility.AccessibilityNodeInfo)
+androidx.compose.ui.node.TraversableNode$Companion$TraverseDescendantsAction: androidx.compose.ui.node.TraversableNode$Companion$TraverseDescendantsAction valueOf(java.lang.String)
+androidx.core.view.WindowInsetsCompat$Impl20: androidx.core.graphics.Insets getVisibleInsets(android.view.View)
+androidx.core.view.WindowInsetsCompat$BuilderImpl: WindowInsetsCompat$BuilderImpl(androidx.core.view.WindowInsetsCompat)
+androidx.core.view.WindowInsetsCompat$Impl: boolean isRound()
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int component10()
+androidx.compose.ui.platform.RenderNodeVerificationHelper23: void destroyDisplayListData(android.view.RenderNode)
+androidx.compose.ui.autofill.AutofillApi26Helper: void setAutofillType(android.view.ViewStructure,int)
+androidx.core.app.NotificationCompatBuilder$Api26Impl: android.app.Notification$Builder setGroupAlertBehavior(android.app.Notification$Builder,int)
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: java.lang.String toString()
+com.audiopro.djmrec.audio.ChannelLevel: ChannelLevel(float,float,boolean)
+com.audiopro.djmrec.audio.RecordingState$Idle: int hashCode()
+kotlinx.coroutines.android.AndroidExceptionPreHandler: void handleException(kotlin.coroutines.CoroutineContext,java.lang.Throwable)
+androidx.compose.ui.text.platform.Api28Impl: android.text.style.TypefaceSpan createTypefaceSpan(android.graphics.Typeface)
+androidx.activity.Api34Impl: int swipeEdge(android.window.BackEvent)
+androidx.core.app.NotificationCompatBuilder$Api26Impl: android.app.Notification$Builder setSettingsText(android.app.Notification$Builder,java.lang.CharSequence)
+androidx.core.view.WindowCompat$Api30Impl: void setDecorFitsSystemWindows(android.view.Window,boolean)
+androidx.compose.material3.tokens.ShapeKeyTokens: androidx.compose.material3.tokens.ShapeKeyTokens valueOf(java.lang.String)
+androidx.compose.ui.platform.coreshims.ViewStructureCompat$Api23Impl: void setText(android.view.ViewStructure,java.lang.CharSequence)
+androidx.compose.material3.ScaffoldLayoutContent: androidx.compose.material3.ScaffoldLayoutContent[] values()
+com.audiopro.djmrec.usb.UsbAudioManager: void start()
+androidx.compose.ui.autofill.AutofillApi26Helper: void setAutofillId(android.view.ViewStructure,android.view.autofill.AutofillId,int)
+androidx.core.view.DisplayCutoutCompat$Api28Impl: int getSafeInsetBottom(android.view.DisplayCutout)
+androidx.core.content.ContextCompat$Api33Impl: android.content.Intent registerReceiver(android.content.Context,android.content.BroadcastReceiver,android.content.IntentFilter,java.lang.String,android.os.Handler,int)
+androidx.core.view.WindowInsetsCompat$BuilderImpl30: WindowInsetsCompat$BuilderImpl30()
+androidx.core.graphics.drawable.IconCompat$Api23Impl: android.graphics.drawable.Icon toIcon(androidx.core.graphics.drawable.IconCompat,android.content.Context)
+androidx.core.app.NotificationCompat$BubbleMetadata$Api29Impl: android.app.Notification$BubbleMetadata toPlatform(androidx.core.app.NotificationCompat$BubbleMetadata)
+androidx.core.view.WindowInsetsCompat$Impl: androidx.core.view.WindowInsetsCompat consumeSystemWindowInsets()
+androidx.core.view.WindowInsetsCompat$BuilderImpl29: WindowInsetsCompat$BuilderImpl29(androidx.core.view.WindowInsetsCompat)
+com.audiopro.djmrec.usb.RootUsbHostController$CommandResult: boolean getTimedOut()
+androidx.core.view.DisplayCutoutCompat$Api28Impl: int getSafeInsetTop(android.view.DisplayCutout)
+androidx.compose.ui.text.input.CursorAnchorInfoApi33Helper: android.view.inputmethod.CursorAnchorInfo$Builder setEditorBoundsInfo(android.view.inputmethod.CursorAnchorInfo$Builder,androidx.compose.ui.geometry.Rect)
+androidx.lifecycle.EmptyActivityLifecycleCallbacks: void onActivityPaused(android.app.Activity)
+androidx.lifecycle.ReportFragment: ReportFragment()
+androidx.core.app.NotificationCompatBuilder$Api20Impl: android.app.Notification$Builder addAction(android.app.Notification$Builder,android.app.Notification$Action)
+com.audiopro.djmrec.usb.UsbAudioManager: void handlePermissionResult(android.content.Intent)
+androidx.core.view.WindowInsetsCompat$Impl29: void setStableInsets(androidx.core.graphics.Insets)
+androidx.core.app.NotificationChannelCompat$Api26Impl: android.app.NotificationChannel createNotificationChannel(java.lang.String,java.lang.CharSequence,int)
+androidx.lifecycle.ReportFragment$LifecycleCallbacks: void onActivityDestroyed(android.app.Activity)
+androidx.compose.ui.platform.AndroidComposeView: kotlin.coroutines.CoroutineContext getCoroutineContext()
+androidx.core.view.WindowInsetsCompat$Impl29: androidx.core.graphics.Insets getSystemGestureInsets()
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo: int getInterfaceNumber()
+com.audiopro.djmrec.audio.StereoLevels: com.audiopro.djmrec.audio.StereoLevels copy(com.audiopro.djmrec.audio.ChannelLevel,com.audiopro.djmrec.audio.ChannelLevel)
+com.audiopro.djmrec.audio.RecordingState$Paused: java.lang.String toString()
+com.audiopro.djmrec.audio.RecordingState$Error: java.lang.String toString()
+androidx.compose.ui.platform.AndroidComposeViewTranslationCallbackS: void setViewTranslationCallback(android.view.View,android.view.translation.ViewTranslationCallback)
+androidx.compose.ui.text.android.Paint29: void getTextBounds(android.graphics.Paint,java.lang.CharSequence,int,int,android.graphics.Rect)
+androidx.compose.ui.focus.CustomDestinationResult: androidx.compose.ui.focus.CustomDestinationResult valueOf(java.lang.String)
+androidx.core.view.WindowInsetsCompat$Impl: void setRootViewData(androidx.core.graphics.Insets)
+androidx.core.os.BundleApi21ImplKt: void putSizeF(android.os.Bundle,java.lang.String,android.util.SizeF)
+com.audiopro.djmrec.usb.UsbAudioManager: void onDeviceAttached(android.hardware.usb.UsbDevice)
+androidx.core.view.WindowInsetsCompat$Impl: androidx.core.graphics.Insets getSystemGestureInsets()
+androidx.compose.material3.tokens.ShapeKeyTokens: androidx.compose.material3.tokens.ShapeKeyTokens[] values()
+androidx.core.app.NotificationManagerCompat$Api26Impl: void deleteNotificationChannel(android.app.NotificationManager,java.lang.String)
+com.audiopro.djmrec.usb.UsbAudioManager: kotlinx.coroutines.flow.StateFlow getDeviceState()
+androidx.compose.ui.text.android.StaticLayoutFactory26: void setJustificationMode(android.text.StaticLayout$Builder,int)
+androidx.core.view.accessibility.AccessibilityNodeInfoCompat$Api34Impl: long getMinDurationBetweenContentChangeMillis(android.view.accessibility.AccessibilityNodeInfo)
+androidx.compose.ui.semantics.EmptySemanticsElement: EmptySemanticsElement()
+com.audiopro.djmrec.audio.AudioEngine: void resumeRecording()
+kotlinx.coroutines.selects.TrySelectDetailedResult: kotlinx.coroutines.selects.TrySelectDetailedResult valueOf(java.lang.String)
+androidx.core.content.ContextCompat$Api26Impl: android.content.Intent registerReceiver(android.content.Context,android.content.BroadcastReceiver,android.content.IntentFilter,java.lang.String,android.os.Handler,int)
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: java.lang.String getDeviceName()
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.node.LayoutNodeDrawScope getSharedDrawScope()
+com.audiopro.djmrec.usb.UsbAudioManager: void access$onDeviceAttached(com.audiopro.djmrec.usb.UsbAudioManager,android.hardware.usb.UsbDevice)
+androidx.core.view.WindowInsetsCompat$Impl: void copyRootViewBounds(android.view.View)
+androidx.compose.ui.platform.AbstractComposeView: boolean getShowLayoutBounds()
+androidx.core.view.ViewCompat$Api21Impl: boolean isImportantForAccessibility(android.view.View)
+androidx.compose.ui.text.android.StaticLayoutFactory23: android.text.StaticLayout create(androidx.compose.ui.text.android.StaticLayoutParams)
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: java.lang.String component1()
+com.audiopro.djmrec.audio.StereoLevels: StereoLevels(com.audiopro.djmrec.audio.ChannelLevel,com.audiopro.djmrec.audio.ChannelLevel)
+androidx.compose.ui.node.LayoutNode$UsageByParent: androidx.compose.ui.node.LayoutNode$UsageByParent valueOf(java.lang.String)
+androidx.compose.ui.platform.coreshims.ViewStructureCompat$Api23Impl: void setContentDescription(android.view.ViewStructure,java.lang.CharSequence)
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: java.util.List component12()
+androidx.compose.ui.platform.AbstractComposeView: boolean getShouldCreateCompositionOnAttachedToWindow()
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int component4()
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.hapticfeedback.HapticFeedback getHapticFeedBack()
+androidx.core.view.ViewCompat$Api29Impl: android.view.contentcapture.ContentCaptureSession getContentCaptureSession(android.view.View)
+androidx.core.view.ViewCompat$Api21Impl: float getElevation(android.view.View)
+androidx.core.view.ViewCompat$Api21Impl: androidx.core.view.WindowInsetsCompat getRootWindowInsets(android.view.View)
+androidx.core.view.WindowInsetsCompat$Impl: boolean isVisible(int)
+androidx.core.app.NotificationChannelCompat$Api26Impl: int getLightColor(android.app.NotificationChannel)
+androidx.compose.ui.platform.MotionEventVerifierApi29: boolean isValidMotionEvent(android.view.MotionEvent,int)
+androidx.lifecycle.SavedStateHandlesVM: SavedStateHandlesVM()
+androidx.compose.animation.core.AnimationEndReason: androidx.compose.animation.core.AnimationEndReason[] values()
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo: int component3()
+kotlinx.coroutines.android.AndroidDispatcherFactory: kotlinx.coroutines.MainCoroutineDispatcher createDispatcher(java.util.List)
+androidx.lifecycle.ProcessLifecycleOwner$attach$1: void onActivityPreCreated(android.app.Activity,android.os.Bundle)
+kotlin.LazyThreadSafetyMode: kotlin.LazyThreadSafetyMode[] values()
+com.audiopro.djmrec.audio.AudioEngine: boolean startRecording(java.lang.String,int,int)
+androidx.core.app.NotificationCompatBuilder$Api29Impl: android.app.Notification$Action$Builder setContextual(android.app.Notification$Action$Builder,boolean)
+androidx.core.app.NotificationCompatBuilder$Api24Impl: android.app.Notification$Builder setCustomContentView(android.app.Notification$Builder,android.widget.RemoteViews)
+androidx.compose.ui.platform.AndroidComposeView: void setConfigurationChangeObserver(kotlin.jvm.functions.Function1)
+androidx.compose.ui.platform.ViewLayer: androidx.compose.ui.platform.AndroidComposeView getOwnerView()
+com.audiopro.djmrec.usb.UsbAudioManager: void inspectAndPublish(android.hardware.usb.UsbDevice)
+androidx.core.app.NotificationChannelCompat$Api26Impl: java.lang.String getDescription(android.app.NotificationChannel)
+androidx.core.view.ViewCompat$Api29Impl: void setContentCaptureSession(android.view.View,androidx.core.view.contentcapture.ContentCaptureSessionCompat)
+androidx.compose.ui.text.input.TextInputServiceAndroid$TextInputCommand: androidx.compose.ui.text.input.TextInputServiceAndroid$TextInputCommand valueOf(java.lang.String)
+androidx.core.view.accessibility.AccessibilityNodeInfoCompat$Api33Impl: java.lang.String getUniqueId(android.view.accessibility.AccessibilityNodeInfo)
+androidx.core.view.WindowInsetsCompat$Impl: androidx.core.graphics.Insets getInsetsIgnoringVisibility(int)
+androidx.core.os.BundleCompat$Api33Impl: android.util.SparseArray getSparseParcelableArray(android.os.Bundle,java.lang.String,java.lang.Class)
+androidx.core.view.WindowInsetsCompat$Impl29: WindowInsetsCompat$Impl29(androidx.core.view.WindowInsetsCompat,android.view.WindowInsets)
+androidx.core.app.ActivityCompat$Api23Impl: void requestPermissions(android.app.Activity,java.lang.String[],int)
+com.audiopro.djmrec.usb.UsbAudioManager: android.hardware.usb.UsbDevice getIntentDevice(android.content.Intent)
+androidx.core.view.WindowInsetsCompat$BuilderImpl29: void setSystemGestureInsets(androidx.core.graphics.Insets)
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int getStreamingInterfaceNumber()
+androidx.core.app.NotificationChannelCompat$Api30Impl: void setConversationId(android.app.NotificationChannel,java.lang.String,java.lang.String)
+androidx.compose.ui.platform.AndroidComposeViewAccessibilityDelegateCompat$Api24Impl: void addSetProgressAction(androidx.core.view.accessibility.AccessibilityNodeInfoCompat,androidx.compose.ui.semantics.SemanticsNode)
+androidx.compose.ui.platform.AndroidComposeView: boolean getShowLayoutBounds()
+com.audiopro.djmrec.audio.StereoLevels: boolean equals(java.lang.Object)
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: int getAlternateSetting()
+androidx.core.view.WindowInsetsCompat$BuilderImpl29: void setSystemWindowInsets(androidx.core.graphics.Insets)
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: java.lang.String toString()
+androidx.compose.ui.platform.ViewLayer: long getLayerId()
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.semantics.SemanticsOwner getSemanticsOwner()
+androidx.compose.ui.text.android.StaticLayoutFactoryDefault: android.text.StaticLayout create(androidx.compose.ui.text.android.StaticLayoutParams)
+androidx.core.view.WindowInsetsCompat$BuilderImpl29: androidx.core.view.WindowInsetsCompat build()
+androidx.core.app.NotificationCompatBuilder$Api20Impl: android.app.Notification$Action$Builder createBuilder(int,java.lang.CharSequence,android.app.PendingIntent)
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo: int hashCode()
+androidx.compose.ui.input.pointer.PointerEventPass: androidx.compose.ui.input.pointer.PointerEventPass[] values()
+androidx.core.view.WindowInsetsCompat$Impl20: androidx.core.graphics.Insets getInsets(int)
+androidx.core.view.WindowInsetsCompat$BuilderImpl20: WindowInsetsCompat$BuilderImpl20(androidx.core.view.WindowInsetsCompat)
+androidx.core.view.accessibility.AccessibilityNodeInfoCompat$Api30Impl: void setStateDescription(android.view.accessibility.AccessibilityNodeInfo,java.lang.CharSequence)
+androidx.activity.ComponentActivity: void setContentView(android.view.View)
+com.audiopro.djmrec.usb.UsbAudioDescriptorParser: void findAudioStreamingInterfaces$flushInterfaceIfComplete(kotlin.jvm.internal.Ref$BooleanRef,kotlin.jvm.internal.Ref$IntRef,kotlin.jvm.internal.Ref$IntRef,java.util.List,kotlin.jvm.internal.Ref$IntRef,kotlin.jvm.internal.Ref$IntRef,kotlin.jvm.internal.Ref$IntRef,kotlin.jvm.internal.Ref$ObjectRef,kotlin.jvm.internal.Ref$ObjectRef)
+androidx.core.app.AppOpsManagerCompat$Api23Impl: int noteProxyOpNoThrow(android.app.AppOpsManager,java.lang.String,java.lang.String)
+androidx.core.app.RemoteInput$Api26Impl: java.util.Map getDataResultsFromIntent(android.content.Intent,java.lang.String)
+androidx.core.view.ViewCompat$Api21Impl: void setBackgroundTintMode(android.view.View,android.graphics.PorterDuff$Mode)
+androidx.activity.OnBackPressedDispatcher$Api33Impl: void registerOnBackInvokedCallback(java.lang.Object,int,java.lang.Object)
+androidx.core.view.accessibility.AccessibilityNodeInfoCompat$Api33Impl: androidx.core.view.accessibility.AccessibilityNodeInfoCompat getParent(android.view.accessibility.AccessibilityNodeInfo,int)
+androidx.core.view.WindowInsetsCompat$Impl20: WindowInsetsCompat$Impl20(androidx.core.view.WindowInsetsCompat,androidx.core.view.WindowInsetsCompat$Impl20)
+androidx.core.app.NotificationCompatBuilder$Api31Impl: android.app.Notification$Action$Builder setAuthenticationRequired(android.app.Notification$Action$Builder,boolean)
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int getNegotiatedSampleRate()
+androidx.compose.ui.text.input.TextInputServiceAndroid$TextInputCommand: androidx.compose.ui.text.input.TextInputServiceAndroid$TextInputCommand[] values()
+com.audiopro.djmrec.audio.StereoLevels: com.audiopro.djmrec.audio.ChannelLevel component1()
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: int component8()
+kotlin.time.DurationUnit: kotlin.time.DurationUnit[] values()
+com.audiopro.djmrec.usb.UsbAudioManager: boolean scanForConnectedMixer(java.lang.String)
+com.audiopro.djmrec.audio.ChannelLevel: com.audiopro.djmrec.audio.ChannelLevel copy$default(com.audiopro.djmrec.audio.ChannelLevel,float,float,boolean,int,java.lang.Object)
+androidx.core.view.WindowInsetsCompat$BuilderImpl29: void setStableInsets(androidx.core.graphics.Insets)
+androidx.core.view.WindowInsetsCompat$Impl21: androidx.core.view.WindowInsetsCompat consumeSystemWindowInsets()
+androidx.compose.ui.platform.coreshims.ContentCaptureSessionCompat$Api29Impl: android.view.ViewStructure newVirtualViewStructure(android.view.contentcapture.ContentCaptureSession,android.view.autofill.AutofillId,long)
+com.audiopro.djmrec.usb.UsbAudioDescriptorParser$selectBestStereoInterface$$inlined$thenBy$2: UsbAudioDescriptorParser$selectBestStereoInterface$$inlined$thenBy$2(java.util.Comparator)
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: int getTotalChannels()
+com.audiopro.djmrec.audio.RecordingFormat: java.lang.String getExtension()
+com.audiopro.djmrec.audio.RecordingState$Idle: RecordingState$Idle()
+androidx.compose.ui.platform.AndroidComposeView: void set_viewTreeOwners(androidx.compose.ui.platform.AndroidComposeView$ViewTreeOwners)
+androidx.core.view.ViewCompat$Api23Impl: void setScrollIndicators(android.view.View,int,int)
+androidx.core.view.WindowInsetsCompat$BuilderImpl29: void setMandatorySystemGestureInsets(androidx.core.graphics.Insets)
+androidx.compose.ui.platform.coreshims.ContentCaptureSessionCompat$Api29Impl: void notifyViewsDisappeared(android.view.contentcapture.ContentCaptureSession,android.view.autofill.AutofillId,long[])
+androidx.core.graphics.drawable.IconCompat$Api26Impl: android.graphics.drawable.Drawable createAdaptiveIconDrawable(android.graphics.drawable.Drawable,android.graphics.drawable.Drawable)
+com.audiopro.djmrec.audio.RecordingFormat: kotlin.enums.EnumEntries getEntries()
+androidx.core.graphics.drawable.IconCompat$Api28Impl: android.net.Uri getUri(java.lang.Object)
+androidx.core.app.NotificationChannelCompat$Api26Impl: void setDescription(android.app.NotificationChannel,java.lang.String)
+androidx.core.view.ViewCompat$Api28Impl: void setScreenReaderFocusable(android.view.View,boolean)
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: int getEndpointAddress()
+androidx.lifecycle.ReportFragment$LifecycleCallbacks: void onActivityPreStopped(android.app.Activity)
+androidx.lifecycle.ProcessLifecycleOwner$attach$1: ProcessLifecycleOwner$attach$1(androidx.lifecycle.ProcessLifecycleOwner)
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: UsbAudioDeviceInfo(java.lang.String,java.lang.String,int,int,int,int,int,int,int,int,int,java.util.List,int,int,boolean,boolean)
+com.audiopro.djmrec.audio.AudioEngine: void pauseRecording()
+kotlinx.coroutines.android.AndroidDispatcherFactory: java.lang.String hintOnError()
+androidx.profileinstaller.FileSectionType: androidx.profileinstaller.FileSectionType[] values()
+com.audiopro.djmrec.audio.RecordingFormat: RecordingFormat(java.lang.String,int,int,java.lang.String)
+androidx.compose.ui.text.platform.extensions.LocaleListHelperMethods: void setTextLocales(androidx.compose.ui.text.platform.AndroidTextPaint,androidx.compose.ui.text.intl.LocaleList)
+androidx.core.os.BundleCompat$Api33Impl: java.lang.Object[] getParcelableArray(android.os.Bundle,java.lang.String,java.lang.Class)
+androidx.compose.ui.text.font.TypefaceHelperMethodsApi28: android.graphics.Typeface create(android.graphics.Typeface,int,boolean)
+androidx.compose.ui.platform.AndroidComposeView: void getFontLoader$annotations()
+androidx.core.view.WindowInsetsCompat$Impl29: WindowInsetsCompat$Impl29(androidx.core.view.WindowInsetsCompat,androidx.core.view.WindowInsetsCompat$Impl29)
+androidx.core.app.RemoteActionCompatParcelizer: void write(androidx.core.app.RemoteActionCompat,androidx.versionedparcelable.VersionedParcel)
+androidx.lifecycle.ReportFragment$LifecycleCallbacks: void onActivityPostCreated(android.app.Activity,android.os.Bundle)
+androidx.core.app.NotificationCompatBuilder$Api24Impl: android.app.Notification$Builder setCustomHeadsUpContentView(android.app.Notification$Builder,android.widget.RemoteViews)
+androidx.core.app.NotificationCompatBuilder$Api21Impl: android.app.Notification$Builder setSound(android.app.Notification$Builder,android.net.Uri,java.lang.Object)
+androidx.compose.ui.graphics.BlendModeColorFilterHelper: android.graphics.BlendModeColorFilter BlendModeColorFilter-xETnrds(long,int)
+androidx.compose.ui.platform.RenderNodeVerificationHelper28: int getSpotShadowColor(android.view.RenderNode)
+androidx.compose.material.ripple.RippleHostView: void setRippleState(boolean)
+androidx.compose.ui.platform.ViewLayer: androidx.compose.ui.graphics.Path getManualClipPath()
+androidx.compose.ui.state.ToggleableState: androidx.compose.ui.state.ToggleableState valueOf(java.lang.String)
+androidx.core.content.FileProvider: FileProvider()
+com.audiopro.djmrec.audio.ChannelLevel: boolean equals(java.lang.Object)
+androidx.core.app.NotificationCompatBuilder$Api23Impl: android.app.Notification$Builder setLargeIcon(android.app.Notification$Builder,android.graphics.drawable.Icon)
+androidx.compose.ui.platform.coreshims.ContentCaptureSessionCompat$Api29Impl: void notifyViewTextChanged(android.view.contentcapture.ContentCaptureSession,android.view.autofill.AutofillId,java.lang.CharSequence)
+androidx.lifecycle.ReportFragment$LifecycleCallbacks: void onActivityPrePaused(android.app.Activity)
+com.audiopro.djmrec.usb.RootUsbHostController: RootUsbHostController()
+com.audiopro.djmrec.audio.RecordingState$Idle: java.lang.String toString()
+androidx.compose.ui.platform.AndroidComposeViewTranslationCallbackS: void clearViewTranslationCallback(android.view.View)
+androidx.core.content.res.FontResourcesParserCompat$Api21Impl: int getType(android.content.res.TypedArray,int)
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo: java.lang.Integer getIsochronousInEndpointAddress()
+com.audiopro.djmrec.audio.BitDepth: BitDepth(java.lang.String,int,int)
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int getActiveAlternateSetting()
+androidx.core.app.ServiceCompat$Api24Impl: void stopForeground(android.app.Service,int)
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.platform.AndroidAccessibilityManager getAccessibilityManager()
+androidx.lifecycle.LegacySavedStateHandleController$OnRecreation: LegacySavedStateHandleController$OnRecreation()
+com.audiopro.djmrec.usb.UsbAudioManager: void updateNegotiatedSampleRate(int)
+androidx.lifecycle.ProcessLifecycleOwner$attach$1: void onActivityCreated(android.app.Activity,android.os.Bundle)
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: boolean isPioneer()
+android.support.v4.app.RemoteActionCompatParcelizer: void write(androidx.core.app.RemoteActionCompat,androidx.versionedparcelable.VersionedParcel)
+com.audiopro.djmrec.usb.UsbAudioManager: kotlin.Pair resolveAudioManagerDeviceId(android.hardware.usb.UsbDevice)
+androidx.compose.ui.text.style.ResolvedTextDirection: androidx.compose.ui.text.style.ResolvedTextDirection valueOf(java.lang.String)
+androidx.core.view.WindowInsetsCompat$Impl28: boolean equals(java.lang.Object)
+kotlinx.coroutines.android.AndroidDispatcherFactory: int getLoadPriority()
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int component7()
+androidx.compose.runtime.InvalidationResult: androidx.compose.runtime.InvalidationResult valueOf(java.lang.String)
+kotlinx.coroutines.flow.SharingCommand: kotlinx.coroutines.flow.SharingCommand[] values()
+androidx.activity.Api34Impl: float progress(android.window.BackEvent)
+androidx.core.app.NotificationCompatBuilder$Api21Impl: android.app.Notification$Builder setCategory(android.app.Notification$Builder,java.lang.String)
+androidx.compose.ui.platform.ComposeView: void getShouldCreateCompositionOnAttachedToWindow$annotations()
+androidx.compose.ui.text.android.BoringLayoutFactoryDefault: android.text.BoringLayout$Metrics isBoring(java.lang.CharSequence,android.text.TextPaint,android.text.TextDirectionHeuristic)
+androidx.core.graphics.drawable.IconCompat$Api30Impl: android.graphics.drawable.Icon createWithAdaptiveBitmapContentUri(android.net.Uri)
+androidx.compose.ui.text.input.CursorAnchorInfoApi34Helper: android.view.inputmethod.CursorAnchorInfo$Builder addVisibleLineBounds(android.view.inputmethod.CursorAnchorInfo$Builder,androidx.compose.ui.text.TextLayoutResult,androidx.compose.ui.geometry.Rect)
+kotlinx.coroutines.scheduling.CoroutineScheduler$WorkerState: kotlinx.coroutines.scheduling.CoroutineScheduler$WorkerState valueOf(java.lang.String)
+androidx.activity.Api34Impl: float touchY(android.window.BackEvent)
+com.audiopro.djmrec.audio.RecordingState$Recording: RecordingState$Recording()
+androidx.compose.material3.ScaffoldLayoutContent: androidx.compose.material3.ScaffoldLayoutContent valueOf(java.lang.String)
+kotlinx.coroutines.scheduling.CoroutineScheduler$WorkerState: kotlinx.coroutines.scheduling.CoroutineScheduler$WorkerState[] values()
+androidx.activity.OnBackPressedDispatcher$Api34Impl: android.window.OnBackInvokedCallback createOnBackAnimationCallback(kotlin.jvm.functions.Function1,kotlin.jvm.functions.Function1,kotlin.jvm.functions.Function0,kotlin.jvm.functions.Function0)
+android.support.v4.graphics.drawable.IconCompatParcelizer: androidx.core.graphics.drawable.IconCompat read(androidx.versionedparcelable.VersionedParcel)
+androidx.lifecycle.ReportFragment$LifecycleCallbacks: void onActivityStarted(android.app.Activity)
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: com.audiopro.djmrec.usb.UsbAudioDeviceInfo copy$default(com.audiopro.djmrec.usb.UsbAudioDeviceInfo,java.lang.String,java.lang.String,int,int,int,int,int,int,int,int,int,java.util.List,int,int,boolean,boolean,int,java.lang.Object)
+androidx.core.app.NotificationCompatBuilder$Api24Impl: android.app.Notification$Builder setRemoteInputHistory(android.app.Notification$Builder,java.lang.CharSequence[])
+androidx.compose.ui.platform.AbstractComposeView: void setParentContext(androidx.compose.runtime.CompositionContext)
+androidx.core.view.ViewCompat$Api30Impl: java.lang.CharSequence getStateDescription(android.view.View)
+androidx.core.view.DisplayCutoutCompat$Api28Impl: android.view.DisplayCutout createDisplayCutout(android.graphics.Rect,java.util.List)
+androidx.compose.ui.platform.AndroidComposeView: boolean getHasPendingMeasureOrLayout()
+androidx.compose.material3.tokens.TypographyKeyTokens: androidx.compose.material3.tokens.TypographyKeyTokens[] values()
+com.audiopro.djmrec.audio.BitDepth: com.audiopro.djmrec.audio.BitDepth valueOf(java.lang.String)
+androidx.versionedparcelable.CustomVersionedParcelable: CustomVersionedParcelable()
+androidx.core.view.WindowInsetsCompat$BuilderImpl30: WindowInsetsCompat$BuilderImpl30(androidx.core.view.WindowInsetsCompat)
+androidx.core.view.accessibility.AccessibilityNodeInfoCompat$Api33Impl: boolean isTextSelectable(android.view.accessibility.AccessibilityNodeInfo)
+androidx.compose.ui.platform.coreshims.ContentCaptureSessionCompat$Api29Impl: android.view.autofill.AutofillId newAutofillId(android.view.contentcapture.ContentCaptureSession,android.view.autofill.AutofillId,long)
+androidx.core.view.ViewCompat$Api20Impl: android.view.WindowInsets onApplyWindowInsets(android.view.View,android.view.WindowInsets)
+androidx.compose.ui.text.android.BoringLayoutFactoryDefault: android.text.BoringLayout create(java.lang.CharSequence,android.text.TextPaint,int,android.text.Layout$Alignment,float,float,android.text.BoringLayout$Metrics,boolean,android.text.TextUtils$TruncateAt,int)
+androidx.core.app.NotificationCompat$BubbleMetadata$Api30Impl: android.app.Notification$BubbleMetadata toPlatform(androidx.core.app.NotificationCompat$BubbleMetadata)
+androidx.core.view.WindowInsetsCompat$BuilderImpl: void setMandatorySystemGestureInsets(androidx.core.graphics.Insets)
+androidx.lifecycle.ProcessLifecycleOwner$attach$1: void onActivityStopped(android.app.Activity)
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: boolean equals(java.lang.Object)
+androidx.compose.ui.input.pointer.MotionEventHelper: long toRawOffset-dBAh8RU(android.view.MotionEvent,int)
+androidx.core.view.accessibility.AccessibilityNodeInfoCompat$Api34Impl: void setAccessibilityDataSensitive(android.view.accessibility.AccessibilityNodeInfo,boolean)
+androidx.core.graphics.drawable.IconCompat$Api28Impl: int getType(java.lang.Object)
+androidx.core.app.NotificationManagerCompat$Api26Impl: void createNotificationChannels(android.app.NotificationManager,java.util.List)
+androidx.core.app.AppOpsManagerCompat$Api23Impl: int noteProxyOp(android.app.AppOpsManager,java.lang.String,java.lang.String)
+androidx.emoji2.text.EmojiCompatInitializer: EmojiCompatInitializer()
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo: int component2()
+androidx.core.view.WindowInsetsCompat$Impl: void setOverriddenInsets(androidx.core.graphics.Insets[])
+androidx.activity.OnBackPressedDispatcher$Api33Impl: void unregisterOnBackInvokedCallback(java.lang.Object,java.lang.Object)
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int component8()
+androidx.core.app.RemoteInput$Api29Impl: android.app.RemoteInput$Builder setEditChoicesBeforeSending(android.app.RemoteInput$Builder,int)
+androidx.core.os.BundleApi21ImplKt: void putSize(android.os.Bundle,java.lang.String,android.util.Size)
+androidx.compose.ui.platform.RenderNodeApi29VerificationHelper: void setRenderEffect(android.graphics.RenderNode,androidx.compose.ui.graphics.RenderEffect)
+androidx.core.view.ViewCompat$Api21Impl: boolean dispatchNestedFling(android.view.View,float,float,boolean)
+androidx.compose.ui.platform.ViewLayerContainer: void dispatchGetDisplayList()
+androidx.core.view.WindowInsetsCompat$Impl21: androidx.core.graphics.Insets getStableInsets()
+androidx.compose.ui.platform.AbstractComposeView: void setViewCompositionStrategy(androidx.compose.ui.platform.ViewCompositionStrategy)
+com.audiopro.djmrec.usb.UsbAudioManager: boolean scanForConnectedMixer$default(com.audiopro.djmrec.usb.UsbAudioManager,java.lang.String,int,java.lang.Object)
+com.audiopro.djmrec.DjmRecApplication: DjmRecApplication()
+android.support.v4.app.RemoteActionCompatParcelizer: RemoteActionCompatParcelizer()
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.node.OwnerSnapshotObserver getSnapshotObserver()
+androidx.core.view.ViewCompat$Api29Impl: void setSystemGestureExclusionRects(android.view.View,java.util.List)
+androidx.core.view.ViewCompat$Api28Impl: boolean isAccessibilityHeading(android.view.View)
+androidx.core.view.WindowInsetsCompat$Impl28: WindowInsetsCompat$Impl28(androidx.core.view.WindowInsetsCompat,android.view.WindowInsets)
+com.audiopro.djmrec.audio.StereoLevels: java.lang.String toString()
+androidx.core.app.NotificationChannelCompat$Api26Impl: boolean canShowBadge(android.app.NotificationChannel)
+androidx.compose.ui.graphics.BlendModeColorFilterHelper: androidx.compose.ui.graphics.BlendModeColorFilter createBlendModeColorFilter(android.graphics.BlendModeColorFilter)
+androidx.core.view.ViewCompat$Api23Impl: void setScrollIndicators(android.view.View,int)
+com.audiopro.djmrec.audio.RecordingState$Error: RecordingState$Error(java.lang.String)
+androidx.compose.foundation.layout.SizeMode: androidx.compose.foundation.layout.SizeMode valueOf(java.lang.String)
+androidx.compose.ui.platform.ViewLayer: void setCameraDistancePx(float)
+androidx.core.app.NotificationCompatBuilder$Api21Impl: android.app.Notification$Builder setPublicVersion(android.app.Notification$Builder,android.app.Notification)
+androidx.lifecycle.Lifecycle$State: androidx.lifecycle.Lifecycle$State[] values()
+com.audiopro.djmrec.audio.StereoLevels: int hashCode()
+androidx.compose.ui.text.android.BoringLayoutFactory33: android.text.BoringLayout create(java.lang.CharSequence,android.text.TextPaint,int,android.text.Layout$Alignment,float,float,android.text.BoringLayout$Metrics,boolean,boolean,android.text.TextUtils$TruncateAt,int)
+androidx.compose.ui.text.android.StaticLayoutFactory33: boolean isFallbackLineSpacingEnabled(android.text.StaticLayout)
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.platform.SoftwareKeyboardController getSoftwareKeyboardController()
+androidx.core.app.NotificationChannelCompat$Api26Impl: void setGroup(android.app.NotificationChannel,java.lang.String)
+androidx.core.app.NotificationManagerCompat$Api26Impl: void createNotificationChannel(android.app.NotificationManager,android.app.NotificationChannel)
+androidx.compose.ui.graphics.WrapperVerificationHelperMethods: void setBlendMode-GB0RdKg(android.graphics.Paint,int)
+androidx.core.app.NotificationCompatBuilder$Api23Impl: android.app.Notification$Action$Builder createBuilder(android.graphics.drawable.Icon,java.lang.CharSequence,android.app.PendingIntent)
+androidx.core.app.NotificationManagerCompat$Api26Impl: void createNotificationChannelGroup(android.app.NotificationManager,android.app.NotificationChannelGroup)
+androidx.core.app.NotificationManagerCompat$Api26Impl: java.util.List getNotificationChannelGroups(android.app.NotificationManager)
+kotlinx.coroutines.CoroutineStart: kotlinx.coroutines.CoroutineStart valueOf(java.lang.String)
+androidx.compose.ui.node.LayoutNode$UsageByParent: androidx.compose.ui.node.LayoutNode$UsageByParent[] values()
+androidx.compose.ui.platform.AndroidComposeView: long getLastMatrixRecalculationAnimationTime$ui_release()
+androidx.core.app.NotificationCompatBuilder$Api21Impl: android.app.Notification$Builder setVisibility(android.app.Notification$Builder,int)
+androidx.core.view.WindowInsetsCompat$Impl: boolean equals(java.lang.Object)
+kotlin.coroutines.intrinsics.CoroutineSingletons: kotlin.coroutines.intrinsics.CoroutineSingletons[] values()
+androidx.core.app.NotificationChannelCompat$Api26Impl: java.lang.String getGroup(android.app.NotificationChannel)
+androidx.core.view.WindowInsetsCompat$Impl20: void setRootViewData(androidx.core.graphics.Insets)
+androidx.core.view.ViewCompat$Api23Impl: androidx.core.view.WindowInsetsCompat getRootWindowInsets(android.view.View)
+androidx.compose.ui.platform.AndroidComposeViewAccessibilityDelegateCompat$TranslateStatus: androidx.compose.ui.platform.AndroidComposeViewAccessibilityDelegateCompat$TranslateStatus[] values()
+com.audiopro.djmrec.usb.RootUsbHostController$CommandResult: boolean component3()
+androidx.compose.runtime.Recomposer$State: androidx.compose.runtime.Recomposer$State valueOf(java.lang.String)
+com.audiopro.djmrec.audio.RecordingState$Paused: boolean equals(java.lang.Object)
+androidx.compose.ui.platform.AndroidComposeView: android.view.View getView()
+com.audiopro.djmrec.usb.UsbAudioManager: void logEnumeratedDevices(java.lang.String)
+androidx.compose.ui.autofill.AutofillApi26Helper: boolean isText(android.view.autofill.AutofillValue)
+androidx.compose.ui.input.pointer.PointerEventPass: androidx.compose.ui.input.pointer.PointerEventPass valueOf(java.lang.String)
+androidx.core.view.ViewCompat$Api29Impl: void saveAttributeDataForStyleable(android.view.View,android.content.Context,int[],android.util.AttributeSet,android.content.res.TypedArray,int,int)
+androidx.core.app.ActivityCompat$Api23Impl: boolean shouldShowRequestPermissionRationale(android.app.Activity,java.lang.String)
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: com.audiopro.djmrec.usb.UsbIsoCaptureHandle copy$default(com.audiopro.djmrec.usb.UsbIsoCaptureHandle,int,int,int,int,int,int,int,int,int,java.lang.Object)
+androidx.compose.foundation.layout.LayoutOrientation: androidx.compose.foundation.layout.LayoutOrientation valueOf(java.lang.String)
+androidx.compose.ui.autofill.AutofillApi23Helper: android.view.ViewStructure newChild(android.view.ViewStructure,int)
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: int getFd()
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.autofill.AutofillTree getAutofillTree()
+com.audiopro.djmrec.usb.UsbAudioManager: void stop()
+androidx.core.view.ViewCompat$Api21Impl: void setTransitionName(android.view.View,java.lang.String)
+androidx.compose.ui.graphics.Api26Bitmap: androidx.compose.ui.graphics.colorspace.ColorSpace composeColorSpace$ui_graphics_release(android.graphics.Bitmap)
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int getBitResolution()
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.platform.WindowInfo getWindowInfo()
+androidx.core.view.accessibility.AccessibilityNodeInfoCompat$Api34Impl: void setMinDurationBetweenContentChangeMillis(android.view.accessibility.AccessibilityNodeInfo,long)
+com.audiopro.djmrec.ui.MainViewModel: MainViewModel(android.app.Application)
+com.audiopro.djmrec.audio.RecordingState: RecordingState()
+androidx.core.app.NotificationChannelCompat$Api26Impl: android.media.AudioAttributes getAudioAttributes(android.app.NotificationChannel)
+androidx.core.app.NotificationManagerCompat$Api24Impl: boolean areNotificationsEnabled(android.app.NotificationManager)
+androidx.compose.ui.platform.coreshims.ViewStructureCompat$Api23Impl: void setTextStyle(android.view.ViewStructure,float,int,int,int)
+com.audiopro.djmrec.audio.AudioEngine: int openUsbIso(int,int,int,int,int,int,int,int,int,int)
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: int hashCode()
+androidx.core.app.NotificationCompatBuilder$Api21Impl: android.app.Notification$Builder setColor(android.app.Notification$Builder,int)
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int component3()
+androidx.lifecycle.Lifecycle$Event: androidx.lifecycle.Lifecycle$Event[] values()
+androidx.compose.ui.text.platform.extensions.LocaleListHelperMethods: java.lang.Object localeSpan(androidx.compose.ui.text.intl.LocaleList)
+com.audiopro.djmrec.usb.UsbAudioManager: java.lang.CharSequence logEnumeratedDevices$lambda$2$lambda$1(android.hardware.usb.UsbDevice,int)
+androidx.core.app.NotificationCompatBuilder$Api26Impl: android.app.Notification$Builder createBuilder(android.content.Context,java.lang.String)
+com.audiopro.djmrec.audio.BitDepth: com.audiopro.djmrec.audio.BitDepth[] $values()
+com.audiopro.djmrec.usb.UsbAudioManager: android.hardware.usb.UsbDevice findConnectedAudioClassDevice()
+androidx.core.view.ViewCompat$Api21Impl: java.lang.String getTransitionName(android.view.View)
+android.support.v4.app.RemoteActionCompatParcelizer: androidx.core.app.RemoteActionCompat read(androidx.versionedparcelable.VersionedParcel)
+kotlinx.coroutines.channels.BufferOverflow: kotlinx.coroutines.channels.BufferOverflow[] values()
+androidx.compose.ui.platform.coreshims.ContentCaptureSessionCompat$Api29Impl: void notifyViewAppeared(android.view.contentcapture.ContentCaptureSession,android.view.ViewStructure)
+com.audiopro.djmrec.usb.RootUsbHostController$CommandResult: com.audiopro.djmrec.usb.RootUsbHostController$CommandResult copy(int,java.lang.String,boolean)
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo: int getAlternateSetting()
+androidx.core.content.ContextCompat$Api26Impl: android.content.ComponentName startForegroundService(android.content.Context,android.content.Intent)
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: boolean getRequiresIsoCapture()
+com.audiopro.djmrec.usb.UsbAudioDescriptorParser: UsbAudioDescriptorParser()
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.text.font.Font$ResourceLoader getFontLoader()
+com.audiopro.djmrec.audio.RecordingState$Error: com.audiopro.djmrec.audio.RecordingState$Error copy(java.lang.String)
+com.audiopro.djmrec.usb.UsbAudioManager: android.hardware.usb.UsbDevice access$getIntentDevice(com.audiopro.djmrec.usb.UsbAudioManager,android.content.Intent)
+com.audiopro.djmrec.usb.UsbAudioManager$Companion: UsbAudioManager$Companion()
+com.audiopro.djmrec.audio.ChannelLevel: boolean isClipping()
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo: AudioStreamingInterfaceInfo(int,int,int,int,int,java.lang.Integer,java.lang.Integer)
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.input.InputModeManager getInputModeManager()
+androidx.compose.ui.platform.AndroidComposeViewAccessibilityDelegateCompat$TranslateStatus: androidx.compose.ui.platform.AndroidComposeViewAccessibilityDelegateCompat$TranslateStatus valueOf(java.lang.String)
+androidx.lifecycle.Lifecycle$State: androidx.lifecycle.Lifecycle$State valueOf(java.lang.String)
+com.audiopro.djmrec.usb.UsbAudioDescriptorParser: com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo selectBestStereoInterface$app_release(java.util.List)
+androidx.core.view.ViewCompat$Api21Impl: void setBackgroundTintList(android.view.View,android.content.res.ColorStateList)
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: int getInterfaceNumber()
+androidx.compose.runtime.InvalidationResult: androidx.compose.runtime.InvalidationResult[] values()
+androidx.compose.ui.text.android.StaticLayoutFactory33: void setLineBreakConfig(android.text.StaticLayout$Builder,int,int)
+androidx.compose.ui.platform.AndroidComposeViewVerificationHelperMethodsO: void focusable(android.view.View,int,boolean)
+com.audiopro.djmrec.audio.StereoLevels: com.audiopro.djmrec.audio.ChannelLevel getRight()
+com.audiopro.djmrec.usb.UsbAudioManager: void setRootModeEnabled(boolean)
+androidx.core.app.NotificationCompatBuilder$Api26Impl: android.app.Notification$Builder setBadgeIconType(android.app.Notification$Builder,int)
+androidx.core.view.WindowInsetsCompat$BuilderImpl: void setStableInsets(androidx.core.graphics.Insets)
+androidx.core.view.ViewCompat$Api28Impl: java.lang.Object requireViewById(android.view.View,int)
+androidx.core.graphics.drawable.IconCompat$Api28Impl: java.lang.String getResPackage(java.lang.Object)
+androidx.core.app.NotificationCompatBuilder$Api23Impl: android.app.Notification$Builder setSmallIcon(android.app.Notification$Builder,java.lang.Object)
+com.audiopro.djmrec.audio.RecordingState: RecordingState(kotlin.jvm.internal.DefaultConstructorMarker)
+androidx.core.graphics.drawable.IconCompat: IconCompat()
+androidx.compose.ui.platform.AndroidComposeView: void getLastMatrixRecalculationAnimationTime$ui_release$annotations()
+com.audiopro.djmrec.audio.StereoLevels: com.audiopro.djmrec.audio.ChannelLevel getLeft()
+androidx.core.view.WindowInsetsCompat$Impl: androidx.core.view.WindowInsetsCompat consumeDisplayCutout()
+androidx.core.view.WindowInsetsCompat$Impl30: void copyRootViewBounds(android.view.View)
+androidx.compose.ui.platform.WrapperRenderNodeLayerHelperMethods: void onDescendantInvalidated(androidx.compose.ui.platform.AndroidComposeView)
+androidx.core.view.ViewCompat$Api28Impl: java.lang.CharSequence getAccessibilityPaneTitle(android.view.View)
+androidx.compose.ui.text.AnnotationType: androidx.compose.ui.text.AnnotationType valueOf(java.lang.String)
+androidx.core.view.DisplayCutoutCompat$Api28Impl: int getSafeInsetLeft(android.view.DisplayCutout)
+androidx.compose.ui.platform.AndroidComposeView: void getShowLayoutBounds$annotations()
+androidx.emoji2.text.ConcurrencyHelpers$Handler28Impl: android.os.Handler createAsync(android.os.Looper)
+androidx.compose.ui.platform.TextToolbarStatus: androidx.compose.ui.platform.TextToolbarStatus[] values()
+androidx.core.view.ViewCompat$Api21Impl: boolean isNestedScrollingEnabled(android.view.View)
+androidx.compose.ui.platform.coreshims.ViewStructureCompat$Api23Impl: void setClassName(android.view.ViewStructure,java.lang.String)
+androidx.core.view.ViewCompat$Api28Impl: void addOnUnhandledKeyEventListener(android.view.View,androidx.core.view.ViewCompat$OnUnhandledKeyEventListenerCompat)
+com.audiopro.djmrec.usb.UsbAudioManager$usbDeviceReceiver$1: void onReceive(android.content.Context,android.content.Intent)
+androidx.compose.ui.text.android.StaticLayoutFactory28: void setUseLineSpacingFromFallbacks(android.text.StaticLayout$Builder,boolean)
+androidx.core.app.NotificationCompatBuilder$Api26Impl: android.app.Notification$Builder setColorized(android.app.Notification$Builder,boolean)
+androidx.lifecycle.Lifecycle$Event: androidx.lifecycle.Lifecycle$Event valueOf(java.lang.String)
+androidx.profileinstaller.ProfileInstallerInitializer$Choreographer16Impl: void postFrameCallback(java.lang.Runnable)
+androidx.core.view.DisplayCutoutCompat$Api30Impl: android.view.DisplayCutout createDisplayCutout(android.graphics.Insets,android.graphics.Rect,android.graphics.Rect,android.graphics.Rect,android.graphics.Rect,android.graphics.Insets)
+androidx.core.view.ViewCompat$Api21Impl: void callCompatInsetAnimationCallback(android.view.WindowInsets,android.view.View)
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: int component5()
+androidx.compose.ui.platform.AbstractComposeView: boolean getHasComposition()
+com.audiopro.djmrec.audio.RecordingState$Recording: int hashCode()
+androidx.core.view.accessibility.AccessibilityNodeInfoCompat$Api34Impl: boolean hasRequestInitialAccessibilityFocus(android.view.accessibility.AccessibilityNodeInfo)
+kotlinx.coroutines.flow.SharingCommand: kotlinx.coroutines.flow.SharingCommand valueOf(java.lang.String)
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo: int component5()
+androidx.core.view.WindowInsetsCompat$Impl20: void setOverriddenInsets(androidx.core.graphics.Insets[])
+androidx.compose.ui.text.AnnotationType: androidx.compose.ui.text.AnnotationType[] values()
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo: java.lang.String toString()
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: int getBitResolution()
+com.audiopro.djmrec.usb.RootUsbHostController$CommandResult: java.lang.String getOutput()
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: int component4()
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.platform.AccessibilityManager getAccessibilityManager()
+com.audiopro.djmrec.usb.UsbAudioManager$Companion: UsbAudioManager$Companion(kotlin.jvm.internal.DefaultConstructorMarker)
+androidx.compose.ui.platform.AndroidViewsHandler: java.util.HashMap getLayoutNodeToHolder()
+androidx.core.view.WindowInsetsCompat$Impl30: WindowInsetsCompat$Impl30(androidx.core.view.WindowInsetsCompat,android.view.WindowInsets)
+androidx.core.view.ViewCompat$Api29Impl: android.view.View$AccessibilityDelegate getAccessibilityDelegate(android.view.View)
+androidx.core.app.NotificationChannelCompat$Api26Impl: int getImportance(android.app.NotificationChannel)
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: UsbIsoCaptureHandle(int,int,int,int,int,int,int,int)
+androidx.activity.ComponentActivity$Api33Impl: android.window.OnBackInvokedDispatcher getOnBackInvokedDispatcher(android.app.Activity)
+androidx.core.view.WindowInsetsCompat$BuilderImpl20: WindowInsetsCompat$BuilderImpl20()
+androidx.compose.ui.autofill.AutofillCallback: void unregister(androidx.compose.ui.autofill.AndroidAutofill)
+androidx.core.app.NotificationCompatBuilder$Api29Impl: android.app.Notification$Builder setAllowSystemGeneratedContextualActions(android.app.Notification$Builder,boolean)
+androidx.core.graphics.Insets$Api29Impl: android.graphics.Insets of(int,int,int,int)
+com.audiopro.djmrec.audio.ChannelLevel: com.audiopro.djmrec.audio.ChannelLevel copy(float,float,boolean)
+androidx.core.app.RemoteActionCompat: RemoteActionCompat()
+androidx.core.view.WindowInsetsCompat$Impl21: boolean isConsumed()
+androidx.compose.ui.platform.coreshims.ViewCompatShims$Api29Impl: android.view.contentcapture.ContentCaptureSession getContentCaptureSession(android.view.View)
+androidx.compose.ui.platform.AndroidComposeViewVerificationHelperMethodsN: void setPointerIcon(android.view.View,androidx.compose.ui.input.pointer.PointerIcon)
+androidx.core.view.WindowInsetsCompat$Impl20: WindowInsetsCompat$Impl20(androidx.core.view.WindowInsetsCompat,android.view.WindowInsets)
+androidx.core.app.NotificationCompatBuilder$Api26Impl: android.app.Notification$Builder setShortcutId(android.app.Notification$Builder,java.lang.String)
+androidx.core.view.ViewCompat$Api21Impl: android.graphics.PorterDuff$Mode getBackgroundTintMode(android.view.View)
+androidx.core.os.BundleCompat$Api33Impl: java.lang.Object getParcelable(android.os.Bundle,java.lang.String,java.lang.Class)
+androidx.core.app.NotificationChannelCompat$Api26Impl: void setVibrationPattern(android.app.NotificationChannel,long[])
+androidx.core.view.ViewCompat$Api21Impl: androidx.core.view.WindowInsetsCompat computeSystemWindowInsets(android.view.View,androidx.core.view.WindowInsetsCompat,android.graphics.Rect)
+androidx.core.graphics.PaintCompat$Api23Impl: boolean hasGlyph(android.graphics.Paint,java.lang.String)
+androidx.compose.material3.tokens.TypographyKeyTokens: androidx.compose.material3.tokens.TypographyKeyTokens valueOf(java.lang.String)
+androidx.core.view.accessibility.AccessibilityNodeInfoCompat$Api33Impl: android.view.accessibility.AccessibilityNodeInfo$ExtraRenderingInfo getExtraRenderingInfo(android.view.accessibility.AccessibilityNodeInfo)
+androidx.core.view.WindowInsetsCompat$TypeImpl30: int toPlatformType(int)
+com.audiopro.djmrec.usb.UsbAudioDescriptorParser: java.util.List findAudioStreamingInterfaces$app_release(byte[])
+com.audiopro.djmrec.audio.AudioEngine: long stopRecording()
+androidx.lifecycle.ReportFragment$LifecycleCallbacks: void onActivityPostStarted(android.app.Activity)
+androidx.compose.ui.autofill.AutofillApi26Helper: boolean isDate(android.view.autofill.AutofillValue)
+androidx.profileinstaller.ProfileInstallerInitializer: ProfileInstallerInitializer()
+com.audiopro.djmrec.audio.AudioEngine: int getXRunCount()
+androidx.core.view.ViewCompat$Api30Impl: void setStateDescription(android.view.View,java.lang.CharSequence)
+androidx.core.app.NotificationCompatBuilder$Api21Impl: android.app.Notification$Builder addPerson(android.app.Notification$Builder,java.lang.String)
+com.audiopro.djmrec.audio.ChannelLevel: float getRmsDb()
+androidx.compose.ui.platform.AndroidViewsHandler: java.util.HashMap getHolderToLayoutNode()
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.input.pointer.PointerIconService getPointerIconService()
+androidx.compose.ui.graphics.ColorSpaceVerificationHelper: androidx.compose.ui.graphics.colorspace.ColorSpace composeColorSpace(android.graphics.ColorSpace)
+androidx.core.view.accessibility.AccessibilityNodeInfoCompat$Api33Impl: java.lang.String getCollectionItemColumnTitle(java.lang.Object)
+com.audiopro.djmrec.audio.RecordingState$Recording: boolean equals(java.lang.Object)
+androidx.compose.ui.node.LayoutNode$LayoutState: androidx.compose.ui.node.LayoutNode$LayoutState valueOf(java.lang.String)
+kotlinx.coroutines.CoroutineStart: kotlinx.coroutines.CoroutineStart[] values()
+androidx.compose.ui.autofill.AutofillApi26Helper: boolean isList(android.view.autofill.AutofillValue)
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.draganddrop.DragAndDropManager getDragAndDropManager()
+androidx.core.view.WindowInsetsCompat$Impl: androidx.core.view.WindowInsetsCompat consumeStableInsets()
+com.audiopro.djmrec.usb.RootUsbHostController$CommandResult: com.audiopro.djmrec.usb.RootUsbHostController$CommandResult copy$default(com.audiopro.djmrec.usb.RootUsbHostController$CommandResult,int,java.lang.String,boolean,int,java.lang.Object)
+androidx.core.app.NotificationManagerCompat$Api26Impl: android.app.NotificationChannel getNotificationChannel(android.app.NotificationManager,java.lang.String)
+androidx.core.app.NotificationChannelCompat$Api26Impl: void enableVibration(android.app.NotificationChannel,boolean)
+androidx.lifecycle.ProcessLifecycleOwner$attach$1: void onActivityPaused(android.app.Activity)
+androidx.lifecycle.EmptyActivityLifecycleCallbacks: void onActivityStopped(android.app.Activity)
+androidx.compose.animation.core.MutatePriority: androidx.compose.animation.core.MutatePriority valueOf(java.lang.String)
+com.audiopro.djmrec.usb.UsbAudioManager: void access$handlePermissionResult(com.audiopro.djmrec.usb.UsbAudioManager,android.content.Intent)
+com.audiopro.djmrec.audio.AudioEngine: long getElapsedMillis()
+androidx.profileinstaller.FileSectionType: androidx.profileinstaller.FileSectionType valueOf(java.lang.String)
+androidx.core.app.NotificationChannelCompat$Api26Impl: java.lang.String getId(android.app.NotificationChannel)
+androidx.core.view.ViewCompat$Api20Impl: void requestApplyInsets(android.view.View)
+com.audiopro.djmrec.audio.RecordingState$Recording: java.lang.String toString()
+com.audiopro.djmrec.audio.RecordingState$Error: java.lang.String component1()
+androidx.core.view.WindowInsetsCompat$Impl28: int hashCode()
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int getSubframeSize()
+com.audiopro.djmrec.audio.AudioEngine: boolean isClipping()
+androidx.core.view.accessibility.AccessibilityNodeInfoCompat$Api30Impl: java.lang.CharSequence getStateDescription(android.view.accessibility.AccessibilityNodeInfo)
+androidx.compose.ui.platform.AndroidComposeView: void setOnViewTreeOwnersAvailable(kotlin.jvm.functions.Function1)
+androidx.compose.ui.graphics.CanvasZHelper: void enableZ(android.graphics.Canvas,boolean)
+androidx.core.view.WindowInsetsCompat$Impl30: WindowInsetsCompat$Impl30(androidx.core.view.WindowInsetsCompat,androidx.core.view.WindowInsetsCompat$Impl30)
+androidx.core.view.ViewCompat$Api21Impl$1: android.view.WindowInsets onApplyWindowInsets(android.view.View,android.view.WindowInsets)
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: boolean equals(java.lang.Object)
+androidx.compose.ui.platform.AccessibilityNodeInfoVerificationHelperMethods: void setAvailableExtraData(android.view.accessibility.AccessibilityNodeInfo,java.util.List)
+androidx.activity.OnBackPressedDispatcher$Api33Impl: android.window.OnBackInvokedCallback createOnBackInvokedCallback(kotlin.jvm.functions.Function0)
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.node.LayoutNode getRoot()
+androidx.compose.ui.platform.AndroidComposeViewAccessibilityDelegateCompat$ViewTranslationHelperMethodsS: void onVirtualViewTranslationResponses(androidx.compose.ui.platform.AndroidComposeViewAccessibilityDelegateCompat,android.util.LongSparseArray)
+androidx.core.graphics.drawable.IconCompat$Api23Impl: android.net.Uri getUri(java.lang.Object)
+androidx.core.app.NotificationManagerCompat$Api26Impl: void deleteNotificationChannelGroup(android.app.NotificationManager,java.lang.String)
+androidx.compose.ui.platform.ViewLayerVerificationHelper31: void setRenderEffect(android.view.View,androidx.compose.ui.graphics.RenderEffect)
+androidx.compose.ui.platform.AndroidComposeView: void setFontFamilyResolver(androidx.compose.ui.text.font.FontFamily$Resolver)
+androidx.core.view.ViewCompat$Api21Impl: float getTranslationZ(android.view.View)
+androidx.core.view.WindowInsetsCompat$Impl21: WindowInsetsCompat$Impl21(androidx.core.view.WindowInsetsCompat,android.view.WindowInsets)
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: boolean component16()
+androidx.compose.ui.platform.ViewLayerVerificationHelper28: void setOutlineSpotShadowColor(android.view.View,int)
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: int component6()
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.modifier.ModifierLocalManager getModifierLocalManager()
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo: int component4()
+com.audiopro.djmrec.usb.UsbAudioManager: java.lang.CharSequence resolveAudioManagerDeviceId$lambda$7(android.media.AudioDeviceInfo)
+com.audiopro.djmrec.usb.UsbAudioDescriptorParser$selectBestStereoInterface$$inlined$thenBy$1: UsbAudioDescriptorParser$selectBestStereoInterface$$inlined$thenBy$1(java.util.Comparator)
+androidx.compose.ui.platform.ViewLayer$UniqueDrawingIdApi29: long getUniqueDrawingId(android.view.View)
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: com.audiopro.djmrec.usb.UsbIsoCaptureHandle copy(int,int,int,int,int,int,int,int)
+androidx.lifecycle.EmptyActivityLifecycleCallbacks: void onActivityDestroyed(android.app.Activity)
+androidx.core.view.DisplayCutoutCompat$Api28Impl: int getSafeInsetRight(android.view.DisplayCutout)
+androidx.core.view.accessibility.AccessibilityNodeInfoCompat$Api34Impl: android.view.accessibility.AccessibilityNodeInfo$AccessibilityAction getActionScrollInDirection()
+androidx.activity.Api34Impl: android.window.BackEvent createOnBackEvent(float,float,float,int)
+com.audiopro.djmrec.usb.RootUsbHostController$CommandResult: int component1()
+androidx.compose.animation.core.AnimationEndReason: androidx.compose.animation.core.AnimationEndReason valueOf(java.lang.String)
+com.audiopro.djmrec.audio.ChannelLevel: float component2()
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: int getMaxPacketSize()
+androidx.core.view.WindowInsetsCompat$Impl21: void setStableInsets(androidx.core.graphics.Insets)
+androidx.lifecycle.ProcessLifecycleOwner$Api29Impl: void registerActivityLifecycleCallbacks(android.app.Activity,android.app.Application$ActivityLifecycleCallbacks)
+androidx.compose.ui.platform.AndroidComposeViewAccessibilityDelegateCompat$Api29Impl: void addPageActions(androidx.core.view.accessibility.AccessibilityNodeInfoCompat,androidx.compose.ui.semantics.SemanticsNode)
+androidx.core.app.NotificationChannelCompat$Api30Impl: java.lang.String getParentChannelId(android.app.NotificationChannel)
+androidx.core.view.WindowInsetsCompat$Impl: boolean isConsumed()
+androidx.core.app.NotificationCompatBuilder$Api20Impl: android.app.Notification$Action$Builder addExtras(android.app.Notification$Action$Builder,android.os.Bundle)
+androidx.activity.Api34Impl: float touchX(android.window.BackEvent)
+androidx.core.view.WindowInsetsCompat$Impl20: androidx.core.graphics.Insets getInsetsIgnoringVisibility(int)
+androidx.lifecycle.ProcessLifecycleOwner$attach$1$onActivityPreCreated$1: void onActivityPostStarted(android.app.Activity)
+androidx.compose.material3.tokens.ColorSchemeKeyTokens: androidx.compose.material3.tokens.ColorSchemeKeyTokens valueOf(java.lang.String)
+com.audiopro.djmrec.audio.RecordingFormat: com.audiopro.djmrec.audio.RecordingFormat[] $values()
+androidx.core.view.WindowInsetsCompat$Impl20: void setRootWindowInsets(androidx.core.view.WindowInsetsCompat)
+androidx.compose.ui.platform.coreshims.ViewCompatShims$Api26Impl: android.view.autofill.AutofillId getAutofillId(android.view.View)
+com.audiopro.djmrec.usb.UsbIsoCaptureHandle: int getSubframeSize()
+androidx.compose.ui.platform.ViewLayer: long getOwnerViewId()
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.text.font.FontFamily$Resolver getFontFamilyResolver()
+androidx.core.view.ViewCompat$Api30Impl: void setImportantForContentCapture(android.view.View,int)
+androidx.core.app.NotificationCompatBuilder$Api20Impl: android.app.Notification$Action$Builder addRemoteInput(android.app.Notification$Action$Builder,android.app.RemoteInput)
+androidx.compose.runtime.Recomposer$State: androidx.compose.runtime.Recomposer$State[] values()
+androidx.core.view.accessibility.AccessibilityNodeInfoCompat$Api33Impl: void setUniqueId(android.view.accessibility.AccessibilityNodeInfo,java.lang.String)
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo: AudioStreamingInterfaceInfo(int,int,int,int,int,java.lang.Integer,java.lang.Integer,int,kotlin.jvm.internal.DefaultConstructorMarker)
+com.audiopro.djmrec.usb.AudioStreamingInterfaceInfo: int getSubframeSize()
+androidx.core.app.NotificationChannelCompat$Api30Impl: boolean isImportantConversation(android.app.NotificationChannel)
+androidx.compose.ui.autofill.AutofillType: androidx.compose.ui.autofill.AutofillType valueOf(java.lang.String)
+com.audiopro.djmrec.usb.RootUsbHostController$CommandResult: java.lang.String component2()
+androidx.core.view.WindowInsetsCompat$BuilderImpl: void setInsets(int,androidx.core.graphics.Insets)
+com.audiopro.djmrec.audio.RecordingState$Preparing: boolean equals(java.lang.Object)
+com.audiopro.djmrec.usb.UsbAudioManager: kotlinx.coroutines.flow.MutableStateFlow access$get_deviceState$p(com.audiopro.djmrec.usb.UsbAudioManager)
+androidx.core.view.WindowInsetsCompat$BuilderImpl30: void setInsets(int,androidx.core.graphics.Insets)
+com.audiopro.djmrec.audio.AudioEngine: AudioEngine()
+androidx.compose.ui.focus.FocusStateImpl: androidx.compose.ui.focus.FocusStateImpl valueOf(java.lang.String)
+com.audiopro.djmrec.audio.RecordingState$Error: java.lang.String getMessage()
+com.audiopro.djmrec.usb.UsbAudioDescriptorParser$selectBestStereoInterface$$inlined$compareBy$1: int compare(java.lang.Object,java.lang.Object)
+androidx.compose.ui.platform.AndroidComposeView: android.view.View findViewByAccessibilityIdTraversal(int)
+androidx.core.app.NotificationCompatBuilder$Api26Impl: android.app.Notification$Builder setTimeoutAfter(android.app.Notification$Builder,long)
+androidx.core.view.ViewCompat$Api21Impl: void setElevation(android.view.View,float)
+androidx.core.app.NotificationChannelCompat$Api26Impl: boolean shouldVibrate(android.app.NotificationChannel)
+androidx.compose.ui.unit.LayoutDirection: androidx.compose.ui.unit.LayoutDirection valueOf(java.lang.String)
+androidx.lifecycle.ReportFragment$LifecycleCallbacks: void onActivitySaveInstanceState(android.app.Activity,android.os.Bundle)
+com.audiopro.djmrec.usb.UsbAudioManager: UsbAudioManager(android.content.Context)
+androidx.core.view.ViewCompat$Api21Impl: boolean dispatchNestedScroll(android.view.View,int,int,int,int,int[])
+androidx.core.app.NotificationCompatBuilder$Api20Impl: android.app.Notification$Builder setGroup(android.app.Notification$Builder,java.lang.String)
+com.audiopro.djmrec.audio.ChannelLevel: boolean component3()
+androidx.core.app.NotificationManagerCompat$Api26Impl: java.lang.String getId(android.app.NotificationChannel)
+com.audiopro.djmrec.usb.UsbAudioDeviceInfo: int getIsochronousInMaxPacketSize()
+com.audiopro.djmrec.usb.PioneerVendorControl: PioneerVendorControl()
+com.audiopro.djmrec.usb.UsbAudioDescriptorParser$selectBestStereoInterface$$inlined$thenBy$1: int compare(java.lang.Object,java.lang.Object)
+androidx.core.view.WindowInsetsCompat$Impl20: boolean isVisible(int)
+androidx.compose.ui.platform.DrawChildContainer: int getChildCount()
+androidx.compose.ui.focus.FocusStateImpl: androidx.compose.ui.focus.FocusStateImpl[] values()
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.platform.ClipboardManager getClipboardManager()
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.text.input.TextInputService getTextInputService()
+androidx.compose.ui.platform.AndroidComposeView: androidx.compose.ui.layout.Placeable$PlacementScope getPlacementScope()
+androidx.compose.ui.platform.AbstractComposeView: void setParentCompositionContext(androidx.compose.runtime.CompositionContext)
+com.audiopro.djmrec.usb.UsbAudioManager$Companion: boolean isPioneerDevice(android.hardware.usb.UsbDevice)
+androidx.core.content.FileProvider$Api21Impl: java.io.File[] getExternalMediaDirs(android.content.Context)
