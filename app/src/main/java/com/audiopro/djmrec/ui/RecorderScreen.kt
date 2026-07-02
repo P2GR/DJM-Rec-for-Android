@@ -67,7 +67,6 @@ fun RecorderScreen(viewModel: MainViewModel) {
     val waveformBins by viewModel.waveformBins.collectAsState()
     val selectedFormat by viewModel.selectedFormat.collectAsState()
     val rootUsbMode by viewModel.rootUsbMode.collectAsState()
-    val mockMixerMode by viewModel.mockMixerMode.collectAsState()
 
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -108,28 +107,6 @@ fun RecorderScreen(viewModel: MainViewModel) {
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Mock Mixer",
-                                style = MaterialTheme.typography.titleSmall
-                            )
-                            Text(
-                                text = "Simulate a 12-ch DJM-A9 for testing without hardware. " +
-                                        "Generates tones on channels 9/10 (1 kHz / 1.2 kHz).",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(
-                            checked = mockMixerMode,
-                            onCheckedChange = viewModel::setMockMixerEnabled
-                        )
-                    }
                 }
             },
             confirmButton = {

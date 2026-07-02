@@ -149,7 +149,6 @@ add_library(
     SHARED
     UsbAudioEngine.cpp
     UsbIsoAudioSource.cpp
-    MockAudioSource.cpp
     WaveformAnalyzer.cpp
     writers/WavWriter.cpp
     writers/FlacWriter.cpp

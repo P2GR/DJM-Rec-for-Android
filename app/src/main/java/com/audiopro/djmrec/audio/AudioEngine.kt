@@ -69,13 +69,6 @@ object AudioEngine {
     ): Int
 
     /**
-     * Opens a synthetic 12-channel PCM source for testing without physical hardware.
-     * Channels 9/10 carry distinct tones (1 kHz / 1.2 kHz) so channel extraction is
-     * audibly verifiable. Returns [sampleRateHint] on success, or -1 on failure.
-     */
-    external fun openMock(totalChannels: Int, sampleRateHint: Int): Int
-
-    /**
      * Begins pulling from the ring buffer into the selected encoder and writing to [outputPath].
      * [format] is [RecordingFormat.nativeValue].
      */

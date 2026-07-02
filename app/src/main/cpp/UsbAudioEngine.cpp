@@ -43,10 +43,6 @@ int UsbAudioEngine::open(int32_t audioManagerDeviceId, int32_t sampleRateHint, i
         mUsbIsoSource->stop();
         mUsbIsoSource.reset();
     }
-    if (mMockSource) {
-        mMockSource->stop();
-        mMockSource.reset();
-    }
     mSourceMode = SourceMode::Oboe;
 
     mChannelCount = channelCount;
@@ -166,60 +162,6 @@ int UsbAudioEngine::openUsbIso(const UsbIsoAudioSource::Config& isoConfig, int32
          "format, format=I32 canonical",
          sampleRateHint, isoConfig.totalChannels);
 
-    return sampleRateHint;
-}
-
-int UsbAudioEngine::openMock(int32_t totalChannels, int32_t sampleRateHint) {
-    std::lock_guard<std::mutex> lock(mControlMutex);
-    if (mStreamOpen.load()) {
-        LOGW("openMock() called while a stream is already open; closing the previous one first");
-    }
-    if (mStream) {
-        mStream->requestStop();
-        mStream->close();
-        mStream.reset();
-    }
-    if (mUsbIsoSource) {
-        mUsbIsoSource->stop();
-        mUsbIsoSource.reset();
-    }
-    if (mMockSource) {
-        mMockSource->stop();
-        mMockSource.reset();
-    }
-    mSourceMode = SourceMode::Mock;
-
-    mChannelCount = 2;
-    mOboeFormat = oboe::AudioFormat::I32;
-    mFormat.sampleRate = sampleRateHint;
-    mFormat.channelCount = 2;
-    mFormat.bitsPerSample = 24; // DJM-A9 reports 24-bit
-
-    const size_t canonicalBytesPerFrame = bytesPerFrameFor(oboe::AudioFormat::I32, 2);
-    const size_t ringBufferFrames = static_cast<size_t>(sampleRateHint) * 2;
-    mRingBuffer = std::make_unique<RingBuffer>(ringBufferFrames * canonicalBytesPerFrame);
-    mWaveformAnalyzer = std::make_unique<WaveformAnalyzer>();
-
-    MockAudioSource::Config mockCfg;
-    mockCfg.totalChannels = totalChannels;
-    mockCfg.extractChannelOffset = 8; // channels 9/10 (DJM-A9 master mix position)
-    mockCfg.sampleRate = sampleRateHint;
-
-    mMockSource = std::make_unique<MockAudioSource>();
-    const std::string error = mMockSource->start(
-        mockCfg, [this](const int32_t* frames, size_t count) { onUsbIsoFrames(frames, count); });
-
-    if (!error.empty()) {
-        LOGE("Failed to start mock audio source: %s", error.c_str());
-        mMockSource.reset();
-        mRingBuffer.reset();
-        mSourceMode = SourceMode::None;
-        return -1;
-    }
-
-    mStreamOpen.store(true, std::memory_order_release);
-    LOGI("Mock audio source open: %d Hz, %d total channels, extracting channels 9/10",
-         sampleRateHint, totalChannels);
     return sampleRateHint;
 }
 
@@ -396,10 +338,6 @@ void UsbAudioEngine::closeEngine() {
     if (mUsbIsoSource) {
         mUsbIsoSource->stop();
         mUsbIsoSource.reset();
-    }
-    if (mMockSource) {
-        mMockSource->stop();
-        mMockSource.reset();
     }
     mRingBuffer.reset();
     mSourceMode = SourceMode::None;

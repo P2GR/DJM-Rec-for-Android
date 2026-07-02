@@ -45,13 +45,6 @@ Java_com_audiopro_djmrec_audio_AudioEngine_openUsbIso(
     return UsbAudioEngine::instance().openUsbIso(config, sampleRateHint);
 }
 
-JNIEXPORT jint JNICALL
-Java_com_audiopro_djmrec_audio_AudioEngine_openMock(
-    JNIEnv* /*env*/, jobject /*thiz*/,
-    jint totalChannels, jint sampleRateHint) {
-    return UsbAudioEngine::instance().openMock(totalChannels, sampleRateHint);
-}
-
 JNIEXPORT jboolean JNICALL
 Java_com_audiopro_djmrec_audio_AudioEngine_startRecording(
     JNIEnv* env, jobject /*thiz*/,

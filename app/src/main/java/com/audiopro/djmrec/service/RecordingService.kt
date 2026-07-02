@@ -56,8 +56,6 @@ class RecordingService : LifecycleService() {
         const val CAPTURE_MODE_AAUDIO = 0
         /** [EXTRA_CAPTURE_MODE] value: raw libusb isochronous path via the EXTRA_USB_* extras. */
         const val CAPTURE_MODE_USB_ISO = 1
-        /** [EXTRA_CAPTURE_MODE] value: synthetic 12-channel mock source for testing without hardware. */
-        const val CAPTURE_MODE_MOCK = 2
         const val EXTRA_CAPTURE_MODE = "extra_capture_mode"
 
         // --- Raw USB iso capture params (only used when EXTRA_CAPTURE_MODE == CAPTURE_MODE_USB_ISO) ---
@@ -172,8 +170,6 @@ class RecordingService : LifecycleService() {
                         sampleRateHint = sampleRate,
                         format = format
                     )
-                } else if (captureMode == CAPTURE_MODE_MOCK) {
-                    startMockSession(sampleRate, format)
                 } else {
                     val deviceId = intent.getIntExtra(EXTRA_DEVICE_ID, -1)
                     val channelCount = intent.getIntExtra(EXTRA_CHANNEL_COUNT, 2)
@@ -253,25 +249,6 @@ class RecordingService : LifecycleService() {
         }
 
         beginEncodingOrFail(bitDepth, format)
-    }
-
-    /**
-     * Opens a synthetic 12-channel mock audio source for testing without a physical mixer.
-     * Channels 9/10 carry distinct tones (1 kHz / 1.2 kHz) so channel extraction and the
-     * entire recording pipeline (meter, waveform, encoder) can be verified end-to-end.
-     */
-    private fun startMockSession(sampleRate: Int, format: RecordingFormat) {
-        if (_state.value is RecordingState.Recording) return
-        _state.value = RecordingState.Preparing
-        isUsbIsoSession = false
-
-        val negotiatedRate = AudioEngine.openMock(12, sampleRate)
-        if (negotiatedRate <= 0) {
-            _state.value = RecordingState.Error("Failed to open mock audio source")
-            return
-        }
-
-        beginEncodingOrFail(24, format) // DJM-A9 reports 24-bit
     }
 
     /** Shared tail of both [startSession] and [startUsbIsoSession] once the native capture
