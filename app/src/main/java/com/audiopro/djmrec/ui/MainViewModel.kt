@@ -34,6 +34,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val PREFS_NAME = "settings"
         private const val KEY_ROOT_USB_MODE = "root_usb_mode"
         private const val KEY_USB_CHANNEL_OFFSET = "usb_channel_offset"
+        private const val KEY_FORCE_ANDROID_CAPTURE = "force_android_capture"
     }
 
     private val usbAudioManager = (application as DjmRecApplication).usbAudioManager
@@ -68,6 +69,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         prefs.getInt(KEY_USB_CHANNEL_OFFSET, UsbAudioManager.AUTO_CHANNEL_OFFSET)
     )
     val usbChannelOffset: StateFlow<Int> = _usbChannelOffset.asStateFlow()
+
+    private val _forceAndroidCapture = MutableStateFlow(prefs.getBoolean(KEY_FORCE_ANDROID_CAPTURE, false))
+    val forceAndroidCapture: StateFlow<Boolean> = _forceAndroidCapture.asStateFlow()
 
     private var boundService: RecordingService? = null
     private var isBound = false
@@ -122,16 +126,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _usbChannelOffset.value = sanitized
     }
 
+    fun setForceAndroidCapture(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_FORCE_ANDROID_CAPTURE, enabled).apply()
+        _forceAndroidCapture.value = enabled
+    }
+
     fun startRecording() {
         val context = getApplication<Application>()
         val device = deviceState.value ?: run {
             usbAudioManager.scanForConnectedMixer("record-button-rescan")
             return
         }
-        val sampleRate = if (device.negotiatedSampleRate > 0) {
-            device.negotiatedSampleRate
-        } else {
-            device.supportedSampleRates.maxOrNull() ?: 48000
+        val sampleRate = when {
+            device.negotiatedSampleRate > 0 -> device.negotiatedSampleRate
+            48000 in device.supportedSampleRates -> 48000
+            else -> device.supportedSampleRates.firstOrNull() ?: 48000
         }
 
         val intent = Intent(context, RecordingService::class.java).apply {
@@ -143,7 +152,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // Pioneer multichannel mixers (e.g. DJM-A9) need the raw libusb isochronous path
             // to reach the Master Mix pair at a non-zero channel offset -- AAudio can only ever
             // give us channels 1/2. Everything else keeps using the existing AAudio path.
-            val handle = if (device.requiresIsoCapture) usbAudioManager.openIsoCaptureHandle() else null
+            val handle = if (device.requiresIsoCapture && !_forceAndroidCapture.value) {
+                usbAudioManager.openIsoCaptureHandle()
+            } else {
+                null
+            }
             if (handle != null) {
                 putExtra(RecordingService.EXTRA_CAPTURE_MODE, RecordingService.CAPTURE_MODE_USB_ISO)
                 putExtra(RecordingService.EXTRA_USB_FD, handle.fd)
@@ -161,7 +174,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 // 1/2, not the Master Mix, but that's strictly better than no recording at all.
                 putExtra(RecordingService.EXTRA_CAPTURE_MODE, RecordingService.CAPTURE_MODE_AAUDIO)
                 putExtra(RecordingService.EXTRA_DEVICE_ID, device.audioManagerDeviceId)
-                putExtra(RecordingService.EXTRA_CHANNEL_COUNT, device.channelCount)
+                putExtra(RecordingService.EXTRA_CHANNEL_COUNT, if (device.isPioneer) 2 else device.channelCount)
             }
         }
         ContextCompat.startForegroundService(context, intent)

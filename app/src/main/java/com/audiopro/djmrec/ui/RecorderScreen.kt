@@ -68,6 +68,7 @@ fun RecorderScreen(viewModel: MainViewModel) {
     val selectedFormat by viewModel.selectedFormat.collectAsState()
     val rootUsbMode by viewModel.rootUsbMode.collectAsState()
     val usbChannelOffset by viewModel.usbChannelOffset.collectAsState()
+    val forceAndroidCapture by viewModel.forceAndroidCapture.collectAsState()
 
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -104,6 +105,29 @@ fun RecorderScreen(viewModel: MainViewModel) {
                         Switch(
                             checked = rootUsbMode,
                             onCheckedChange = viewModel::setRootUsbModeEnabled
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Android audio path",
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                            Text(
+                                text = "Use Android's USB audio stack instead of raw isochronous capture.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = forceAndroidCapture,
+                            onCheckedChange = viewModel::setForceAndroidCapture
                         )
                     }
 

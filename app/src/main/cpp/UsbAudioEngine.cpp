@@ -82,6 +82,16 @@ int UsbAudioEngine::open(int32_t audioManagerDeviceId, int32_t sampleRateHint, i
     }
 
     if (result != oboe::Result::OK) {
+        LOGW("Exclusive open failed (%s); retrying shared mode with channel conversion allowed",
+             oboe::convertToText(result));
+        builder.setSharingMode(oboe::SharingMode::Shared)
+            ->setChannelConversionAllowed(true)
+            ->setFormatConversionAllowed(true)
+            ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::Medium);
+        result = builder.openStream(stream);
+    }
+
+    if (result != oboe::Result::OK) {
         LOGE("Failed to open exclusive low-latency AAudio input stream: %s", oboe::convertToText(result));
         return -1;
     }

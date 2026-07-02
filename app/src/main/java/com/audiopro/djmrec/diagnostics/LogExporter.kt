@@ -33,6 +33,7 @@ object LogExporter {
     private const val PREFS_NAME = "settings"
     private const val KEY_ROOT_USB_MODE = "root_usb_mode"
     private const val KEY_USB_CHANNEL_OFFSET = "usb_channel_offset"
+    private const val KEY_FORCE_ANDROID_CAPTURE = "force_android_capture"
 
     /** Runs on whatever thread it's called from — callers should invoke off the main thread. */
     fun collectDiagnosticReport(context: Context): String {
@@ -158,10 +159,11 @@ object LogExporter {
     }
 
     private fun appendUsbCaptureSettingsSection(context: Context, sb: StringBuilder) {
-        val offset = context
-            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getInt(KEY_USB_CHANNEL_OFFSET, -1)
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val offset = prefs.getInt(KEY_USB_CHANNEL_OFFSET, -1)
+        val forceAndroidCapture = prefs.getBoolean(KEY_FORCE_ANDROID_CAPTURE, false)
         sb.appendLine("=== USB capture settings ===")
+        sb.appendLine("capture path: ${if (forceAndroidCapture) "Android audio stack" else "Raw libusb isochronous"}")
         sb.appendLine(
             "stereo pair: " + if (offset < 0) "Auto" else "USB channels ${offset + 1}-${offset + 2}"
         )
