@@ -87,21 +87,23 @@ This file is gitignored — never commit your keystore or its passwords.
 
 ## 🚀 Automated releases (GitHub Actions)
 
-Pushing a tag matching `v*` (e.g. `v0.1`) triggers the
+Every push to `main`/`master` triggers the
 [release workflow](.github/workflows/release.yml), which builds both the debug and release
-APKs and publishes them as assets on a new
-[GitHub Release](https://github.com/P2GR/DJM-REC-for-Android/releases) named after the tag:
+APKs and publishes them as assets on a
+[GitHub Release](https://github.com/P2GR/DJM-REC-for-Android/releases) tagged from
+`versionName` in `app/build.gradle.kts` (currently `v0.1`) — no manual tagging required.
+Pushing again with the same `versionName` just updates that release's assets in place;
+bump `versionName` to cut a new release:
 
-```bash
-# Bump versionName in app/build.gradle.kts to match, then:
-git tag v0.1
-git push origin v0.1
+```kotlin
+// app/build.gradle.kts
+versionName = "0.2"
 ```
 
-You can also trigger it manually from the **Actions** tab (`workflow_dispatch`) without
-pushing a tag. CI signs the release build with an auto-generated debug keystore (the same
-fallback described above), so no signing secrets are required to get APKs into Releases —
-add real signing secrets later if you need a Play-Store-ready release build.
+You can also trigger it manually from the **Actions** tab (`workflow_dispatch`), optionally
+overriding the version. CI signs the release build with an auto-generated debug keystore
+(the same fallback described above), so no signing secrets are required to get APKs into
+Releases — add real signing secrets later if you need a Play-Store-ready release build.
 
 ---
 

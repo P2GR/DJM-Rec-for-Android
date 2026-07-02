@@ -1,17 +1,20 @@
 name: Build & Release
 
-# Push a tag matching v* (e.g. `git tag v0.1 && git push origin v0.1`) to build the app
-# and publish debug + release APKs as assets on a new GitHub Release named after the tag.
-# Can also be run manually from the Actions tab without pushing a tag.
+# Every push to main/master builds the app and publishes debug + release APKs as assets on
+# a GitHub Release tagged from versionName in app/build.gradle.kts (currently v0.1). Pushing
+# again with the same versionName updates that release's assets in place; bumping
+# versionName cuts a new release automatically — no manual tagging needed. Can also be run
+# manually from the Actions tab (optionally overriding the version).
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - main
+      - master
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to release (e.g. 0.1 or v0.1)"
-        required: true
+        description: "Optional version override (e.g. 0.2). Leave blank to use versionName from app/build.gradle.kts"
+        required: false
 
 permissions:
   contents: write
@@ -30,12 +33,16 @@ jobs:
           java-version: "17"
           cache: gradle
 
+      - name: Set up Android SDK
+        # GitHub-hosted runners preinstall an Android SDK, but `sdkmanager` isn't reliably
+        # on PATH — this action locates cmdline-tools, accepts SDK licenses, and puts
+        # `sdkmanager`/`adb` on PATH so the step below works.
+        uses: android-actions/setup-android@v4
+
       - name: Install pinned NDK & CMake
         # Versions must match app/build.gradle.kts (ndkVersion) and the externalNativeBuild
         # cmake { version = ... } block, so CI builds native code identically to local dev.
-        run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager --install "ndk;26.1.10909125" "cmake;3.22.1"
+        run: sdkmanager --install "ndk;26.1.10909125" "cmake;3.22.1"
 
       - name: Generate debug keystore (release signing fallback)
         # signingConfigs.release in app/build.gradle.kts falls back to
@@ -53,12 +60,11 @@ jobs:
       - name: Resolve release version
         id: version
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            V="${{ github.event.inputs.version }}"
-            [[ "$V" == v* ]] || V="v$V"
-          else
-            V="${GITHUB_REF#refs/tags/}"
+          V="${{ github.event.inputs.version }}"
+          if [ -z "$V" ]; then
+            V=$(grep -m1 'versionName = "' app/build.gradle.kts | sed -E 's/.*versionName = "([^"]+)".*/\1/')
           fi
+          [[ "$V" == v* ]] || V="v$V"
           echo "tag=$V" >> "$GITHUB_OUTPUT"
 
       - name: Build debug & release APKs
@@ -73,7 +79,7 @@ jobs:
           echo "release=$(find app/build/outputs/apk/release -name '*.apk' -print -quit)" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: ${{ steps.version.outputs.tag }}
