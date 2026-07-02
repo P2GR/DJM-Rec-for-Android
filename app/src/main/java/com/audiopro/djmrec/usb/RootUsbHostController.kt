@@ -93,6 +93,8 @@ object RootUsbHostController {
                 cat /proc/asound/cards 2>/dev/null
                 echo 'proc asound pcm:'
                 cat /proc/asound/pcm 2>/dev/null
+                echo 'dev snd:'
+                ls -l /dev/snd 2>/dev/null
                 echo 'role switch files (read-only snapshot):'
                 for f in /sys/class/typec/*/data_role /sys/class/typec/*/power_role \
                          /sys/class/typec/*/port*/data_role /sys/class/typec/*/port*/power_role \
@@ -152,14 +154,20 @@ object RootUsbHostController {
             }
         }
 
-        return devices.sortedWith(
-            compareByDescending<AlsaCaptureDevice> {
-                it.description.contains("usb", ignoreCase = true) ||
-                    it.description.contains("djm", ignoreCase = true) ||
-                    it.description.contains("a9", ignoreCase = true)
-            }.thenBy { it.card }.thenBy { it.device }
-        )
+        return devices.sortedWith(compareByDescending<AlsaCaptureDevice> { it.priority }
+            .thenBy { it.card }
+            .thenBy { it.device })
     }
+
+    private val AlsaCaptureDevice.priority: Int
+        get() = when {
+            description.contains("USB_AUDIO-TX", ignoreCase = true) -> 100
+            description.contains("usb", ignoreCase = true) && description.contains("tx", ignoreCase = true) -> 90
+            description.contains("djm", ignoreCase = true) -> 80
+            description.contains("a9", ignoreCase = true) -> 70
+            description.contains("usb", ignoreCase = true) -> 60
+            else -> 0
+        }
 
     /**
      * Reads the KERNEL's own view of USB attach events via `dmesg`, independent of whatever

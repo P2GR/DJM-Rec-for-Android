@@ -141,6 +141,16 @@ object LogExporter {
             sb.appendLine("su exit=${status.exitCode} timedOut=${status.timedOut}")
             sb.appendLine(status.output)
 
+            val alsaCandidates = RootUsbHostController.findAlsaCaptureDevices()
+            sb.appendLine("root ALSA capture candidates (${alsaCandidates.size}):")
+            if (alsaCandidates.isEmpty()) {
+                sb.appendLine("  none")
+            } else {
+                alsaCandidates.forEach { candidate ->
+                    sb.appendLine("  hw:${candidate.card},${candidate.device} ${candidate.path} ${candidate.description}")
+                }
+            }
+
             sb.appendLine("--- kernel dmesg (usb/typec/dwc3/xhci lines, last 150) ---")
             sb.appendLine(
                 "This is the KERNEL's own view of USB attach events, independent of what " +

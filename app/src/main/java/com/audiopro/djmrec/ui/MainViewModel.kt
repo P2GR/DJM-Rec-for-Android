@@ -137,9 +137,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun startRecording() {
         val context = getApplication<Application>()
         val device = deviceState.value ?: run {
+            if (_rootUsbMode.value && startRootAlsaRecording(context, null)) {
+                return
+            }
             usbAudioManager.scanForConnectedMixer("record-button-rescan")
             return
         }
+
+        if (_rootUsbMode.value && startRootAlsaRecording(context, device)) {
+            return
+        }
+
         val sampleRate = when {
             device.negotiatedSampleRate > 0 -> device.negotiatedSampleRate
             48000 in device.supportedSampleRates -> 48000
@@ -154,35 +162,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             putExtra(RecordingService.EXTRA_BIT_DEPTH, captureBitDepth)
             putExtra(RecordingService.EXTRA_FORMAT, _selectedFormat.value.nativeValue)
 
-            val rootAlsaDevice = if (_rootUsbMode.value) {
-                val prepareResult = RootUsbHostController.prepareAlsaCaptureAccess()
-                Log.i(
-                    TAG,
-                    "root ALSA prepare exit=${prepareResult.exitCode} timedOut=${prepareResult.timedOut}\n" +
-                        prepareResult.output
-                )
-                RootUsbHostController.findAlsaCaptureDevices().firstOrNull().also {
-                    Log.i(TAG, "selected root ALSA capture device=$it")
-                }
-            } else {
-                null
-            }
-
             // Pioneer multichannel mixers (e.g. DJM-A9) need the raw libusb isochronous path
             // to reach the Master Mix pair at a non-zero channel offset -- AAudio can only ever
             // give us channels 1/2. Everything else keeps using the existing AAudio path.
-            val handle = if (rootAlsaDevice == null && device.requiresIsoCapture && !androidCapture) {
+            val handle = if (device.requiresIsoCapture && !androidCapture) {
                 usbAudioManager.openIsoCaptureHandle()
             } else {
                 null
             }
-            if (rootAlsaDevice != null) {
-                putExtra(RecordingService.EXTRA_CAPTURE_MODE, RecordingService.CAPTURE_MODE_ROOT_ALSA)
-                putExtra(RecordingService.EXTRA_ALSA_CARD, rootAlsaDevice.card)
-                putExtra(RecordingService.EXTRA_ALSA_DEVICE, rootAlsaDevice.device)
-                putExtra(RecordingService.EXTRA_USB_TOTAL_CHANNELS, device.channelCount)
-                putExtra(RecordingService.EXTRA_USB_CHANNEL_OFFSET, _usbChannelOffset.value)
-            } else if (handle != null) {
+            if (handle != null) {
                 putExtra(RecordingService.EXTRA_CAPTURE_MODE, RecordingService.CAPTURE_MODE_USB_ISO)
                 putExtra(RecordingService.EXTRA_USB_FD, handle.fd)
                 putExtra(RecordingService.EXTRA_USB_INTERFACE, handle.interfaceNumber)
@@ -204,6 +192,47 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         ContextCompat.startForegroundService(context, intent)
         boundService?.setDeviceLabel(device.productName)
+    }
+
+    private fun startRootAlsaRecording(context: Context, device: UsbAudioDeviceInfo?): Boolean {
+        val prepareResult = RootUsbHostController.prepareAlsaCaptureAccess()
+        Log.i(
+            TAG,
+            "root ALSA prepare exit=${prepareResult.exitCode} timedOut=${prepareResult.timedOut}\n" +
+                prepareResult.output
+        )
+
+        val candidates = RootUsbHostController.findAlsaCaptureDevices()
+        Log.i(TAG, "root ALSA capture candidates=${candidates.joinToString()}")
+        val rootAlsaDevice = candidates.firstOrNull()
+        if (rootAlsaDevice == null) {
+            _recordingState.value = RecordingState.Error("No root ALSA capture device found")
+            return false
+        }
+
+        val sampleRate = when {
+            device?.negotiatedSampleRate != null && device.negotiatedSampleRate > 0 -> device.negotiatedSampleRate
+            device != null && 48000 in device.supportedSampleRates -> 48000
+            else -> 48000
+        }
+        val totalChannels = device?.channelCount?.takeIf { it >= 2 } ?: 2
+        val bitDepth = device?.bitResolution?.takeIf { it == 24 || it == 32 } ?: 16
+
+        val intent = Intent(context, RecordingService::class.java).apply {
+            action = RecordingService.ACTION_START
+            putExtra(RecordingService.EXTRA_CAPTURE_MODE, RecordingService.CAPTURE_MODE_ROOT_ALSA)
+            putExtra(RecordingService.EXTRA_ALSA_CARD, rootAlsaDevice.card)
+            putExtra(RecordingService.EXTRA_ALSA_DEVICE, rootAlsaDevice.device)
+            putExtra(RecordingService.EXTRA_SAMPLE_RATE, sampleRate)
+            putExtra(RecordingService.EXTRA_BIT_DEPTH, bitDepth)
+            putExtra(RecordingService.EXTRA_FORMAT, _selectedFormat.value.nativeValue)
+            putExtra(RecordingService.EXTRA_USB_TOTAL_CHANNELS, totalChannels)
+            putExtra(RecordingService.EXTRA_USB_CHANNEL_OFFSET, _usbChannelOffset.value)
+        }
+        ContextCompat.startForegroundService(context, intent)
+        boundService?.setDeviceLabel("Root ALSA ${rootAlsaDevice.description}")
+        Log.i(TAG, "starting root ALSA capture from ${rootAlsaDevice.path}: ${rootAlsaDevice.description}")
+        return true
     }
 
     fun pauseRecording() = sendCommand(RecordingService.ACTION_PAUSE)
