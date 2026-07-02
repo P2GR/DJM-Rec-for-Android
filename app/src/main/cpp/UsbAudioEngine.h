@@ -114,6 +114,12 @@ private:
     oboe::AudioFormat mOboeFormat = oboe::AudioFormat::I32;
     int32_t mChannelCount = 2;
 
+    uint64_t mAaudioFramesSinceLog = 0;
+    uint64_t mAaudioBytesSinceLog = 0;
+    uint64_t mAaudioNonZeroBytesSinceLog = 0;
+    float mAaudioLeftPeakSinceLog = -60.0f;
+    float mAaudioRightPeakSinceLog = -60.0f;
+
     std::atomic<int32_t> mXRunCount{0};
     std::atomic<int64_t> mElapsedMillis{0};
 

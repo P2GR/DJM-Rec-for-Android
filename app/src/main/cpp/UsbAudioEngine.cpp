@@ -99,9 +99,17 @@ int UsbAudioEngine::open(int32_t audioManagerDeviceId, int32_t sampleRateHint, i
     mStream = stream;
     mFormat.sampleRate = mStream->getSampleRate();
     mFormat.channelCount = mStream->getChannelCount();
+    mChannelCount = mFormat.channelCount;
+    mOboeFormat = mStream->getFormat();
     // We keep the hardware-reported bit depth (from the USB descriptor) for file headers even
     // though the wire format might be padded into I32 — this is the *true* fidelity of the source.
     mFormat.bitsPerSample = bitDepthHint;
+
+    mAaudioFramesSinceLog = 0;
+    mAaudioBytesSinceLog = 0;
+    mAaudioNonZeroBytesSinceLog = 0;
+    mAaudioLeftPeakSinceLog = -60.0f;
+    mAaudioRightPeakSinceLog = -60.0f;
 
     const size_t canonicalBytesPerFrame = bytesPerFrameFor(oboe::AudioFormat::I32, mFormat.channelCount);
     const size_t ringBufferFrames = static_cast<size_t>(mFormat.sampleRate) * 2; // 2s of headroom
@@ -118,7 +126,7 @@ int UsbAudioEngine::open(int32_t audioManagerDeviceId, int32_t sampleRateHint, i
     }
 
     mStreamOpen.store(true, std::memory_order_release);
-    LOGI("Exclusive AAudio input open: %d Hz, %d ch, format=%d, sharing=%s, perf=%s",
+    LOGI("AAudio input open: %d Hz, %d ch, actual format=%d, sharing=%s, perf=%s",
          mFormat.sampleRate, mFormat.channelCount, static_cast<int>(mOboeFormat),
          oboe::convertToText(mStream->getSharingMode()), oboe::convertToText(mStream->getPerformanceMode()));
 
@@ -211,6 +219,15 @@ oboe::DataCallbackResult UsbAudioEngine::onAudioReady(oboe::AudioStream* /*strea
     const size_t sampleCount = static_cast<size_t>(numFrames) * mChannelCount;
     if (canonical.size() < sampleCount) canonical.resize(sampleCount);
 
+    const size_t inputBytes = bytesPerFrameFor(mOboeFormat, mChannelCount) * static_cast<size_t>(numFrames);
+    const auto* inputBytesPtr = static_cast<const uint8_t*>(audioData);
+    for (size_t i = 0; i < inputBytes; ++i) {
+        if (inputBytesPtr[i] != 0) {
+            ++mAaudioNonZeroBytesSinceLog;
+        }
+    }
+    mAaudioBytesSinceLog += inputBytes;
+
     switch (mOboeFormat) {
         case oboe::AudioFormat::I16: {
             const auto* src = static_cast<const int16_t*>(audioData);
@@ -253,6 +270,23 @@ oboe::DataCallbackResult UsbAudioEngine::onAudioReady(oboe::AudioStream* /*strea
     mRightPeakDb.store(reading.rightPeakDb, std::memory_order_relaxed);
     mRightRmsDb.store(reading.rightRmsDb, std::memory_order_relaxed);
     mClipping.store(reading.clipping, std::memory_order_relaxed);
+
+    mAaudioLeftPeakSinceLog = std::max(mAaudioLeftPeakSinceLog, reading.leftPeakDb);
+    mAaudioRightPeakSinceLog = std::max(mAaudioRightPeakSinceLog, reading.rightPeakDb);
+    mAaudioFramesSinceLog += static_cast<uint64_t>(numFrames);
+    if (mAaudioFramesSinceLog >= static_cast<uint64_t>(std::max(1, mFormat.sampleRate))) {
+        LOGI("AAudio payload nonzero bytes=%llu/%llu; decoded peaks L=%.1f dBFS R=%.1f dBFS; "
+             "format=%d ch=%d rate=%d",
+             static_cast<unsigned long long>(mAaudioNonZeroBytesSinceLog),
+             static_cast<unsigned long long>(mAaudioBytesSinceLog),
+             mAaudioLeftPeakSinceLog, mAaudioRightPeakSinceLog,
+             static_cast<int>(mOboeFormat), mChannelCount, mFormat.sampleRate);
+        mAaudioFramesSinceLog = 0;
+        mAaudioBytesSinceLog = 0;
+        mAaudioNonZeroBytesSinceLog = 0;
+        mAaudioLeftPeakSinceLog = -60.0f;
+        mAaudioRightPeakSinceLog = -60.0f;
+    }
 
     if (mWaveformAnalyzer) {
         mWaveformAnalyzer->pushFrames(canonical.data(), numFrames);
