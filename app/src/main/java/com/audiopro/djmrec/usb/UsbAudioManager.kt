@@ -207,9 +207,10 @@ class UsbAudioManager(private val context: Context) {
     }
 
     private fun requestPermission(device: UsbDevice) {
-        val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        val intent = Intent(ACTION_USB_PERMISSION).setPackage(context.packageName)
         val permissionIntent = PendingIntent.getBroadcast(
-            context, 0, Intent(ACTION_USB_PERMISSION), flags
+            context, 0, intent, flags
         )
         usbManager.requestPermission(device, permissionIntent)
     }

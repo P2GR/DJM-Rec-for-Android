@@ -37,7 +37,10 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
     mCarryover.clear();
     mCarryover.reserve(static_cast<size_t>(config.subframeSize) * config.totalChannels);
 
-    int rc = libusb_init(&mContext);
+    libusb_init_option options[1]{};
+    options[0].option = LIBUSB_OPTION_NO_DEVICE_DISCOVERY;
+
+    int rc = libusb_init_context(&mContext, options, 1);
     if (rc != LIBUSB_SUCCESS) {
         mContext = nullptr;
         return libusbErrorString("libusb_init", rc);
