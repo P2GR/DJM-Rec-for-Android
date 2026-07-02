@@ -145,14 +145,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         val intent = Intent(context, RecordingService::class.java).apply {
             action = RecordingService.ACTION_START
+            val androidCapture = device.requiresIsoCapture && _forceAndroidCapture.value
+            val captureBitDepth = if (androidCapture) 16 else device.bitResolution
             putExtra(RecordingService.EXTRA_SAMPLE_RATE, sampleRate)
-            putExtra(RecordingService.EXTRA_BIT_DEPTH, device.bitResolution)
+            putExtra(RecordingService.EXTRA_BIT_DEPTH, captureBitDepth)
             putExtra(RecordingService.EXTRA_FORMAT, _selectedFormat.value.nativeValue)
 
             // Pioneer multichannel mixers (e.g. DJM-A9) need the raw libusb isochronous path
             // to reach the Master Mix pair at a non-zero channel offset -- AAudio can only ever
             // give us channels 1/2. Everything else keeps using the existing AAudio path.
-            val handle = if (device.requiresIsoCapture && !_forceAndroidCapture.value) {
+            val handle = if (device.requiresIsoCapture && !androidCapture) {
                 usbAudioManager.openIsoCaptureHandle()
             } else {
                 null

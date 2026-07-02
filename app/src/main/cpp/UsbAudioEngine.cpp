@@ -56,6 +56,7 @@ int UsbAudioEngine::open(int32_t audioManagerDeviceId, int32_t sampleRateHint, i
     builder.setDirection(oboe::Direction::Input)
         ->setAudioApi(oboe::AudioApi::AAudio) // only AAudio exposes exclusive MMAP + device binding
         ->setDeviceId(audioManagerDeviceId)
+        ->setInputPreset(oboe::InputPreset::Unprocessed)
         ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
         ->setSharingMode(oboe::SharingMode::Exclusive) // bypasses AudioFlinger's mixer entirely
         ->setSampleRate(sampleRateHint)
@@ -85,6 +86,7 @@ int UsbAudioEngine::open(int32_t audioManagerDeviceId, int32_t sampleRateHint, i
         LOGW("Exclusive open failed (%s); retrying shared mode with channel conversion allowed",
              oboe::convertToText(result));
         builder.setSharingMode(oboe::SharingMode::Shared)
+            ->setInputPreset(oboe::InputPreset::Generic)
             ->setChannelConversionAllowed(true)
             ->setFormatConversionAllowed(true)
             ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::Medium);
