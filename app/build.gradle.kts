@@ -38,6 +38,9 @@ fun getKeyPassword()    = loadKeystoreProperties()["keyPassword"]    ?: "android
 android {
     namespace = "com.audiopro.djmrec"
     compileSdk = 34
+    // Pinned so CI (and every dev machine) builds native code against the exact same
+    // NDK — avoids "works locally, fails/behaves differently in CI" native-build drift.
+    ndkVersion = "26.1.10909125"
 
     signingConfigs {
         create("release") {
@@ -53,7 +56,7 @@ android {
         minSdk = 29
         targetSdk = 34
         versionCode = 1
-        versionName = "1.0.0"
+        versionName = "0.1"
 
         // Only ship arm64-v8a: all modern DJ-capable Android hardware (USB-C host + UAC2)
         // is 64-bit ARM. Keeping a single ABI keeps the native audio path easy to validate.

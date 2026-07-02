@@ -54,11 +54,11 @@ entirely.
 ```bash
 # Debug APK (side-by-side installable with release)
 ./gradlew assembleDebug
-# → app/build/outputs/apk/debug/DJM-Rec-for-Android-v1.0.0-debug.apk
+# → app/build/outputs/apk/debug/DJM-Rec-for-Android-v0.1-debug.apk
 
 # Release APK (minified + shrunk)
 ./gradlew assembleRelease
-# → app/build/outputs/apk/release/DJM-Rec-for-Android-v1.0.0-release.apk
+# → app/build/outputs/apk/release/DJM-Rec-for-Android-v0.1-release.apk
 ```
 
 **Requirements:**
@@ -82,6 +82,26 @@ keyPassword=your-key-password
 ```
 
 This file is gitignored — never commit your keystore or its passwords.
+
+---
+
+## 🚀 Automated releases (GitHub Actions)
+
+Pushing a tag matching `v*` (e.g. `v0.1`) triggers the
+[release workflow](.github/workflows/release.yml), which builds both the debug and release
+APKs and publishes them as assets on a new
+[GitHub Release](https://github.com/P2GR/DJM-REC-for-Android/releases) named after the tag:
+
+```bash
+# Bump versionName in app/build.gradle.kts to match, then:
+git tag v0.1
+git push origin v0.1
+```
+
+You can also trigger it manually from the **Actions** tab (`workflow_dispatch`) without
+pushing a tag. CI signs the release build with an auto-generated debug keystore (the same
+fallback described above), so no signing secrets are required to get APKs into Releases —
+add real signing secrets later if you need a Play-Store-ready release build.
 
 ---
 
