@@ -32,6 +32,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         private const val PREFS_NAME = "settings"
         private const val KEY_ROOT_USB_MODE = "root_usb_mode"
+        private const val KEY_MOCK_MIXER = "mock_mixer"
     }
 
     private val usbAudioManager = (application as DjmRecApplication).usbAudioManager
@@ -58,6 +59,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _rootUsbMode = MutableStateFlow(prefs.getBoolean(KEY_ROOT_USB_MODE, false))
     val rootUsbMode: StateFlow<Boolean> = _rootUsbMode.asStateFlow()
+
+    private val _mockMixerMode = MutableStateFlow(prefs.getBoolean(KEY_MOCK_MIXER, false))
+    val mockMixerMode: StateFlow<Boolean> = _mockMixerMode.asStateFlow()
 
     private var boundService: RecordingService? = null
     private var isBound = false
@@ -106,12 +110,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setMockMixerEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_MOCK_MIXER, enabled).apply()
+        _mockMixerMode.value = enabled
+    }
+
     fun startRecording() {
+        val context = getApplication<Application>()
+        val isMock = _mockMixerMode.value
+
+        if (isMock) {
+            // Mock mixer mode: no USB device needed — inject synthetic 12-channel PCM directly.
+            val intent = Intent(context, RecordingService::class.java).apply {
+                action = RecordingService.ACTION_START
+                putExtra(RecordingService.EXTRA_CAPTURE_MODE, RecordingService.CAPTURE_MODE_MOCK)
+                putExtra(RecordingService.EXTRA_SAMPLE_RATE, 48000)
+                putExtra(RecordingService.EXTRA_BIT_DEPTH, 24)
+                putExtra(RecordingService.EXTRA_FORMAT, _selectedFormat.value.nativeValue)
+            }
+            ContextCompat.startForegroundService(context, intent)
+            boundService?.setDeviceLabel("Mock Mixer (12-ch, 48 kHz)")
+            return
+        }
+
         val device = deviceState.value ?: run {
             usbAudioManager.scanForConnectedMixer("record-button-rescan")
             return
         }
-        val context = getApplication<Application>()
         val sampleRate = if (device.negotiatedSampleRate > 0) {
             device.negotiatedSampleRate
         } else {
