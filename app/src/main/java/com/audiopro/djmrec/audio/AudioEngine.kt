@@ -97,4 +97,12 @@ object AudioEngine {
 
     /** Underrun/overrun counters on the ring buffer, useful for diagnosing dropped audio. */
     external fun getXRunCount(): Int
+
+    /**
+     * RGB waveform snapshot: returns `kWaveformBinCount * 4` floats in the layout
+     * `[amp0, low0, mid0, high0, amp1, low1, mid1, high1, ...]`, each in [0, 1].
+     * Low ≈ red, mid ≈ green, high ≈ blue — the CDJ-3000 color mapping.
+     * Intended to be polled at ~15–30 Hz from the UI thread.
+     */
+    external fun getWaveformBins(): FloatArray
 }

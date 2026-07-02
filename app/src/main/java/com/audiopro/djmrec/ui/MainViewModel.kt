@@ -49,6 +49,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _elapsedMillis = MutableStateFlow(0L)
     val elapsedMillis: StateFlow<Long> = _elapsedMillis.asStateFlow()
 
+    private val emptyWaveform = FloatArray(0)
+    private val _waveformBins = MutableStateFlow(emptyWaveform)
+    val waveformBins: StateFlow<FloatArray> = _waveformBins.asStateFlow()
+
     private val _selectedFormat = MutableStateFlow(RecordingFormat.WAV)
     val selectedFormat: StateFlow<RecordingFormat> = _selectedFormat.asStateFlow()
 
@@ -66,6 +70,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             viewModelScope.launch { service.state.collect { _recordingState.value = it } }
             viewModelScope.launch { service.levels.collect { _levels.value = it } }
             viewModelScope.launch { service.elapsedMillis.collect { _elapsedMillis.value = it } }
+            viewModelScope.launch { service.waveformBins.collect { _waveformBins.value = it } }
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {

@@ -96,6 +96,7 @@ int UsbAudioEngine::open(int32_t audioManagerDeviceId, int32_t sampleRateHint, i
     const size_t canonicalBytesPerFrame = bytesPerFrameFor(oboe::AudioFormat::I32, mFormat.channelCount);
     const size_t ringBufferFrames = static_cast<size_t>(mFormat.sampleRate) * 2; // 2s of headroom
     mRingBuffer = std::make_unique<RingBuffer>(ringBufferFrames * canonicalBytesPerFrame);
+    mWaveformAnalyzer = std::make_unique<WaveformAnalyzer>();
 
     result = mStream->requestStart();
     if (result != oboe::Result::OK) {
@@ -142,6 +143,7 @@ int UsbAudioEngine::openUsbIso(const UsbIsoAudioSource::Config& isoConfig, int32
     const size_t canonicalBytesPerFrame = bytesPerFrameFor(oboe::AudioFormat::I32, 2);
     const size_t ringBufferFrames = static_cast<size_t>(sampleRateHint) * 2; // 2s of headroom
     mRingBuffer = std::make_unique<RingBuffer>(ringBufferFrames * canonicalBytesPerFrame);
+    mWaveformAnalyzer = std::make_unique<WaveformAnalyzer>();
 
     mUsbIsoSource = std::make_unique<UsbIsoAudioSource>();
     const std::string error = mUsbIsoSource->start(
@@ -175,6 +177,10 @@ void UsbAudioEngine::onUsbIsoFrames(const int32_t* interleavedStereo, size_t fra
     mRightPeakDb.store(reading.rightPeakDb, std::memory_order_relaxed);
     mRightRmsDb.store(reading.rightRmsDb, std::memory_order_relaxed);
     mClipping.store(reading.clipping, std::memory_order_relaxed);
+
+    if (mWaveformAnalyzer) {
+        mWaveformAnalyzer->pushFrames(interleavedStereo, frameCount);
+    }
 
     if (mRecording.load(std::memory_order_relaxed) &&
         !mPaused.load(std::memory_order_relaxed) &&
@@ -238,6 +244,10 @@ oboe::DataCallbackResult UsbAudioEngine::onAudioReady(oboe::AudioStream* /*strea
     mRightRmsDb.store(reading.rightRmsDb, std::memory_order_relaxed);
     mClipping.store(reading.clipping, std::memory_order_relaxed);
 
+    if (mWaveformAnalyzer) {
+        mWaveformAnalyzer->pushFrames(canonical.data(), numFrames);
+    }
+
     if (mRecording.load(std::memory_order_relaxed) &&
         !mPaused.load(std::memory_order_relaxed) &&
         mRingBuffer) {
@@ -283,6 +293,7 @@ bool UsbAudioEngine::startRecording(const std::string& path, ContainerFormat for
     mStopRequested.store(false, std::memory_order_relaxed);
     mPaused.store(false, std::memory_order_relaxed);
     mRingBuffer->reset();
+    if (mWaveformAnalyzer) mWaveformAnalyzer->reset();
     mRecording.store(true, std::memory_order_release);
 
     mEncoderThread = std::thread(&UsbAudioEngine::encoderThreadLoop, this);
@@ -387,6 +398,14 @@ int64_t UsbAudioEngine::getElapsedMillis() const {
 
 int32_t UsbAudioEngine::getXRunCount() const {
     return mXRunCount.load(std::memory_order_relaxed);
+}
+
+void UsbAudioEngine::getWaveformBins(float* outBins) const {
+    if (mWaveformAnalyzer) {
+        mWaveformAnalyzer->getBins(outBins);
+    } else {
+        std::memset(outBins, 0, kWaveformBinCount * 4 * sizeof(float));
+    }
 }
 
 } // namespace djmrec

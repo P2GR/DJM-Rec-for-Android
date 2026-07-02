@@ -10,6 +10,7 @@
 
 #include "RingBuffer.h"
 #include "UsbIsoAudioSource.h"
+#include "WaveformAnalyzer.h"
 #include "writers/AudioWriter.h"
 
 namespace djmrec {
@@ -73,6 +74,11 @@ public:
     int64_t getElapsedMillis() const;
     int32_t getXRunCount() const;
 
+    /** Copies the RGB waveform snapshot into @p outBins (kBinCount * 4 floats).
+     *  Safe to call from any thread. */
+    void getWaveformBins(float* outBins) const;
+    static constexpr int kWaveformBinCount = WaveformAnalyzer::kBinCount;
+
     // oboe::AudioStreamDataCallback
     oboe::DataCallbackResult onAudioReady(oboe::AudioStream* stream, void* audioData, int32_t numFrames) override;
 
@@ -95,6 +101,7 @@ private:
     SourceMode mSourceMode = SourceMode::None;
     std::unique_ptr<RingBuffer> mRingBuffer;
     std::unique_ptr<AudioWriter> mWriter;
+    std::unique_ptr<WaveformAnalyzer> mWaveformAnalyzer;
     std::thread mEncoderThread;
 
     std::mutex mControlMutex; // guards start/stop/pause transitions (not the realtime path)

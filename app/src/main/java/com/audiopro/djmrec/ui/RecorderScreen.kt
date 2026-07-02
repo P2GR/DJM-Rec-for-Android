@@ -1,7 +1,14 @@
 package com.audiopro.djmrec.ui
 
 import android.widget.Toast
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,6 +17,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Settings
@@ -31,12 +40,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.audiopro.djmrec.diagnostics.LogExporter
 import com.audiopro.djmrec.ui.components.DeviceStatusCard
 import com.audiopro.djmrec.ui.components.FormatSelector
+import com.audiopro.djmrec.ui.components.RgbWaveform
 import com.audiopro.djmrec.ui.components.StereoVuMeter
 import com.audiopro.djmrec.ui.components.TransportControls
 import com.audiopro.djmrec.audio.RecordingState
@@ -51,6 +63,7 @@ fun RecorderScreen(viewModel: MainViewModel) {
     val recordingState by viewModel.recordingState.collectAsState()
     val levels by viewModel.levels.collectAsState()
     val elapsedMillis by viewModel.elapsedMillis.collectAsState()
+    val waveformBins by viewModel.waveformBins.collectAsState()
     val selectedFormat by viewModel.selectedFormat.collectAsState()
     val rootUsbMode by viewModel.rootUsbMode.collectAsState()
 
@@ -142,18 +155,20 @@ fun RecorderScreen(viewModel: MainViewModel) {
                 .padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // Recording indicator + elapsed time — topmost, only visible while capturing.
+            if (recordingState is RecordingState.Recording || recordingState is RecordingState.Paused) {
+                RgbWaveform(bins = waveformBins)
+                Spacer(modifier = Modifier.height(12.dp))
+                RecordingTimer(elapsedMillis = elapsedMillis, isPaused = recordingState is RecordingState.Paused)
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
             DeviceStatusCard(
                 device = device,
                 onRescan = viewModel::rescanUsbDevices
             )
 
             Spacer(modifier = Modifier.height(24.dp))
-
-            Text(
-                text = formatElapsed(elapsedMillis),
-                style = MaterialTheme.typography.headlineSmall.copy(fontFamily = FontFamily.Monospace),
-                color = MaterialTheme.colorScheme.onSurface
-            )
 
             if (recordingState is RecordingState.Error) {
                 Text(
@@ -187,6 +202,44 @@ fun RecorderScreen(viewModel: MainViewModel) {
                 modifier = Modifier.padding(bottom = 12.dp)
             )
         }
+    }
+}
+
+/**
+ * Large elapsed-time display with a pulsing red dot that makes the "actively recording" state
+ * visually unmistakable. The dot pulses gently (~2s cycle) while recording, and stays solid
+ * dim when paused.
+ */
+@Composable
+private fun RecordingTimer(elapsedMillis: Long, isPaused: Boolean) {
+    val infiniteTransition = rememberInfiniteTransition(label = "recDotPulse")
+    val dotAlpha by infiniteTransition.animateFloat(
+        initialValue = if (isPaused) 0.4f else 0.3f,
+        targetValue = if (isPaused) 0.4f else 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1000),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "dotPulse"
+    )
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        // Pulsing red recording dot
+        Box(
+            modifier = Modifier
+                .size(12.dp)
+                .alpha(dotAlpha)
+                .background(Color(0xFFFF4D4D), CircleShape)
+        )
+
+        Text(
+            text = formatElapsed(elapsedMillis),
+            style = MaterialTheme.typography.headlineLarge.copy(fontFamily = FontFamily.Monospace),
+            color = MaterialTheme.colorScheme.onSurface
+        )
     }
 }
 

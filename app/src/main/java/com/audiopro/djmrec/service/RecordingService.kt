@@ -91,6 +91,10 @@ class RecordingService : LifecycleService() {
     private val _elapsedMillis = MutableStateFlow(0L)
     val elapsedMillis: StateFlow<Long> = _elapsedMillis.asStateFlow()
 
+    private val emptyWaveform = FloatArray(0)
+    private val _waveformBins = MutableStateFlow(emptyWaveform)
+    val waveformBins: StateFlow<FloatArray> = _waveformBins.asStateFlow()
+
     private var wakeLock: PowerManager.WakeLock? = null
 
     // Dedicated urgent-audio-priority thread for pulling meter/elapsed data off the native
@@ -115,6 +119,7 @@ class RecordingService : LifecycleService() {
                     right = ChannelLevel(peakDb = raw[2], rmsDb = raw[3], isClipping = clipping)
                 )
                 _elapsedMillis.value = AudioEngine.getElapsedMillis()
+                _waveformBins.value = AudioEngine.getWaveformBins()
                 monitorHandler.postDelayed(this, METER_UPDATE_INTERVAL_MS)
             }
         }
@@ -301,6 +306,7 @@ class RecordingService : LifecycleService() {
         _state.value = RecordingState.Idle
         _elapsedMillis.value = 0L
         _levels.value = StereoLevels(floorLevel, floorLevel)
+        _waveformBins.value = emptyWaveform
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
