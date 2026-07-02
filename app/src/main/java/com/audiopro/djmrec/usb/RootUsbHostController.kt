@@ -1,0 +1,135 @@
+package com.audiopro.djmrec.usb
+
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.util.concurrent.TimeUnit
+
+/**
+ * Best-effort rooted USB-C role helper for devices whose OEM UI leaves the port in device mode.
+ *
+ * Covers three different kernel USB role-switch APIs seen across Android devices, since the
+ * exact sysfs path is chipset/kernel-version specific and there is no single portable one:
+ *  - `/sys/class/typec/` port folders (newer Type-C port-manager class; `data_role`/`power_role` files)
+ *  - `/sys/class/dual_role_usb/` (older Qualcomm dual-role class; single `mode` file)
+ *  - `/sys/class/usb_role/` (generic USB role-switch class; single `role` file)
+ * All writes are best-effort and silently skipped if the path doesn't exist on this kernel.
+ */
+object RootUsbHostController {
+
+    data class CommandResult(
+        val exitCode: Int,
+        val output: String,
+        val timedOut: Boolean
+    )
+
+    private const val ROLE_SWITCH_SCRIPT = """
+        for f in /sys/class/typec/*/data_role /sys/class/typec/*/port*/data_role; do
+          if [ -e "${'$'}f" ]; then
+            echo "before ${'$'}f=$(cat "${'$'}f" 2>/dev/null)"
+            echo host > "${'$'}f" 2>/dev/null || echo "write failed ${'$'}f"
+            echo "after ${'$'}f=$(cat "${'$'}f" 2>/dev/null)"
+          fi
+        done
+        for f in /sys/class/typec/*/power_role /sys/class/typec/*/port*/power_role; do
+          if [ -e "${'$'}f" ]; then
+            echo "before ${'$'}f=$(cat "${'$'}f" 2>/dev/null)"
+            echo source > "${'$'}f" 2>/dev/null || echo "write failed ${'$'}f"
+            echo "after ${'$'}f=$(cat "${'$'}f" 2>/dev/null)"
+          fi
+        done
+        for f in /sys/class/dual_role_usb/*/mode; do
+          if [ -e "${'$'}f" ]; then
+            echo "before ${'$'}f=$(cat "${'$'}f" 2>/dev/null)"
+            echo host > "${'$'}f" 2>/dev/null || echo "write failed ${'$'}f"
+            echo "after ${'$'}f=$(cat "${'$'}f" 2>/dev/null)"
+          fi
+        done
+        for f in /sys/class/usb_role/*/role; do
+          if [ -e "${'$'}f" ]; then
+            echo "before ${'$'}f=$(cat "${'$'}f" 2>/dev/null)"
+            echo host > "${'$'}f" 2>/dev/null || echo "write failed ${'$'}f"
+            echo "after ${'$'}f=$(cat "${'$'}f" 2>/dev/null)"
+          fi
+        done
+    """
+
+    fun isRootAvailable(): Boolean {
+        val result = runSu("id", timeoutSeconds = 3)
+        return result.exitCode == 0 && result.output.contains("uid=0")
+    }
+
+    fun tryForceHostMode(): CommandResult {
+        return runSu(
+            command = """
+                echo 'djmrec root usb assist: start'
+                id
+                echo 'sys.usb.config='$(getprop sys.usb.config 2>/dev/null)
+                echo 'sys.usb.state='$(getprop sys.usb.state 2>/dev/null)
+                $ROLE_SWITCH_SCRIPT
+                echo 'dev bus usb:'
+                ls -l /dev/bus/usb 2>/dev/null
+                find /dev/bus/usb -maxdepth 2 -type c -print 2>/dev/null
+                echo 'djmrec root usb assist: end'
+            """.trimIndent(),
+            timeoutSeconds = 8
+        )
+    }
+
+    fun collectRootStatus(): CommandResult {
+        return runSu(
+            command = """
+                id
+                echo 'sys.usb.config='$(getprop sys.usb.config 2>/dev/null)
+                echo 'sys.usb.state='$(getprop sys.usb.state 2>/dev/null)
+                echo 'role switch files (read-only snapshot):'
+                for f in /sys/class/typec/*/data_role /sys/class/typec/*/power_role \
+                         /sys/class/typec/*/port*/data_role /sys/class/typec/*/port*/power_role \
+                         /sys/class/dual_role_usb/*/mode /sys/class/usb_role/*/role; do
+                  if [ -e "${'$'}f" ]; then echo "${'$'}f=$(cat "${'$'}f" 2>/dev/null)"; fi
+                done
+                echo 'dev bus usb:'
+                ls -l /dev/bus/usb 2>/dev/null
+                find /dev/bus/usb -maxdepth 2 -type c -print 2>/dev/null
+            """.trimIndent(),
+            timeoutSeconds = 6
+        )
+    }
+
+    /**
+     * Reads the KERNEL's own view of USB attach events via `dmesg`, independent of whatever
+     * Android's UsbManager/framework layer decides to expose to apps. This is the key diagnostic
+     * to tell apart two very different failures:
+     *  - kernel shows "new high-speed USB device" + descriptor reads succeeding -> the hardware
+     *    negotiation worked and Android's framework is the one hiding the device from apps.
+     *  - kernel shows errors like "device descriptor read/64, error -71" (or nothing at all when
+     *    the mixer is plugged in) -> the phone and mixer are failing to negotiate power/data at
+     *    the hardware/electrical level; no app-level code (root or not) can fix that.
+     */
+    fun captureKernelUsbLog(): CommandResult {
+        return runSu(
+            command = """
+                dmesg 2>/dev/null | grep -iE 'usb|typec|dwc3|xhci' | tail -n 150 ||
+                    echo '(dmesg unavailable or empty - some kernels restrict it even to root via dmesg_restrict)'
+            """.trimIndent(),
+            timeoutSeconds = 6
+        )
+    }
+
+    private fun runSu(command: String, timeoutSeconds: Long): CommandResult {
+        return try {
+            val process = ProcessBuilder("su", "-c", command)
+                .redirectErrorStream(true)
+                .start()
+            val finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
+            if (!finished) {
+                process.destroyForcibly()
+                CommandResult(-1, "su command timed out", timedOut = true)
+            } else {
+                val output = BufferedReader(InputStreamReader(process.inputStream)).use { it.readText() }
+                CommandResult(process.exitValue(), output, timedOut = false)
+            }
+        } catch (e: Exception) {
+            CommandResult(-1, e.message ?: e::class.java.simpleName, timedOut = false)
+        }
+    }
+}

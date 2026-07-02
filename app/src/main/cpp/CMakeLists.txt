@@ -1,0 +1,179 @@
+cmake_minimum_required(VERSION 3.22.1)
+# LANGUAGES C CXX: libusb (pulled in below) is a plain-C library. Without explicitly enabling
+# C here, CMake never runs C-compiler ABI detection, and generating the `usb` static library's
+# archive rule later fails with "Missing variable is: CMAKE_C_ARCHIVE_FINISH".
+project(djmrec_audio LANGUAGES C CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+include(FetchContent)
+
+# ---------------------------------------------------------------------------
+# Oboe: Google's low-latency AAudio/OpenSL ES wrapper. Used for the exclusive,
+# low-latency capture stream bound to the USB mixer.
+# ---------------------------------------------------------------------------
+FetchContent_Declare(
+    oboe
+    GIT_REPOSITORY https://github.com/google/oboe.git
+    GIT_TAG        1.9.0
+)
+FetchContent_MakeAvailable(oboe)
+
+# Building Oboe from raw source (as opposed to consuming the prebuilt AAR via Prefab) only
+# defines the plain `oboe` target, not the namespaced `oboe::oboe` alias — add it ourselves so
+# target_link_libraries() below works the same way it would with the Prefab-packaged AAR.
+if (NOT TARGET oboe::oboe)
+    add_library(oboe::oboe ALIAS oboe)
+endif ()
+
+# ---------------------------------------------------------------------------
+# libFLAC: lossless encoder used by FlacWriter. Built from source via
+# FetchContent so no prebuilt .so/.a needs to be checked in. We only need the
+# encoder API (FLAC/stream_encoder.h), so we disable everything else to keep
+# the native library small and the build fast.
+# ---------------------------------------------------------------------------
+set(BUILD_CXXLIBS OFF CACHE BOOL "" FORCE)
+set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(INSTALL_MANPAGES OFF CACHE BOOL "" FORCE)
+set(BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+set(WITH_OGG OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    flac
+    GIT_REPOSITORY https://github.com/xiph/flac.git
+    GIT_TAG        1.4.3
+)
+FetchContent_MakeAvailable(flac)
+
+# ---------------------------------------------------------------------------
+# libmp3lame: NOT auto-fetched (LGPL source distribution is the integrator's
+# responsibility). Drop the upstream LAME source tree (the `libmp3lame/`
+# folder from https://sourceforge.net/projects/lame/) under
+# `third_party/lame/libmp3lame` and reconfigure — Mp3Writer will otherwise
+# compile in a stub that fails fast at runtime with a clear log message.
+# ---------------------------------------------------------------------------
+set(LAME_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/lame/libmp3lame")
+if (EXISTS "${LAME_SRC_DIR}/lame.c")
+    file(GLOB LAME_SOURCES "${LAME_SRC_DIR}/*.c")
+    add_library(mp3lame STATIC ${LAME_SOURCES})
+    target_include_directories(mp3lame PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/lame/include"
+        "${LAME_SRC_DIR}"
+    )
+    target_compile_definitions(mp3lame PRIVATE HAVE_CONFIG_H=0)
+    set(HAVE_LAME 1)
+else ()
+    message(WARNING "djmrec: LAME source not found at ${LAME_SRC_DIR} -- MP3 export will be disabled at runtime.")
+    set(HAVE_LAME 0)
+endif ()
+
+# ---------------------------------------------------------------------------
+# libusb: raw isochronous USB-audio capture, bypassing AAudio/AudioRecord.
+#
+# Why this exists: Android's audio HAL only ever exposes a stereo (or, in the
+# best case, a generic multichannel) view of a UAC2 interface through
+# AudioRecord/AAudio -- there is no public API to select an arbitrary channel
+# *offset* within a multichannel interface. DJ mixers like the Pioneer DJM-A9
+# put the "Master Mix" on USB channels 9/10 of a combined 12-channel
+# interface, which AAudio has no way to target. libusb_wrap_sys_device() lets
+# us hand the fd from an already-permission-granted UsbDeviceConnection
+# straight to libusb -- entirely in user space, no root and no udev rules
+# needed, since Android's own UsbManager already did the permission dance and
+# libusb never has to open the device node itself.
+#
+# libusb's own build system (autotools / MSVC projects) has no CMake/NDK
+# support, so rather than trying to drive it via ExternalProject we fetch the
+# raw source and compile just the handful of C files the Linux/usbfs backend
+# needs directly as part of this CMake tree -- mirroring the source list
+# libusb's own upstream `android/jni/Android.mk` uses for ndk-build. Hotplug
+# is intentionally wired to the netlink backend (linux_netlink.c) rather than
+# libudev (Android has neither udev nor a matching shared lib), which is fine
+# here since Android's UsbManager -- not libusb -- is what detects attach.
+# ---------------------------------------------------------------------------
+FetchContent_Declare(
+    libusb_src
+    GIT_REPOSITORY https://github.com/libusb/libusb.git
+    GIT_TAG        master
+)
+FetchContent_Populate(libusb_src)
+
+set(LIBUSB_DIR "${libusb_src_SOURCE_DIR}/libusb")
+set(LIBUSB_ANDROID_CONFIG_DIR "${libusb_src_SOURCE_DIR}/android")
+
+# version_describe.h is normally generated by build-aux/gen-describe.sh (invoked by every
+# supported build system -- autotools, MSVC, Xcode, ndk-build) and #include<>'d by core.c for
+# the human-readable build identifier exposed via libusb_get_version()->describe. We have no
+# equivalent generation step, so just write a static stand-in -- the exact string is diagnostic
+# only and never affects capture behavior.
+file(WRITE "${LIBUSB_DIR}/version_describe.h" "#define LIBUSB_DESCRIBE \"djmrec-cmake-build\"\n")
+
+add_library(
+    usb
+    STATIC
+    ${LIBUSB_DIR}/core.c
+    ${LIBUSB_DIR}/descriptor.c
+    ${LIBUSB_DIR}/hotplug.c
+    ${LIBUSB_DIR}/io.c
+    ${LIBUSB_DIR}/strerror.c
+    ${LIBUSB_DIR}/sync.c
+    ${LIBUSB_DIR}/os/linux_usbfs.c
+    ${LIBUSB_DIR}/os/linux_netlink.c
+    ${LIBUSB_DIR}/os/events_posix.c
+    ${LIBUSB_DIR}/os/threads_posix.c
+)
+target_include_directories(
+    usb
+    PUBLIC ${LIBUSB_DIR}
+    PRIVATE ${LIBUSB_DIR}/os ${LIBUSB_ANDROID_CONFIG_DIR}
+)
+# config.h comes straight from libusb's own repo (android/config.h) -- the exact file libusb's
+# maintainers ship for building this same source list via ndk-build (see android/jni/libusb.mk)
+# -- rather than a hand-written guess, so it's guaranteed to define what libusbi.h/os/*.c expect
+# (PRINTF_FORMAT, DEFAULT_VISIBILITY, USE_SYSTEM_LOGGING_FACILITY, etc.).
+target_compile_definitions(usb PRIVATE HAVE_CONFIG_H=1)
+# -fvisibility=hidden + -pthread mirror android/jni/libusb.mk's LOCAL_CFLAGS exactly.
+target_compile_options(usb PRIVATE -fvisibility=hidden -pthread -Wno-unused-parameter -Wno-unused-function)
+# USE_SYSTEM_LOGGING_FACILITY (set in android/config.h) routes libusb's internal logging through
+# Android's system log, which requires linking liblog.so -- matches libusb.mk's LOCAL_LDLIBS := -llog.
+target_link_libraries(usb PRIVATE log)
+if (NOT TARGET usb::usb)
+    add_library(usb::usb ALIAS usb)
+endif ()
+
+
+add_library(
+    djmrec_audio
+    SHARED
+    UsbAudioEngine.cpp
+    UsbIsoAudioSource.cpp
+    writers/WavWriter.cpp
+    writers/FlacWriter.cpp
+    writers/Mp3Writer.cpp
+    jni/AudioEngineJNI.cpp
+)
+
+target_compile_definitions(djmrec_audio PRIVATE HAVE_LAME=${HAVE_LAME})
+
+target_include_directories(
+    djmrec_audio PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${flac_SOURCE_DIR}/include
+    ${LIBUSB_DIR}
+)
+
+target_link_libraries(
+    djmrec_audio
+    PRIVATE
+    oboe::oboe
+    FLAC
+    usb::usb
+    android
+    log
+)
+
+if (HAVE_LAME)
+    target_link_libraries(djmrec_audio PRIVATE mp3lame)
+endif ()
