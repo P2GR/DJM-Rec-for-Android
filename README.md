@@ -87,7 +87,7 @@ This file is gitignored — never commit your keystore or its passwords.
 
 ## 🚀 Automated releases (GitHub Actions)
 
-Every push to `main`/`master` triggers the
+Every push to `main` triggers the
 [release workflow](.github/workflows/release.yml), which builds both the debug and release
 APKs and publishes them as assets on a
 [GitHub Release](https://github.com/P2GR/DJM-REC-for-Android/releases) tagged from

@@ -1,6 +1,6 @@
 name: Build & Release
 
-# Every push to main/master builds the app and publishes debug + release APKs as assets on
+# Every push to main builds the app and publishes debug + release APKs as assets on
 # a GitHub Release tagged from versionName in app/build.gradle.kts (currently v0.1). Pushing
 # again with the same versionName updates that release's assets in place; bumping
 # versionName cuts a new release automatically — no manual tagging needed. Can also be run
@@ -9,7 +9,6 @@ on:
   push:
     branches:
       - main
-      - master
   workflow_dispatch:
     inputs:
       version:
