@@ -202,7 +202,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 prepareResult.output
         )
 
-        val candidates = RootUsbHostController.findAlsaCaptureDevices()
+        val candidates = RootUsbHostController.findAlsaCaptureDevices(prepareResult.output)
         Log.i(TAG, "root ALSA capture candidates=${candidates.joinToString()}")
         val rootAlsaDevice = candidates.firstOrNull()
         if (rootAlsaDevice == null) {

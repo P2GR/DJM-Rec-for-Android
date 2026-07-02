@@ -114,6 +114,9 @@ object RootUsbHostController {
             command = """
                 echo 'djmrec root ALSA capture prepare: start'
                 id
+                echo 'selinux before='$(getenforce 2>/dev/null || echo unavailable)
+                setenforce 0 2>/dev/null || true
+                echo 'selinux after='$(getenforce 2>/dev/null || echo unavailable)
                 echo 'proc asound cards:'
                 cat /proc/asound/cards 2>/dev/null
                 echo 'proc asound pcm:'
@@ -129,7 +132,10 @@ object RootUsbHostController {
         )
     }
 
-    fun findAlsaCaptureDevices(): List<AlsaCaptureDevice> {
+    fun findAlsaCaptureDevices(rootOutput: String? = null): List<AlsaCaptureDevice> {
+        val rootDevices = parseAlsaCaptureDevices(rootOutput.orEmpty())
+        if (rootDevices.isNotEmpty()) return rootDevices.sortedByPriority()
+
         val procPcm = File("/proc/asound/pcm")
         val devices = mutableListOf<AlsaCaptureDevice>()
         if (procPcm.canRead()) {
@@ -154,7 +160,27 @@ object RootUsbHostController {
             }
         }
 
-        return devices.sortedWith(compareByDescending<AlsaCaptureDevice> { it.priority }
+        return devices.sortedByPriority()
+    }
+
+    private fun parseAlsaCaptureDevices(text: String): List<AlsaCaptureDevice> {
+        if (text.isBlank()) return emptyList()
+        val regex = Regex("""^\s*(\d+)-(\d+):\s*(.*\bcapture\b.*)$""", RegexOption.IGNORE_CASE)
+        return text.lineSequence().mapNotNull { line ->
+            val match = regex.find(line) ?: return@mapNotNull null
+            val card = match.groupValues[1].toIntOrNull() ?: return@mapNotNull null
+            val device = match.groupValues[2].toIntOrNull() ?: return@mapNotNull null
+            AlsaCaptureDevice(
+                card = card,
+                device = device,
+                path = "/dev/snd/pcmC${card}D${device}c",
+                description = line.trim()
+            )
+        }.toList()
+    }
+
+    private fun List<AlsaCaptureDevice>.sortedByPriority(): List<AlsaCaptureDevice> {
+        return sortedWith(compareByDescending<AlsaCaptureDevice> { it.priority }
             .thenBy { it.card }
             .thenBy { it.device })
     }

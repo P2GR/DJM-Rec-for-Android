@@ -141,7 +141,7 @@ object LogExporter {
             sb.appendLine("su exit=${status.exitCode} timedOut=${status.timedOut}")
             sb.appendLine(status.output)
 
-            val alsaCandidates = RootUsbHostController.findAlsaCaptureDevices()
+            val alsaCandidates = RootUsbHostController.findAlsaCaptureDevices(status.output)
             sb.appendLine("root ALSA capture candidates (${alsaCandidates.size}):")
             if (alsaCandidates.isEmpty()) {
                 sb.appendLine("  none")
