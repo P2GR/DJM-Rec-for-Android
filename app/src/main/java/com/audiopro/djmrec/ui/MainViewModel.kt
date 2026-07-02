@@ -33,6 +33,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         private const val PREFS_NAME = "settings"
         private const val KEY_ROOT_USB_MODE = "root_usb_mode"
+        private const val KEY_USB_CHANNEL_OFFSET = "usb_channel_offset"
     }
 
     private val usbAudioManager = (application as DjmRecApplication).usbAudioManager
@@ -62,6 +63,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _rootUsbMode = MutableStateFlow(prefs.getBoolean(KEY_ROOT_USB_MODE, false))
     val rootUsbMode: StateFlow<Boolean> = _rootUsbMode.asStateFlow()
+
+    private val _usbChannelOffset = MutableStateFlow(
+        prefs.getInt(KEY_USB_CHANNEL_OFFSET, UsbAudioManager.AUTO_CHANNEL_OFFSET)
+    )
+    val usbChannelOffset: StateFlow<Int> = _usbChannelOffset.asStateFlow()
 
     private var boundService: RecordingService? = null
     private var isBound = false
@@ -110,6 +116,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setUsbChannelOffset(offset: Int) {
+        val sanitized = if (offset < 0) UsbAudioManager.AUTO_CHANNEL_OFFSET else offset
+        prefs.edit().putInt(KEY_USB_CHANNEL_OFFSET, sanitized).apply()
+        _usbChannelOffset.value = sanitized
+    }
+
     fun startRecording() {
         val context = getApplication<Application>()
         val device = deviceState.value ?: run {
@@ -141,7 +153,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 putExtra(RecordingService.EXTRA_USB_MAX_PACKET_SIZE, handle.maxPacketSize)
                 putExtra(RecordingService.EXTRA_USB_TOTAL_CHANNELS, handle.totalChannels)
                 putExtra(RecordingService.EXTRA_USB_SUBFRAME_SIZE, handle.subframeSize)
-                putExtra(RecordingService.EXTRA_USB_CHANNEL_OFFSET, UsbAudioManager.AUTO_CHANNEL_OFFSET)
+                putExtra(RecordingService.EXTRA_USB_CHANNEL_OFFSET, _usbChannelOffset.value)
             } else {
                 // Either a non-Pioneer / exact-stereo device, or openIsoCaptureHandle() failed
                 // (e.g. permission lost) -- fall back to the AAudio path rather than silently

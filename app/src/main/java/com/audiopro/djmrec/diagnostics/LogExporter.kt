@@ -32,6 +32,7 @@ object LogExporter {
     private const val TAG = "LogExporter"
     private const val PREFS_NAME = "settings"
     private const val KEY_ROOT_USB_MODE = "root_usb_mode"
+    private const val KEY_USB_CHANNEL_OFFSET = "usb_channel_offset"
 
     /** Runs on whatever thread it's called from — callers should invoke off the main thread. */
     fun collectDiagnosticReport(context: Context): String {
@@ -48,6 +49,7 @@ object LogExporter {
         appendAudioSection(context, sb)
         appendPowerSection(context, sb)
         appendRootSection(context, sb)
+        appendUsbCaptureSettingsSection(context, sb)
 
         sb.appendLine("=== logcat (this app's process only, most recent first not guaranteed) ===")
         sb.append(readOwnLogcat())
@@ -152,6 +154,17 @@ object LogExporter {
         } else {
             sb.appendLine("disabled; enable it from the settings button if this rooted phone needs host-role forcing")
         }
+        sb.appendLine()
+    }
+
+    private fun appendUsbCaptureSettingsSection(context: Context, sb: StringBuilder) {
+        val offset = context
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getInt(KEY_USB_CHANNEL_OFFSET, -1)
+        sb.appendLine("=== USB capture settings ===")
+        sb.appendLine(
+            "stereo pair: " + if (offset < 0) "Auto" else "USB channels ${offset + 1}-${offset + 2}"
+        )
         sb.appendLine()
     }
 

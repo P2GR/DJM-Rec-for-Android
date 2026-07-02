@@ -67,6 +67,7 @@ fun RecorderScreen(viewModel: MainViewModel) {
     val waveformBins by viewModel.waveformBins.collectAsState()
     val selectedFormat by viewModel.selectedFormat.collectAsState()
     val rootUsbMode by viewModel.rootUsbMode.collectAsState()
+    val usbChannelOffset by viewModel.usbChannelOffset.collectAsState()
 
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -107,6 +108,12 @@ fun RecorderScreen(viewModel: MainViewModel) {
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
+
+                    UsbChannelPairSelector(
+                        totalChannels = device?.channelCount ?: 12,
+                        selectedOffset = usbChannelOffset,
+                        onSelect = viewModel::setUsbChannelOffset
+                    )
                 }
             },
             confirmButton = {
@@ -215,6 +222,43 @@ fun RecorderScreen(viewModel: MainViewModel) {
                 onStop = viewModel::stopRecording,
                 modifier = Modifier.padding(bottom = 12.dp)
             )
+        }
+    }
+}
+
+@Composable
+private fun UsbChannelPairSelector(
+    totalChannels: Int,
+    selectedOffset: Int,
+    onSelect: (Int) -> Unit
+) {
+    Text(
+        text = "USB stereo pair",
+        style = MaterialTheme.typography.titleSmall
+    )
+    Text(
+        text = "Auto follows the loudest pair; choose a pair manually if the mixer sends silence on the default pair.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    val offsets = listOf(-1) + (0 until totalChannels - 1 step 2).toList()
+    offsets.chunked(3).forEach { rowOffsets ->
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            rowOffsets.forEach { offset ->
+                TextButton(onClick = { onSelect(offset) }) {
+                    Text(
+                        text = if (offset < 0) "Auto" else "${offset + 1}-${offset + 2}",
+                        color = if (offset == selectedOffset) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        }
+                    )
+                }
+            }
         }
     }
 }

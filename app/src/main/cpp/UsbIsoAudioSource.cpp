@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <climits>
 #include <cstring>
+#include <sstream>
 
 #define TAG "UsbIsoAudioSource"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
@@ -50,6 +51,17 @@ uint32_t sampleMagnitude(int32_t sample) {
     }
     return static_cast<uint32_t>(sample < 0 ? -sample : sample);
 }
+
+std::string peakSummary(const std::vector<uint32_t>& pairPeaks) {
+    std::ostringstream out;
+    for (size_t pair = 0; pair < pairPeaks.size(); ++pair) {
+        if (pair > 0) {
+            out << ", ";
+        }
+        out << "ch" << (pair * 2 + 1) << "-" << (pair * 2 + 2) << "=" << pairPeaks[pair];
+    }
+    return out.str();
+}
 } // namespace
 
 UsbIsoAudioSource::~UsbIsoAudioSource() {
@@ -69,6 +81,10 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
     mConfig = config;
     mCallback = std::move(callback);
     mResolvedChannelOffset = config.extractChannelOffset;
+    mFramesSincePeakLog = 0;
+    mBytesSincePeakLog = 0;
+    mNonZeroBytesSincePeakLog = 0;
+    mPairPeaks.assign(static_cast<size_t>((config.totalChannels + 1) / 2), 0);
     mCarryover.clear();
     mCarryover.reserve(static_cast<size_t>(config.subframeSize) * config.totalChannels);
 
@@ -213,6 +229,13 @@ void UsbIsoAudioSource::demuxAndEmit(const uint8_t* data, size_t length) {
         return;
     }
 
+    mBytesSincePeakLog += length;
+    for (size_t i = 0; i < length; ++i) {
+        if (data[i] != 0) {
+            ++mNonZeroBytesSincePeakLog;
+        }
+    }
+
     // Frames from a UAC2 isochronous endpoint are not guaranteed to align to packet
     // boundaries, so leftover bytes from the previous packet are stitched onto the front of
     // this one before we start slicing out whole frames.
@@ -231,23 +254,30 @@ void UsbIsoAudioSource::demuxAndEmit(const uint8_t* data, size_t length) {
         }
 
         const int subframe = mConfig.subframeSize;
+        for (int offset = 0; offset + 1 < mConfig.totalChannels; offset += 2) {
+            uint32_t pairMagnitude = 0;
+            const int offsetBytes = offset * subframe;
+            for (size_t f = 0; f < completeFrames; ++f) {
+                const uint8_t* frameBase = mWorking.data() + f * frameSize + offsetBytes;
+                const int32_t left = decodeCanonicalSample(frameBase, subframe, mConfig.bitResolution);
+                const int32_t right = decodeCanonicalSample(frameBase + subframe, subframe, mConfig.bitResolution);
+                pairMagnitude = std::max(pairMagnitude, sampleMagnitude(left));
+                pairMagnitude = std::max(pairMagnitude, sampleMagnitude(right));
+            }
+            const size_t pairIndex = static_cast<size_t>(offset / 2);
+            if (pairIndex < mPairPeaks.size()) {
+                mPairPeaks[pairIndex] = std::max(mPairPeaks[pairIndex], pairMagnitude);
+            }
+        }
 
         if (mConfig.extractChannelOffset < 0) {
             uint32_t bestMagnitude = 0;
             int bestOffset = 0;
-            for (int offset = 0; offset + 1 < mConfig.totalChannels; offset += 2) {
-                uint32_t pairMagnitude = 0;
-                const int offsetBytes = offset * subframe;
-                for (size_t f = 0; f < completeFrames; ++f) {
-                    const uint8_t* frameBase = mWorking.data() + f * frameSize + offsetBytes;
-                    const int32_t left = decodeCanonicalSample(frameBase, subframe, mConfig.bitResolution);
-                    const int32_t right = decodeCanonicalSample(frameBase + subframe, subframe, mConfig.bitResolution);
-                    pairMagnitude = std::max(pairMagnitude, sampleMagnitude(left));
-                    pairMagnitude = std::max(pairMagnitude, sampleMagnitude(right));
-                }
+            for (size_t pairIndex = 0; pairIndex < mPairPeaks.size(); ++pairIndex) {
+                const uint32_t pairMagnitude = mPairPeaks[pairIndex];
                 if (pairMagnitude > bestMagnitude) {
                     bestMagnitude = pairMagnitude;
-                    bestOffset = offset;
+                    bestOffset = static_cast<int>(pairIndex * 2);
                 }
             }
 
@@ -273,6 +303,18 @@ void UsbIsoAudioSource::demuxAndEmit(const uint8_t* data, size_t length) {
 
         if (mCallback) {
             mCallback(mScratch.data(), completeFrames);
+        }
+
+        mFramesSincePeakLog += completeFrames;
+        if (mFramesSincePeakLog >= 96000) {
+            LOGI("USB raw payload nonzero bytes=%llu/%llu; decoded pair peaks: %s; selected ch %d-%d",
+                 static_cast<unsigned long long>(mNonZeroBytesSincePeakLog),
+                 static_cast<unsigned long long>(mBytesSincePeakLog),
+                 peakSummary(mPairPeaks).c_str(), selectedOffset + 1, selectedOffset + 2);
+            std::fill(mPairPeaks.begin(), mPairPeaks.end(), 0);
+            mFramesSincePeakLog = 0;
+            mBytesSincePeakLog = 0;
+            mNonZeroBytesSincePeakLog = 0;
         }
     }
 
