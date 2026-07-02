@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -72,6 +73,12 @@ fun RecorderScreen(viewModel: MainViewModel) {
     val coroutineScope = rememberCoroutineScope()
     var isExportingLogs by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showLibrary by remember { mutableStateOf(false) }
+
+    if (showLibrary) {
+        LibraryScreen(onBack = { showLibrary = false })
+        return
+    }
 
     if (showSettings) {
         AlertDialog(
@@ -137,6 +144,10 @@ fun RecorderScreen(viewModel: MainViewModel) {
         containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                FloatingActionButton(onClick = { showLibrary = true }) {
+                    Icon(imageVector = Icons.Filled.LibraryMusic, contentDescription = "Recordings library")
+                }
+
                 FloatingActionButton(onClick = { showSettings = true }) {
                     Icon(imageVector = Icons.Filled.Settings, contentDescription = "USB settings")
                 }
