@@ -88,7 +88,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectFormat(format: RecordingFormat) {
-        if (_recordingState.value is RecordingState.Idle) {
+        if (_recordingState.value is RecordingState.Idle && format != RecordingFormat.MP3) {
             _selectedFormat.value = format
         }
     }
@@ -137,7 +137,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 putExtra(RecordingService.EXTRA_USB_MAX_PACKET_SIZE, handle.maxPacketSize)
                 putExtra(RecordingService.EXTRA_USB_TOTAL_CHANNELS, handle.totalChannels)
                 putExtra(RecordingService.EXTRA_USB_SUBFRAME_SIZE, handle.subframeSize)
-                putExtra(RecordingService.EXTRA_USB_CHANNEL_OFFSET, UsbAudioManager.MASTER_MIX_CHANNEL_OFFSET)
+                putExtra(RecordingService.EXTRA_USB_CHANNEL_OFFSET, UsbAudioManager.AUTO_CHANNEL_OFFSET)
             } else {
                 // Either a non-Pioneer / exact-stereo device, or openIsoCaptureHandle() failed
                 // (e.g. permission lost) -- fall back to the AAudio path rather than silently

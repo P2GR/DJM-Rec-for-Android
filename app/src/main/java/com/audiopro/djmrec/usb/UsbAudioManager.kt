@@ -44,6 +44,7 @@ class UsbAudioManager(private val context: Context) {
          * the single constant to change.
          */
         const val MASTER_MIX_CHANNEL_OFFSET = 8
+        const val AUTO_CHANNEL_OFFSET = -1
 
         private fun isPioneerDevice(device: UsbDevice) = device.vendorId in PIONEER_VENDOR_IDS
     }

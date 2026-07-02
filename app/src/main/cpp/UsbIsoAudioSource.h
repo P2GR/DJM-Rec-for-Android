@@ -48,7 +48,7 @@ public:
         int totalChannels = 2;         // channels in the *wire* format (e.g. 12 for the DJM-A9)
         int subframeSize = 4;          // bytes per sample container (1/2/3/4)
         int bitResolution = 24;        // significant bits per sample within the container
-        int extractChannelOffset = 0;  // 0-indexed first channel of the stereo pair to extract
+        int extractChannelOffset = 0;  // 0-indexed first channel of the stereo pair; -1 = auto-pick loudest pair
     };
 
     /** Canonical (left-justified, sign-extended) int32 interleaved STEREO frames.
@@ -94,6 +94,7 @@ private:
     std::vector<uint8_t> mCarryover; // partial-frame bytes carried over between packets
     std::vector<uint8_t> mWorking;   // scratch: carryover + newest packet, reused per call
     std::vector<int32_t> mScratch;   // reusable decode buffer, grown as needed
+    int mResolvedChannelOffset = -1;
 };
 
 } // namespace djmrec

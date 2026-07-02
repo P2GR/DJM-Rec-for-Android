@@ -29,7 +29,7 @@ fun FormatSelector(
         modifier = modifier.fillMaxWidth().selectableGroup(),
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
-        RecordingFormat.entries.forEach { format ->
+        RecordingFormat.entries.filter { it != RecordingFormat.MP3 }.forEach { format ->
             val labelRes = when (format) {
                 RecordingFormat.WAV -> R.string.format_wav
                 RecordingFormat.FLAC -> R.string.format_flac

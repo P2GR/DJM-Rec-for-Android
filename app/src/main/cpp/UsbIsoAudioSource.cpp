@@ -16,6 +16,38 @@ namespace {
 std::string libusbErrorString(const char* what, int code) {
     return std::string(what) + " failed: " + libusb_error_name(code);
 }
+
+int32_t decodeCanonicalSample(const uint8_t* sample, int subframeSize, int bitResolution) {
+    switch (subframeSize) {
+        case 1:
+            return static_cast<int32_t>(static_cast<int8_t>(sample[0])) << 24;
+        case 2: {
+            auto v = static_cast<int16_t>(sample[0] | (sample[1] << 8));
+            return static_cast<int32_t>(v) << 16;
+        }
+        case 3: {
+            int32_t v = sample[0] | (sample[1] << 8) | (sample[2] << 16);
+            if (v & 0x00800000) {
+                v |= static_cast<int32_t>(0xFF000000);
+            }
+            return v << 8;
+        }
+        case 4:
+        default: {
+            auto v = static_cast<int32_t>(
+                static_cast<uint32_t>(sample[0]) | (static_cast<uint32_t>(sample[1]) << 8) |
+                (static_cast<uint32_t>(sample[2]) << 16) | (static_cast<uint32_t>(sample[3]) << 24));
+            return (bitResolution > 0 && bitResolution <= 24) ? (v << 8) : v;
+        }
+    }
+}
+
+uint32_t sampleMagnitude(int32_t sample) {
+    if (sample == INT32_MIN) {
+        return static_cast<uint32_t>(INT32_MAX) + 1u;
+    }
+    return static_cast<uint32_t>(sample < 0 ? -sample : sample);
+}
 } // namespace
 
 UsbIsoAudioSource::~UsbIsoAudioSource() {
@@ -28,12 +60,13 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
     }
     if (config.fd < 0 || config.endpointAddress < 0 || config.maxPacketSize <= 0 ||
         config.totalChannels < 1 || config.subframeSize < 1 ||
-        config.extractChannelOffset + 2 > config.totalChannels) {
+        (config.extractChannelOffset >= 0 && config.extractChannelOffset + 2 > config.totalChannels)) {
         return "invalid capture configuration";
     }
 
     mConfig = config;
     mCallback = std::move(callback);
+    mResolvedChannelOffset = config.extractChannelOffset;
     mCarryover.clear();
     mCarryover.reserve(static_cast<size_t>(config.subframeSize) * config.totalChannels);
 
@@ -83,10 +116,12 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
     }
 
     LOGI("Claimed iface %d alt %d, endpoint 0x%02x, maxPacketSize=%d, wire=%dch/%dbit (subframe %d "
-         "bytes), extracting ch %d-%d",
+         "bytes), extracting %s",
          config.interfaceNumber, config.alternateSetting, config.endpointAddress, config.maxPacketSize,
-         config.totalChannels, config.bitResolution, config.subframeSize, config.extractChannelOffset + 1,
-         config.extractChannelOffset + 2);
+         config.totalChannels, config.bitResolution, config.subframeSize,
+         config.extractChannelOffset < 0 ? "auto stereo pair" :
+         (std::string("ch ") + std::to_string(config.extractChannelOffset + 1) + "-" +
+          std::to_string(config.extractChannelOffset + 2)).c_str());
 
     mTransfers.reserve(kNumTransfers);
     for (int i = 0; i < kNumTransfers; ++i) {
@@ -193,45 +228,43 @@ void UsbIsoAudioSource::demuxAndEmit(const uint8_t* data, size_t length) {
         }
 
         const int subframe = mConfig.subframeSize;
-        const int offsetBytes = mConfig.extractChannelOffset * subframe;
-        const bool is24in32 = subframe == 4 && mConfig.bitResolution > 0 && mConfig.bitResolution <= 24;
+
+        if (mConfig.extractChannelOffset < 0) {
+            uint32_t bestMagnitude = 0;
+            int bestOffset = 0;
+            for (int offset = 0; offset + 1 < mConfig.totalChannels; offset += 2) {
+                uint32_t pairMagnitude = 0;
+                const int offsetBytes = offset * subframe;
+                for (size_t f = 0; f < completeFrames; ++f) {
+                    const uint8_t* frameBase = mWorking.data() + f * frameSize + offsetBytes;
+                    const int32_t left = decodeCanonicalSample(frameBase, subframe, mConfig.bitResolution);
+                    const int32_t right = decodeCanonicalSample(frameBase + subframe, subframe, mConfig.bitResolution);
+                    pairMagnitude = std::max(pairMagnitude, sampleMagnitude(left));
+                    pairMagnitude = std::max(pairMagnitude, sampleMagnitude(right));
+                }
+                if (pairMagnitude > bestMagnitude) {
+                    bestMagnitude = pairMagnitude;
+                    bestOffset = offset;
+                }
+            }
+
+            constexpr uint32_t kAudibleThreshold = 1u << 20;
+            if (bestMagnitude >= kAudibleThreshold && bestOffset != mResolvedChannelOffset) {
+                mResolvedChannelOffset = bestOffset;
+                LOGI("Auto-selected USB channels %d-%d for active audio", bestOffset + 1, bestOffset + 2);
+            } else if (mResolvedChannelOffset < 0) {
+                mResolvedChannelOffset = bestOffset;
+            }
+        }
+
+        const int selectedOffset = std::max(0, mResolvedChannelOffset);
+        const int offsetBytes = selectedOffset * subframe;
 
         for (size_t f = 0; f < completeFrames; ++f) {
             const uint8_t* frameBase = mWorking.data() + f * frameSize + offsetBytes;
             for (int ch = 0; ch < 2; ++ch) {
                 const uint8_t* s = frameBase + static_cast<size_t>(ch) * subframe;
-                int32_t canonical;
-                switch (subframe) {
-                    case 1:
-                        canonical = static_cast<int32_t>(static_cast<int8_t>(s[0])) << 24;
-                        break;
-                    case 2: {
-                        auto v = static_cast<int16_t>(s[0] | (s[1] << 8));
-                        canonical = static_cast<int32_t>(v) << 16;
-                        break;
-                    }
-                    case 3: {
-                        int32_t v = s[0] | (s[1] << 8) | (s[2] << 16);
-                        if (v & 0x00800000) {
-                            v |= static_cast<int32_t>(0xFF000000);
-                        }
-                        canonical = v << 8;
-                        break;
-                    }
-                    case 4:
-                    default: {
-                        auto v = static_cast<int32_t>(
-                            static_cast<uint32_t>(s[0]) | (static_cast<uint32_t>(s[1]) << 8) |
-                            (static_cast<uint32_t>(s[2]) << 16) | (static_cast<uint32_t>(s[3]) << 24));
-                        // UAC2's 24-in-32 subslots are right-justified with zero padding in the
-                        // high byte, not left-justified -- shift up so 24-bit sources use the
-                        // same full-scale range as a true 32-bit sample, matching what
-                        // UsbAudioEngine::onAudioReady() does for the Oboe I32-hint path.
-                        canonical = is24in32 ? (v << 8) : v;
-                        break;
-                    }
-                }
-                mScratch[f * 2 + ch] = canonical;
+                mScratch[f * 2 + ch] = decodeCanonicalSample(s, subframe, mConfig.bitResolution);
             }
         }
 
