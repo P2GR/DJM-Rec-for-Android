@@ -8,6 +8,7 @@
 
 #include <oboe/Oboe.h>
 
+#include "AlsaPcmAudioSource.h"
 #include "RingBuffer.h"
 #include "UsbIsoAudioSource.h"
 #include "WaveformAnalyzer.h"
@@ -27,7 +28,7 @@ enum class ContainerFormat : int {
  * to reach into a multichannel interface for a specific channel pair (e.g. the Pioneer
  * DJM-A9's Master Mix on channels 9/10) that AAudio itself has no way to select.
  */
-enum class SourceMode { None, Oboe, UsbIso };
+enum class SourceMode { None, Oboe, UsbIso, RootAlsa };
 
 /**
  * The whole native audio pipeline in one place:
@@ -60,6 +61,7 @@ public:
      * `sampleRateHint` on success, or -1 on failure.
      */
     int openUsbIso(const UsbIsoAudioSource::Config& isoConfig, int32_t sampleRateHint);
+    int openRootAlsa(const AlsaPcmAudioSource::Config& alsaConfig);
 
     bool startRecording(const std::string& path, ContainerFormat format, int mp3BitrateKbps);
     void pauseRecording();
@@ -98,6 +100,7 @@ private:
 
     std::shared_ptr<oboe::AudioStream> mStream;
     std::unique_ptr<UsbIsoAudioSource> mUsbIsoSource;
+    std::unique_ptr<AlsaPcmAudioSource> mAlsaSource;
     SourceMode mSourceMode = SourceMode::None;
     std::unique_ptr<RingBuffer> mRingBuffer;
     std::unique_ptr<AudioWriter> mWriter;

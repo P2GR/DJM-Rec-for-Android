@@ -45,6 +45,20 @@ Java_com_audiopro_djmrec_audio_AudioEngine_openUsbIso(
     return UsbAudioEngine::instance().openUsbIso(config, sampleRateHint);
 }
 
+JNIEXPORT jint JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_openRootAlsa(
+    JNIEnv* /*env*/, jobject /*thiz*/,
+    jint card, jint device, jint sampleRate, jint channels, jint bitDepth, jint extractChannelOffset) {
+    djmrec::AlsaPcmAudioSource::Config config;
+    config.card = card;
+    config.device = device;
+    config.sampleRate = sampleRate;
+    config.channels = channels;
+    config.bitDepth = bitDepth;
+    config.extractChannelOffset = extractChannelOffset;
+    return UsbAudioEngine::instance().openRootAlsa(config);
+}
+
 JNIEXPORT jboolean JNICALL
 Java_com_audiopro_djmrec_audio_AudioEngine_startRecording(
     JNIEnv* env, jobject /*thiz*/,

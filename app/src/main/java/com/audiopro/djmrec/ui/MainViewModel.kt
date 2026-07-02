@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
+import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -18,6 +19,7 @@ import com.audiopro.djmrec.audio.StereoLevels
 import com.audiopro.djmrec.service.RecordingService
 import com.audiopro.djmrec.usb.UsbAudioDeviceInfo
 import com.audiopro.djmrec.usb.UsbAudioManager
+import com.audiopro.djmrec.usb.RootUsbHostController
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,6 +33,7 @@ import kotlinx.coroutines.launch
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     companion object {
+        private const val TAG = "MainViewModel"
         private const val PREFS_NAME = "settings"
         private const val KEY_ROOT_USB_MODE = "root_usb_mode"
         private const val KEY_USB_CHANNEL_OFFSET = "usb_channel_offset"
@@ -151,15 +154,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             putExtra(RecordingService.EXTRA_BIT_DEPTH, captureBitDepth)
             putExtra(RecordingService.EXTRA_FORMAT, _selectedFormat.value.nativeValue)
 
+            val rootAlsaDevice = if (_rootUsbMode.value) {
+                val prepareResult = RootUsbHostController.prepareAlsaCaptureAccess()
+                Log.i(
+                    TAG,
+                    "root ALSA prepare exit=${prepareResult.exitCode} timedOut=${prepareResult.timedOut}\n" +
+                        prepareResult.output
+                )
+                RootUsbHostController.findAlsaCaptureDevices().firstOrNull().also {
+                    Log.i(TAG, "selected root ALSA capture device=$it")
+                }
+            } else {
+                null
+            }
+
             // Pioneer multichannel mixers (e.g. DJM-A9) need the raw libusb isochronous path
             // to reach the Master Mix pair at a non-zero channel offset -- AAudio can only ever
             // give us channels 1/2. Everything else keeps using the existing AAudio path.
-            val handle = if (device.requiresIsoCapture && !androidCapture) {
+            val handle = if (rootAlsaDevice == null && device.requiresIsoCapture && !androidCapture) {
                 usbAudioManager.openIsoCaptureHandle()
             } else {
                 null
             }
-            if (handle != null) {
+            if (rootAlsaDevice != null) {
+                putExtra(RecordingService.EXTRA_CAPTURE_MODE, RecordingService.CAPTURE_MODE_ROOT_ALSA)
+                putExtra(RecordingService.EXTRA_ALSA_CARD, rootAlsaDevice.card)
+                putExtra(RecordingService.EXTRA_ALSA_DEVICE, rootAlsaDevice.device)
+                putExtra(RecordingService.EXTRA_USB_TOTAL_CHANNELS, device.channelCount)
+                putExtra(RecordingService.EXTRA_USB_CHANNEL_OFFSET, _usbChannelOffset.value)
+            } else if (handle != null) {
                 putExtra(RecordingService.EXTRA_CAPTURE_MODE, RecordingService.CAPTURE_MODE_USB_ISO)
                 putExtra(RecordingService.EXTRA_USB_FD, handle.fd)
                 putExtra(RecordingService.EXTRA_USB_INTERFACE, handle.interfaceNumber)

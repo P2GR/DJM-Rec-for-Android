@@ -43,6 +43,10 @@ int UsbAudioEngine::open(int32_t audioManagerDeviceId, int32_t sampleRateHint, i
         mUsbIsoSource->stop();
         mUsbIsoSource.reset();
     }
+    if (mAlsaSource) {
+        mAlsaSource->stop();
+        mAlsaSource.reset();
+    }
     mSourceMode = SourceMode::Oboe;
 
     mChannelCount = channelCount;
@@ -149,6 +153,10 @@ int UsbAudioEngine::openUsbIso(const UsbIsoAudioSource::Config& isoConfig, int32
         mUsbIsoSource->stop();
         mUsbIsoSource.reset();
     }
+    if (mAlsaSource) {
+        mAlsaSource->stop();
+        mAlsaSource.reset();
+    }
     mSourceMode = SourceMode::UsbIso;
 
     // The extracted output is always exactly one stereo pair, regardless of how many channels
@@ -183,6 +191,54 @@ int UsbAudioEngine::openUsbIso(const UsbIsoAudioSource::Config& isoConfig, int32
          sampleRateHint, isoConfig.totalChannels);
 
     return sampleRateHint;
+}
+
+int UsbAudioEngine::openRootAlsa(const AlsaPcmAudioSource::Config& alsaConfig) {
+    std::lock_guard<std::mutex> lock(mControlMutex);
+    if (mStreamOpen.load()) {
+        LOGW("openRootAlsa() called while a stream is already open; closing the previous one first");
+    }
+    if (mStream) {
+        mStream->requestStop();
+        mStream->close();
+        mStream.reset();
+    }
+    if (mUsbIsoSource) {
+        mUsbIsoSource->stop();
+        mUsbIsoSource.reset();
+    }
+    if (mAlsaSource) {
+        mAlsaSource->stop();
+        mAlsaSource.reset();
+    }
+    mSourceMode = SourceMode::RootAlsa;
+
+    mChannelCount = 2;
+    mOboeFormat = oboe::AudioFormat::I32;
+    mAlsaSource = std::make_unique<AlsaPcmAudioSource>();
+    const std::string error = mAlsaSource->start(
+        alsaConfig, [this](const int32_t* frames, size_t count) { onUsbIsoFrames(frames, count); });
+
+    if (!error.empty()) {
+        LOGE("Failed to start root ALSA capture: %s", error.c_str());
+        mAlsaSource.reset();
+        mSourceMode = SourceMode::None;
+        return -1;
+    }
+
+    mFormat.sampleRate = mAlsaSource->openedSampleRate();
+    mFormat.channelCount = 2;
+    mFormat.bitsPerSample = mAlsaSource->openedBitDepth();
+    const size_t canonicalBytesPerFrame = bytesPerFrameFor(oboe::AudioFormat::I32, 2);
+    const size_t ringBufferFrames = static_cast<size_t>(mFormat.sampleRate) * 2;
+    mRingBuffer = std::make_unique<RingBuffer>(ringBufferFrames * canonicalBytesPerFrame);
+    mWaveformAnalyzer = std::make_unique<WaveformAnalyzer>();
+    mStreamOpen.store(true, std::memory_order_release);
+
+    LOGI("Root ALSA capture open: hw:%d,%d @ %dHz, %dbit, native channels=%d, output stereo I32",
+         alsaConfig.card, alsaConfig.device, mFormat.sampleRate, mFormat.bitsPerSample,
+         mAlsaSource->openedChannels());
+    return mFormat.sampleRate;
 }
 
 void UsbAudioEngine::onUsbIsoFrames(const int32_t* interleavedStereo, size_t frameCount) {
@@ -384,6 +440,10 @@ void UsbAudioEngine::closeEngine() {
     if (mUsbIsoSource) {
         mUsbIsoSource->stop();
         mUsbIsoSource.reset();
+    }
+    if (mAlsaSource) {
+        mAlsaSource->stop();
+        mAlsaSource.reset();
     }
     mRingBuffer.reset();
     mSourceMode = SourceMode::None;

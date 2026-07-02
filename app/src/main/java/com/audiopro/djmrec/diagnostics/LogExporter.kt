@@ -162,8 +162,15 @@ object LogExporter {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val offset = prefs.getInt(KEY_USB_CHANNEL_OFFSET, -1)
         val forceAndroidCapture = prefs.getBoolean(KEY_FORCE_ANDROID_CAPTURE, false)
+        val rootModeEnabled = prefs.getBoolean(KEY_ROOT_USB_MODE, false)
         sb.appendLine("=== USB capture settings ===")
-        sb.appendLine("capture path: ${if (forceAndroidCapture) "Android audio stack" else "Raw libusb isochronous"}")
+        sb.appendLine(
+            "capture path: " + when {
+                rootModeEnabled -> "Root ALSA /dev/snd"
+                forceAndroidCapture -> "Android audio stack"
+                else -> "Raw libusb isochronous"
+            }
+        )
         sb.appendLine(
             "stereo pair: " + if (offset < 0) "Auto" else "USB channels ${offset + 1}-${offset + 2}"
         )

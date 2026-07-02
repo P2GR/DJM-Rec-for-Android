@@ -49,6 +49,22 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(flac)
 
 # ---------------------------------------------------------------------------
+# TinyALSA: root-only fallback that opens /dev/snd/pcmC*D*c directly when the
+# kernel exposes the DJM REC/phone port as an ALSA capture device but Android's
+# app-level USB audio stack returns digital silence.
+# ---------------------------------------------------------------------------
+set(TINYALSA_USES_PLUGINS OFF CACHE BOOL "" FORCE)
+set(TINYALSA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(TINYALSA_BUILD_UTILS OFF CACHE BOOL "" FORCE)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    tinyalsa
+    GIT_REPOSITORY https://github.com/tinyalsa/tinyalsa.git
+    GIT_TAG        master
+)
+FetchContent_MakeAvailable(tinyalsa)
+
+# ---------------------------------------------------------------------------
 # libmp3lame: NOT auto-fetched (LGPL source distribution is the integrator's
 # responsibility). Drop the upstream LAME source tree (the `libmp3lame/`
 # folder from https://sourceforge.net/projects/lame/) under
@@ -149,6 +165,7 @@ add_library(
     SHARED
     UsbAudioEngine.cpp
     UsbIsoAudioSource.cpp
+    AlsaPcmAudioSource.cpp
     WaveformAnalyzer.cpp
     writers/WavWriter.cpp
     writers/FlacWriter.cpp
@@ -170,6 +187,7 @@ target_link_libraries(
     PRIVATE
     oboe::oboe
     FLAC
+    tinyalsa
     usb::usb
     android
     log

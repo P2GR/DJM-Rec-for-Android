@@ -56,7 +56,11 @@ class RecordingService : LifecycleService() {
         const val CAPTURE_MODE_AAUDIO = 0
         /** [EXTRA_CAPTURE_MODE] value: raw libusb isochronous path via the EXTRA_USB_* extras. */
         const val CAPTURE_MODE_USB_ISO = 1
+        /** [EXTRA_CAPTURE_MODE] value: rooted /dev/snd ALSA capture path. */
+        const val CAPTURE_MODE_ROOT_ALSA = 2
         const val EXTRA_CAPTURE_MODE = "extra_capture_mode"
+        const val EXTRA_ALSA_CARD = "extra_alsa_card"
+        const val EXTRA_ALSA_DEVICE = "extra_alsa_device"
 
         // --- Raw USB iso capture params (only used when EXTRA_CAPTURE_MODE == CAPTURE_MODE_USB_ISO) ---
         /** `UsbDeviceConnection.getFileDescriptor()`; see [UsbAudioManager.openIsoCaptureHandle]. */
@@ -156,7 +160,17 @@ class RecordingService : LifecycleService() {
                 val format = RecordingFormat.entries.first { it.nativeValue == formatOrdinal }
                 val captureMode = intent.getIntExtra(EXTRA_CAPTURE_MODE, CAPTURE_MODE_AAUDIO)
 
-                if (captureMode == CAPTURE_MODE_USB_ISO) {
+                if (captureMode == CAPTURE_MODE_ROOT_ALSA) {
+                    startRootAlsaSession(
+                        card = intent.getIntExtra(EXTRA_ALSA_CARD, -1),
+                        device = intent.getIntExtra(EXTRA_ALSA_DEVICE, -1),
+                        sampleRateHint = sampleRate,
+                        totalChannels = intent.getIntExtra(EXTRA_USB_TOTAL_CHANNELS, 2),
+                        bitDepth = bitDepth,
+                        channelOffset = intent.getIntExtra(EXTRA_USB_CHANNEL_OFFSET, 0),
+                        format = format
+                    )
+                } else if (captureMode == CAPTURE_MODE_USB_ISO) {
                     startUsbIsoSession(
                         fd = intent.getIntExtra(EXTRA_USB_FD, -1),
                         interfaceNumber = intent.getIntExtra(EXTRA_USB_INTERFACE, -1),
@@ -245,6 +259,30 @@ class RecordingService : LifecycleService() {
         if (negotiatedRate <= 0) {
             _state.value = RecordingState.Error("Failed to open USB isochronous capture")
             releaseIsoConnectionIfNeeded()
+            return
+        }
+
+        beginEncodingOrFail(bitDepth, format)
+    }
+
+    fun startRootAlsaSession(
+        card: Int,
+        device: Int,
+        sampleRateHint: Int,
+        totalChannels: Int,
+        bitDepth: Int,
+        channelOffset: Int,
+        format: RecordingFormat
+    ) {
+        if (_state.value is RecordingState.Recording) return
+        _state.value = RecordingState.Preparing
+        isUsbIsoSession = false
+
+        val negotiatedRate = AudioEngine.openRootAlsa(
+            card, device, sampleRateHint, totalChannels, bitDepth, channelOffset
+        )
+        if (negotiatedRate <= 0) {
+            _state.value = RecordingState.Error("Failed to open root ALSA capture")
             return
         }
 

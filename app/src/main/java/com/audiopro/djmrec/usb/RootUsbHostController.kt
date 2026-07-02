@@ -1,6 +1,7 @@
 package com.audiopro.djmrec.usb
 
 import java.io.BufferedReader
+import java.io.File
 import java.io.InputStreamReader
 import java.util.concurrent.TimeUnit
 
@@ -20,6 +21,13 @@ object RootUsbHostController {
         val exitCode: Int,
         val output: String,
         val timedOut: Boolean
+    )
+
+    data class AlsaCaptureDevice(
+        val card: Int,
+        val device: Int,
+        val path: String,
+        val description: String
     )
 
     private const val ROLE_SWITCH_SCRIPT = """
@@ -81,6 +89,10 @@ object RootUsbHostController {
                 id
                 echo 'sys.usb.config='$(getprop sys.usb.config 2>/dev/null)
                 echo 'sys.usb.state='$(getprop sys.usb.state 2>/dev/null)
+                echo 'proc asound cards:'
+                cat /proc/asound/cards 2>/dev/null
+                echo 'proc asound pcm:'
+                cat /proc/asound/pcm 2>/dev/null
                 echo 'role switch files (read-only snapshot):'
                 for f in /sys/class/typec/*/data_role /sys/class/typec/*/power_role \
                          /sys/class/typec/*/port*/data_role /sys/class/typec/*/port*/power_role \
@@ -92,6 +104,60 @@ object RootUsbHostController {
                 find /dev/bus/usb -maxdepth 2 -type c -print 2>/dev/null
             """.trimIndent(),
             timeoutSeconds = 6
+        )
+    }
+
+    fun prepareAlsaCaptureAccess(): CommandResult {
+        return runSu(
+            command = """
+                echo 'djmrec root ALSA capture prepare: start'
+                id
+                echo 'proc asound cards:'
+                cat /proc/asound/cards 2>/dev/null
+                echo 'proc asound pcm:'
+                cat /proc/asound/pcm 2>/dev/null
+                echo 'before /dev/snd:'
+                ls -l /dev/snd 2>/dev/null
+                chmod 666 /dev/snd/controlC* /dev/snd/pcmC*D*c 2>/dev/null || true
+                echo 'after /dev/snd:'
+                ls -l /dev/snd 2>/dev/null
+                echo 'djmrec root ALSA capture prepare: end'
+            """.trimIndent(),
+            timeoutSeconds = 8
+        )
+    }
+
+    fun findAlsaCaptureDevices(): List<AlsaCaptureDevice> {
+        val procPcm = File("/proc/asound/pcm")
+        val devices = mutableListOf<AlsaCaptureDevice>()
+        if (procPcm.canRead()) {
+            val regex = Regex("""^\s*(\d+)-(\d+):\s*(.*\bcapture\b.*)$""", RegexOption.IGNORE_CASE)
+            procPcm.readLines().forEach { line ->
+                val match = regex.find(line) ?: return@forEach
+                val card = match.groupValues[1].toIntOrNull() ?: return@forEach
+                val device = match.groupValues[2].toIntOrNull() ?: return@forEach
+                val path = "/dev/snd/pcmC${card}D${device}c"
+                if (File(path).exists()) {
+                    devices += AlsaCaptureDevice(card, device, path, line.trim())
+                }
+            }
+        }
+
+        if (devices.isEmpty()) {
+            File("/dev/snd").listFiles()?.forEach { file ->
+                val match = Regex("""pcmC(\d+)D(\d+)c""").matchEntire(file.name) ?: return@forEach
+                val card = match.groupValues[1].toIntOrNull() ?: return@forEach
+                val device = match.groupValues[2].toIntOrNull() ?: return@forEach
+                devices += AlsaCaptureDevice(card, device, file.absolutePath, file.name)
+            }
+        }
+
+        return devices.sortedWith(
+            compareByDescending<AlsaCaptureDevice> {
+                it.description.contains("usb", ignoreCase = true) ||
+                    it.description.contains("djm", ignoreCase = true) ||
+                    it.description.contains("a9", ignoreCase = true)
+            }.thenBy { it.card }.thenBy { it.device }
         )
     }
 
