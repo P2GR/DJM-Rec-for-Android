@@ -102,6 +102,17 @@ fun LibraryScreen(onBack: () -> Unit) {
     val dir = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "DJMRec")
     val recordings = remember(dir) {
         dir.mkdirs()
+        // Migrate any recordings from the old app-private location to the new public folder.
+        val oldDir = File(context.getExternalFilesDir(android.os.Environment.DIRECTORY_MUSIC), "DJMRec")
+        if (oldDir.isDirectory) {
+            oldDir.listFiles()?.forEach { oldFile ->
+                val newFile = File(dir, oldFile.name)
+                if (!newFile.exists()) {
+                    oldFile.copyTo(newFile)
+                    oldFile.delete()
+                }
+            }
+        }
         dir.listFiles()
             ?.filter { it.extension.lowercase() in listOf("wav", "flac", "mp3") }
             ?.sortedByDescending { it.lastModified() }
