@@ -118,8 +118,12 @@ void BpmDetector::updateBandOdF(BandOdF& band, float bandEnergy) {
         band.lowpassEnergy = 0.0f;
         band.samplesAccum = 0;
 
-        // Half-wave rectified energy difference = onset detection function.
-        const float onset = std::max(0.0f, energy - band.prevEnergy);
+        // Relative energy difference = onset detection function.
+        // Using relative (not absolute) difference normalizes across bands so
+        // low/mid/high all contribute equally regardless of absolute energy.
+        const float onset = (band.prevEnergy > 1e-9f)
+            ? std::max(0.0f, (energy - band.prevEnergy) / band.prevEnergy)
+            : 0.0f;
         band.prevEnergy = energy;
 
         // Write to ring buffer.
@@ -206,14 +210,22 @@ void BpmDetector::combineBands() {
     if (weightTotal > 0.0f) {
         const float rawBpm = weightedSum / weightTotal;
 
-        // EMA smoothing.
+        // Median filter: keep last 3 readings, take middle value to reject outliers.
+        mBpmHistory[mBpmHistoryIdx] = rawBpm;
+        mBpmHistoryIdx = (mBpmHistoryIdx + 1) % 3;
+        float sorted[3] = { mBpmHistory[0], mBpmHistory[1], mBpmHistory[2] };
+        if (sorted[0] > sorted[1]) std::swap(sorted[0], sorted[1]);
+        if (sorted[1] > sorted[2]) std::swap(sorted[1], sorted[2]);
+        if (sorted[0] > sorted[1]) std::swap(sorted[0], sorted[1]);
+        const float medianBpm = sorted[1]; // middle value
+
+        // EMA smoothing on median-filtered value.
         if (mBpmEma <= 0.0f) {
-            mBpmEma = rawBpm;
+            mBpmEma = medianBpm;
         } else {
-            // Accept big jumps only from tap tempo (handled externally).
-            const float delta = std::abs(rawBpm - mBpmEma);
+            const float delta = std::abs(medianBpm - mBpmEma);
             const float alpha = (delta > 20.0f) ? 0.05f : kEmaAlpha;
-            mBpmEma = alpha * rawBpm + (1.0f - alpha) * mBpmEma;
+            mBpmEma = alpha * medianBpm + (1.0f - alpha) * mBpmEma;
         }
 
         mBpm.store(mBpmEma, std::memory_order_release);
@@ -267,6 +279,8 @@ void BpmDetector::reset() {
     mFramesSinceBeat = 0;
     mConsecutiveLocked = 0;
     mBpmEma = 0.0f;
+    mBpmHistory[0] = mBpmHistory[1] = mBpmHistory[2] = 0.0f;
+    mBpmHistoryIdx = 0;
     mLocked = false;
 }
 

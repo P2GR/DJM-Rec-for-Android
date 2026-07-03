@@ -30,8 +30,8 @@ public:
     static constexpr float kMinBpm = 60.0f;
     static constexpr float kMaxBpm = 200.0f;
     static constexpr int kOdfHistoryFrames = 512; // ~6 s of ODF at 11.6 ms/frame
-    static constexpr float kEmaAlpha = 0.15f;     // smoothing factor
-    static constexpr float kMinConfidence = 0.25f; // below this, band is ignored
+    static constexpr float kEmaAlpha = 0.10f;     // smoother tracking (was 0.15)
+    static constexpr float kMinConfidence = 0.30f; // higher threshold to reject noise
 
     struct Result {
         float bpm = 0.0f;
@@ -116,6 +116,8 @@ private:
     static constexpr int kLockThreshold = 8; // consecutive consistent readings to lock
 
     float mBpmEma = 0.0f; // internal EMA accumulator
+    float mBpmHistory[3] = {0, 0, 0}; // median filter ring buffer
+    int mBpmHistoryIdx = 0;
     bool mLocked = false;
 };
 

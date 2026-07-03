@@ -27,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -94,11 +95,17 @@ fun BpmDetectScreen() {
 
     Column(
         modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // --- Pulsing BPM circle ---
-        Box(modifier = Modifier.size(220.dp * pulseScale), contentAlignment = Alignment.Center) {
+        Spacer(Modifier.weight(0.3f))
+
+        // --- Pulsing BPM circle (fixed-size container, internal scale animation) ---
+        Box(
+            modifier = Modifier
+                .size(220.dp)
+                .scale(pulseScale),
+            contentAlignment = Alignment.Center
+        ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val sw = 8f
                 val sweep = 360f * beatPhase.coerceIn(0f, 1f)
@@ -154,9 +161,9 @@ fun BpmDetectScreen() {
             fontSize = 12.sp, color = TextSecondary
         )
 
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.weight(1f))
 
-        // --- Tap Tempo ---
+        // --- Tap Tempo (pinned to bottom) ---
         Button(
             onClick = {
                 val now = System.currentTimeMillis()
@@ -187,6 +194,7 @@ fun BpmDetectScreen() {
                 Text("Clear manual BPM", fontSize = 12.sp)
             }
         }
+        Spacer(Modifier.height(20.dp))
     }
 }
 
