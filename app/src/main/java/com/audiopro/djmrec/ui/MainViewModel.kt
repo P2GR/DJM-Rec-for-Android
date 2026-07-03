@@ -199,14 +199,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun startRecording() {
         val context = getApplication<Application>()
 
-        // DJM REC port mode: try everything, then capture.
+        // If already monitoring, begin encoding to file.
+        if (_recordingState.value is RecordingState.Monitoring) {
+            context.startService(Intent(context, RecordingService::class.java).setAction(RecordingService.ACTION_START))
+            return
+        }
+
+        // DJM REC port mode: try everything, then auto-monitor.
         if (_djmrecPortMode.value) {
             val tryAll = RootUsbHostController.tryAllConnectionStrategies()
             Log.i(TAG, "DJM REC try-everything:\n${tryAll.output}")
             RootUsbHostController.grantUsbDeviceAccess(RootUsbHostController.getAppUid())
             val kernelScan = RootUsbHostController.scanKernelUsbDevices()
             Log.i(TAG, "DJM REC kernel scan: exit=${kernelScan.exitCode}\n${kernelScan.output}")
-            if (tryDjmrecPortCapture(context)) return
+            startMonitoringDevice(context, scanKernel = true)
+            return
         }
 
         val device = deviceState.value ?: run {
@@ -235,9 +242,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             putExtra(RecordingService.EXTRA_BIT_DEPTH, captureBitDepth)
             putExtra(RecordingService.EXTRA_FORMAT, _selectedFormat.value.nativeValue)
 
-            // Pioneer multichannel mixers (e.g. DJM-A9) need the raw libusb isochronous path
-            // to reach the Master Mix pair at a non-zero channel offset -- AAudio can only ever
-            // give us channels 1/2. Everything else keeps using the existing AAudio path.
             val handle = if (device.requiresIsoCapture && !androidCapture) {
                 usbAudioManager.openIsoCaptureHandle()
             } else {
@@ -254,10 +258,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 putExtra(RecordingService.EXTRA_USB_SUBFRAME_SIZE, handle.subframeSize)
                 putExtra(RecordingService.EXTRA_USB_CHANNEL_OFFSET, _usbChannelOffset.value)
             } else {
-                // Either a non-Pioneer / exact-stereo device, or openIsoCaptureHandle() failed
-                // (e.g. permission lost) -- fall back to the AAudio path rather than silently
-                // failing to record. For a Pioneer mixer this will still only capture channels
-                // 1/2, not the Master Mix, but that's strictly better than no recording at all.
                 putExtra(RecordingService.EXTRA_CAPTURE_MODE, RecordingService.CAPTURE_MODE_AAUDIO)
                 putExtra(RecordingService.EXTRA_DEVICE_ID, device.audioManagerDeviceId)
                 putExtra(RecordingService.EXTRA_CHANNEL_COUNT, if (device.isPioneer) 2 else device.channelCount)
@@ -265,6 +265,53 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         ContextCompat.startForegroundService(context, intent)
         boundService?.setDeviceLabel(device.productName)
+    }
+
+    /** Opens the audio stream for live monitoring (meters + waveform) without writing a file. */
+    private fun startMonitoringDevice(context: Context, scanKernel: Boolean = false) {
+        // Try AAudio with any USB audio input first.
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+        val usbInputs = audioManager.getDevices(android.media.AudioManager.GET_DEVICES_INPUTS)
+            .filter { it.type == android.media.AudioDeviceInfo.TYPE_USB_DEVICE }
+        val usbDevice = usbInputs.firstOrNull()
+        val device = deviceState.value
+
+        if (usbDevice != null) {
+            val sampleRate = if (48000 in usbDevice.sampleRates.toList()) 48000 else usbDevice.sampleRates[0]
+            val intent = Intent(context, RecordingService::class.java).apply {
+                action = RecordingService.ACTION_MONITOR
+                putExtra(RecordingService.EXTRA_CAPTURE_MODE, RecordingService.CAPTURE_MODE_AAUDIO)
+                putExtra(RecordingService.EXTRA_DEVICE_ID, usbDevice.id)
+                putExtra(RecordingService.EXTRA_SAMPLE_RATE, sampleRate)
+                putExtra(RecordingService.EXTRA_BIT_DEPTH, 24)
+                putExtra(RecordingService.EXTRA_CHANNEL_COUNT, 2)
+            }
+            ContextCompat.startForegroundService(context, intent)
+            boundService?.setDeviceLabel("Monitoring: ${usbDevice.productName}")
+            Log.i(TAG, "Auto-monitoring via AAudio deviceId=${usbDevice.id}")
+        } else if (device != null && !device.requiresIsoCapture) {
+            val sampleRate = when {
+                device.negotiatedSampleRate > 0 -> device.negotiatedSampleRate
+                48000 in device.supportedSampleRates -> 48000
+                else -> device.supportedSampleRates.firstOrNull() ?: 48000
+            }
+            val intent = Intent(context, RecordingService::class.java).apply {
+                action = RecordingService.ACTION_MONITOR
+                putExtra(RecordingService.EXTRA_CAPTURE_MODE, RecordingService.CAPTURE_MODE_AAUDIO)
+                putExtra(RecordingService.EXTRA_DEVICE_ID, device.audioManagerDeviceId)
+                putExtra(RecordingService.EXTRA_SAMPLE_RATE, sampleRate)
+                putExtra(RecordingService.EXTRA_BIT_DEPTH, device.bitResolution)
+                putExtra(RecordingService.EXTRA_CHANNEL_COUNT, 2)
+            }
+            ContextCompat.startForegroundService(context, intent)
+            boundService?.setDeviceLabel("Monitoring: ${device.productName}")
+            Log.i(TAG, "Auto-monitoring via AAudio deviceId=${device.audioManagerDeviceId}")
+        } else if (scanKernel || (_rootUsbMode.value)) {
+            // Last resort: try root ALSA for monitoring.
+            startRootAlsaRecording(context, device)
+        } else {
+            Log.w(TAG, "No device available for monitoring; skipping auto-monitor")
+        }
     }
 
     private fun startRootAlsaRecording(context: Context, device: UsbAudioDeviceInfo?): Boolean {

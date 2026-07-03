@@ -267,11 +267,16 @@ fun RecorderScreen(viewModel: MainViewModel) {
                 .padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // --- Recording visuals: waveform + timer + VU meter, stacked horizontally ---
-            if (recordingState is RecordingState.Recording || recordingState is RecordingState.Paused) {
+            // --- Recording visuals: waveform + timer + VU meter ---
+            if (recordingState is RecordingState.Recording || recordingState is RecordingState.Paused ||
+                recordingState is RecordingState.Monitoring) {
                 RgbWaveform(bins = waveformBins)
                 Spacer(modifier = Modifier.height(8.dp))
-                RecordingTimer(elapsedMillis = elapsedMillis, isPaused = recordingState is RecordingState.Paused)
+                if (recordingState is RecordingState.Recording || recordingState is RecordingState.Paused) {
+                    RecordingTimer(elapsedMillis = elapsedMillis, isPaused = recordingState is RecordingState.Paused)
+                } else {
+                    RecordingTimer(elapsedMillis = 0L, isPaused = false)
+                }
                 Spacer(modifier = Modifier.height(10.dp))
             }
 

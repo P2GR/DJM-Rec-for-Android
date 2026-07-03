@@ -17,6 +17,8 @@ enum class BitDepth(val bits: Int) {
 sealed class RecordingState {
     data object Idle : RecordingState()
     data object Preparing : RecordingState()
+    /** Audio stream is open and meters/waveform are live, but no file is being written. */
+    data object Monitoring : RecordingState()
     data object Recording : RecordingState()
     data object Paused : RecordingState()
     data class Error(val message: String) : RecordingState()

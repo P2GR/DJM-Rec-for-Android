@@ -38,7 +38,7 @@ fun TransportControls(
         horizontalArrangement = Arrangement.spacedBy(24.dp)
     ) {
         when (state) {
-            is RecordingState.Idle, is RecordingState.Error -> {
+            is RecordingState.Idle, is RecordingState.Error, is RecordingState.Monitoring -> {
                 TransportButton(
                     icon = Icons.Filled.FiberManualRecord,
                     contentDescription = "Record",

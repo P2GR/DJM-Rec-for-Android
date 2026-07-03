@@ -42,6 +42,7 @@ class RecordingService : LifecycleService() {
 
     companion object {
         const val ACTION_START = "com.audiopro.djmrec.action.START"
+        const val ACTION_MONITOR = "com.audiopro.djmrec.action.MONITOR"
         const val ACTION_PAUSE = "com.audiopro.djmrec.action.PAUSE"
         const val ACTION_RESUME = "com.audiopro.djmrec.action.RESUME"
         const val ACTION_STOP = "com.audiopro.djmrec.action.STOP"
@@ -112,10 +113,13 @@ class RecordingService : LifecycleService() {
     private var deviceLabel: String = "USB Mixer"
     /** True when the in-progress session opened via [startUsbIsoSession] rather than [startSession]. */
     private var isUsbIsoSession = false
+    /** True when the audio stream is open for monitoring but no file is being written. */
+    private var isMonitoringOnly = false
 
     private val meterRunnable = object : Runnable {
         override fun run() {
-            if (_state.value is RecordingState.Recording || _state.value is RecordingState.Paused) {
+            if (_state.value is RecordingState.Recording || _state.value is RecordingState.Paused ||
+                _state.value is RecordingState.Monitoring) {
                 val raw = AudioEngine.getLevels()
                 val clipping = AudioEngine.isClipping()
                 _levels.value = StereoLevels(
@@ -131,7 +135,8 @@ class RecordingService : LifecycleService() {
 
     private val notificationRunnable = object : Runnable {
         override fun run() {
-            if (_state.value is RecordingState.Recording || _state.value is RecordingState.Paused) {
+            if (_state.value is RecordingState.Recording || _state.value is RecordingState.Paused ||
+                _state.value is RecordingState.Monitoring) {
                 updateNotification()
                 monitorHandler.postDelayed(this, NOTIFICATION_UPDATE_INTERVAL_MS)
             }
@@ -153,7 +158,48 @@ class RecordingService : LifecycleService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         when (intent?.action) {
+            ACTION_MONITOR -> {
+                val sampleRate = intent.getIntExtra(EXTRA_SAMPLE_RATE, 48000)
+                val bitDepth = intent.getIntExtra(EXTRA_BIT_DEPTH, 24)
+                val captureMode = intent.getIntExtra(EXTRA_CAPTURE_MODE, CAPTURE_MODE_AAUDIO)
+                if (captureMode == CAPTURE_MODE_ROOT_ALSA) {
+                    startRootAlsaSession(
+                        card = intent.getIntExtra(EXTRA_ALSA_CARD, -1),
+                        device = intent.getIntExtra(EXTRA_ALSA_DEVICE, -1),
+                        sampleRateHint = sampleRate,
+                        totalChannels = intent.getIntExtra(EXTRA_USB_TOTAL_CHANNELS, 2),
+                        bitDepth = bitDepth,
+                        channelOffset = intent.getIntExtra(EXTRA_USB_CHANNEL_OFFSET, 0),
+                        monitorOnly = true
+                    )
+                } else if (captureMode == CAPTURE_MODE_USB_ISO) {
+                    startUsbIsoSession(
+                        fd = intent.getIntExtra(EXTRA_USB_FD, -1),
+                        interfaceNumber = intent.getIntExtra(EXTRA_USB_INTERFACE, -1),
+                        alternateSetting = intent.getIntExtra(EXTRA_USB_ALT_SETTING, -1),
+                        endpointAddress = intent.getIntExtra(EXTRA_USB_ENDPOINT, -1),
+                        maxPacketSize = intent.getIntExtra(EXTRA_USB_MAX_PACKET_SIZE, -1),
+                        totalChannels = intent.getIntExtra(EXTRA_USB_TOTAL_CHANNELS, 2),
+                        subframeSize = intent.getIntExtra(EXTRA_USB_SUBFRAME_SIZE, 4),
+                        bitDepth = bitDepth,
+                        channelOffset = intent.getIntExtra(EXTRA_USB_CHANNEL_OFFSET, 0),
+                        sampleRateHint = sampleRate,
+                        monitorOnly = true
+                    )
+                } else {
+                    val deviceId = intent.getIntExtra(EXTRA_DEVICE_ID, -1)
+                    val channelCount = intent.getIntExtra(EXTRA_CHANNEL_COUNT, 2)
+                    startSession(deviceId, sampleRate, channelCount, bitDepth, monitorOnly = true)
+                }
+            }
+
             ACTION_START -> {
+                // If already monitoring, just begin encoding.
+                if (_state.value is RecordingState.Monitoring) {
+                    beginRecordingNow()
+                    return START_NOT_STICKY
+                }
+                // Otherwise, open stream + encode immediately (full recording from idle).
                 val sampleRate = intent.getIntExtra(EXTRA_SAMPLE_RATE, 48000)
                 val bitDepth = intent.getIntExtra(EXTRA_BIT_DEPTH, 24)
                 val formatOrdinal = intent.getIntExtra(EXTRA_FORMAT, RecordingFormat.WAV.nativeValue)
@@ -168,7 +214,8 @@ class RecordingService : LifecycleService() {
                         totalChannels = intent.getIntExtra(EXTRA_USB_TOTAL_CHANNELS, 2),
                         bitDepth = bitDepth,
                         channelOffset = intent.getIntExtra(EXTRA_USB_CHANNEL_OFFSET, 0),
-                        format = format
+                        format = format,
+                        monitorOnly = false
                     )
                 } else if (captureMode == CAPTURE_MODE_USB_ISO) {
                     startUsbIsoSession(
@@ -182,12 +229,13 @@ class RecordingService : LifecycleService() {
                         bitDepth = bitDepth,
                         channelOffset = intent.getIntExtra(EXTRA_USB_CHANNEL_OFFSET, 0),
                         sampleRateHint = sampleRate,
-                        format = format
+                        format = format,
+                        monitorOnly = false
                     )
                 } else {
                     val deviceId = intent.getIntExtra(EXTRA_DEVICE_ID, -1)
                     val channelCount = intent.getIntExtra(EXTRA_CHANNEL_COUNT, 2)
-                    startSession(deviceId, sampleRate, channelCount, bitDepth, format)
+                    startSession(deviceId, sampleRate, channelCount, bitDepth, format, monitorOnly = false)
                 }
             }
 
@@ -201,17 +249,18 @@ class RecordingService : LifecycleService() {
         return START_NOT_STICKY
     }
 
-    /** Opens the native engine + starts encoding. Safe to call while already bound. */
     fun startSession(
         audioManagerDeviceId: Int,
         sampleRateHint: Int,
         channelCount: Int,
         bitDepth: Int,
-        format: RecordingFormat
+        format: RecordingFormat = RecordingFormat.WAV,
+        monitorOnly: Boolean = false
     ) {
-        if (_state.value is RecordingState.Recording) return
+        if (_state.value is RecordingState.Recording || _state.value is RecordingState.Monitoring) return
         _state.value = RecordingState.Preparing
         isUsbIsoSession = false
+        isMonitoringOnly = monitorOnly
 
         val negotiatedRate = AudioEngine.open(audioManagerDeviceId, sampleRateHint, channelCount, bitDepth)
         if (negotiatedRate <= 0) {
@@ -219,16 +268,13 @@ class RecordingService : LifecycleService() {
             return
         }
 
-        beginEncodingOrFail(bitDepth, format)
+        if (monitorOnly) {
+            beginMonitoring()
+        } else {
+            beginEncodingOrFail(bitDepth, format)
+        }
     }
 
-    /**
-     * Opens the raw libusb isochronous capture path instead of AAudio -- used for Pioneer
-     * multichannel mixers where the desired channel pair (e.g. Master Mix on channels 9/10)
-     * sits at a non-zero offset AAudio has no API to select. `fd` must come from a
-     * [android.hardware.usb.UsbDeviceConnection] that [UsbAudioManager.openIsoCaptureHandle]
-     * is holding open on our behalf; see [releaseIsoConnectionIfNeeded] for the matching teardown.
-     */
     fun startUsbIsoSession(
         fd: Int,
         interfaceNumber: Int,
@@ -240,11 +286,13 @@ class RecordingService : LifecycleService() {
         bitDepth: Int,
         channelOffset: Int,
         sampleRateHint: Int,
-        format: RecordingFormat
+        format: RecordingFormat = RecordingFormat.WAV,
+        monitorOnly: Boolean = false
     ) {
-        if (_state.value is RecordingState.Recording) return
+        if (_state.value is RecordingState.Recording || _state.value is RecordingState.Monitoring) return
         _state.value = RecordingState.Preparing
         isUsbIsoSession = true
+        isMonitoringOnly = monitorOnly
 
         if (fd < 0 || interfaceNumber < 0 || endpointAddress < 0 || maxPacketSize <= 0) {
             _state.value = RecordingState.Error("Invalid USB capture parameters")
@@ -262,7 +310,11 @@ class RecordingService : LifecycleService() {
             return
         }
 
-        beginEncodingOrFail(bitDepth, format)
+        if (monitorOnly) {
+            beginMonitoring()
+        } else {
+            beginEncodingOrFail(bitDepth, format)
+        }
     }
 
     fun startRootAlsaSession(
@@ -272,11 +324,13 @@ class RecordingService : LifecycleService() {
         totalChannels: Int,
         bitDepth: Int,
         channelOffset: Int,
-        format: RecordingFormat
+        format: RecordingFormat = RecordingFormat.WAV,
+        monitorOnly: Boolean = false
     ) {
-        if (_state.value is RecordingState.Recording) return
+        if (_state.value is RecordingState.Recording || _state.value is RecordingState.Monitoring) return
         _state.value = RecordingState.Preparing
         isUsbIsoSession = false
+        isMonitoringOnly = monitorOnly
 
         val negotiatedRate = AudioEngine.openRootAlsa(
             card, device, sampleRateHint, totalChannels, bitDepth, channelOffset
@@ -286,7 +340,27 @@ class RecordingService : LifecycleService() {
             return
         }
 
-        beginEncodingOrFail(bitDepth, format)
+        if (monitorOnly) {
+            beginMonitoring()
+        } else {
+            beginEncodingOrFail(bitDepth, format)
+        }
+    }
+
+    /** Transitions from Monitoring to Recording: starts the encoder writing to a file. */
+    fun beginRecordingNow() {
+        if (_state.value !is RecordingState.Monitoring) return
+        isMonitoringOnly = false
+        beginEncodingOrFail(24, currentFormat)
+    }
+
+    /** Shared setup after stream open for monitoring: starts metering without file output. */
+    private fun beginMonitoring() {
+        acquireWakeLock()
+        startForegroundNotification()
+        monitorHandler.post(meterRunnable)
+        monitorHandler.post(notificationRunnable)
+        _state.value = RecordingState.Monitoring
     }
 
     /** Shared tail of both [startSession] and [startUsbIsoSession] once the native capture
@@ -338,17 +412,28 @@ class RecordingService : LifecycleService() {
     }
 
     fun stopSession() {
-        if (_state.value is RecordingState.Idle) return
+        if (_state.value is RecordingState.Idle || _state.value is RecordingState.Monitoring) {
+            // Full stop from monitoring: close the stream.
+            if (_state.value is RecordingState.Monitoring) {
+                AudioEngine.close()
+                releaseIsoConnectionIfNeeded()
+                releaseWakeLock()
+                _state.value = RecordingState.Idle
+                _elapsedMillis.value = 0L
+                _levels.value = StereoLevels(floorLevel, floorLevel)
+                _waveformBins.value = emptyWaveform
+                ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
+            return
+        }
+        // Recording → stop encoding, keep monitoring.
         AudioEngine.stopRecording()
-        AudioEngine.close()
-        releaseIsoConnectionIfNeeded()
         releaseWakeLock()
-        _state.value = RecordingState.Idle
+        _state.value = RecordingState.Monitoring
+        isMonitoringOnly = true
         _elapsedMillis.value = 0L
-        _levels.value = StereoLevels(floorLevel, floorLevel)
-        _waveformBins.value = emptyWaveform
-        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        updateNotification()
     }
 
     fun setDeviceLabel(label: String) {
