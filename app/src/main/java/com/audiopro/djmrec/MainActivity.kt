@@ -7,8 +7,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import com.audiopro.djmrec.ui.MainScreen
 import com.audiopro.djmrec.ui.MainViewModel
-import com.audiopro.djmrec.ui.RecorderScreen
 import com.audiopro.djmrec.ui.theme.DjmRecTheme
 
 class MainActivity : ComponentActivity() {
@@ -27,7 +27,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             DjmRecTheme {
-                RecorderScreen(viewModel = viewModel)
+                MainScreen(viewModel = viewModel)
             }
         }
     }
