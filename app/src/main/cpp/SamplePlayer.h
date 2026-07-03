@@ -26,7 +26,7 @@ enum class RmxSound : int {
 };
 
 /**
- * Polyphonic sample player with 16 voices and beat-synced looping.
+ * Monophonic sample player with beat-synced looping.
  * All render methods are realtime-safe (no allocations, no locks).
  */
 class SamplePlayer {
@@ -37,7 +37,7 @@ public:
     struct VoiceState {
         const float* sampleData = nullptr;
         size_t sampleLength = 0;
-        size_t readPos = 0;
+        float readPos = 0.0f;
         size_t loopEnd = 0;       // 0 = one-shot, >0 = loop from 0 to loopEnd
         float gain = 1.0f;
         float pitchRatio = 1.0f;
@@ -50,13 +50,15 @@ public:
     /** Load a sample into the bank. Samples are mono float at 44100 Hz. */
     void loadSample(RmxSound sound, const float* data, size_t length);
 
-    /**
     /** Trigger a looping or one-shot sample. Pass loopEnd > 0 to enable looping (wraps back to 0). */
     void trigger(RmxSound sound, float gain = 1.0f, float pitchRatio = 1.0f,
                  size_t loopEndSamples = 0);
 
     /** Update the loop length on the active voice for the given sound. */
     void updateVoiceLoop(RmxSound sound, size_t loopEndSamples);
+
+    /** Update pitch ratio on the active voice for the given sound. */
+    void updateVoicePitch(RmxSound sound, float pitchRatio);
 
     /** Stop all voices for a given sound. */
     void stopSound(RmxSound sound);

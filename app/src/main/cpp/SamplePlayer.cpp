@@ -26,6 +26,8 @@ void SamplePlayer::trigger(RmxSound sound, float gain, float pitchRatio,
     if (idx < 0 || idx >= static_cast<int>(RmxSound::Count)) return;
     if (mSampleBank[idx].empty()) return;
 
+    stopAll();
+
     int voiceIdx = findFreeVoice();
     if (voiceIdx < 0) voiceIdx = findQuietestVoice();
     if (voiceIdx < 0) return;
@@ -33,10 +35,10 @@ void SamplePlayer::trigger(RmxSound sound, float gain, float pitchRatio,
     VoiceState& v = mVoices[voiceIdx];
     v.sampleData = mSampleBank[idx].data();
     v.sampleLength = mSampleBank[idx].size();
-    v.readPos = 0;
+    v.readPos = 0.0f;
     v.loopEnd = loopEndSamples > 0 ? std::min(loopEndSamples, v.sampleLength) : 0;
     v.gain = gain;
-    v.pitchRatio = pitchRatio;
+    v.pitchRatio = std::max(0.25f, std::min(4.0f, pitchRatio));
     v.active = true;
     v.sound = sound;
 }
@@ -45,6 +47,15 @@ void SamplePlayer::updateVoiceLoop(RmxSound sound, size_t loopEndSamples) {
     for (int i = 0; i < kVoiceCount; ++i) {
         if (mVoices[i].active && mVoices[i].sound == sound) {
             mVoices[i].loopEnd = loopEndSamples > 0 ? std::min(loopEndSamples, mVoices[i].sampleLength) : 0;
+        }
+    }
+}
+
+void SamplePlayer::updateVoicePitch(RmxSound sound, float pitchRatio) {
+    const float clamped = std::max(0.25f, std::min(4.0f, pitchRatio));
+    for (int i = 0; i < kVoiceCount; ++i) {
+        if (mVoices[i].active && mVoices[i].sound == sound) {
+            mVoices[i].pitchRatio = clamped;
         }
     }
 }
@@ -73,9 +84,9 @@ void SamplePlayer::render(float* stereoOut, int frameCount) {
 
         for (int f = 0; f < frameCount; ++f) {
             const size_t effectiveEnd = voice.loopEnd > 0 ? voice.loopEnd : voice.sampleLength;
-            if (voice.readPos >= effectiveEnd) {
+            if (voice.readPos >= static_cast<float>(effectiveEnd)) {
                 if (voice.loopEnd > 0) {
-                    voice.readPos = 0; // loop back to start
+                    voice.readPos = std::fmod(voice.readPos, static_cast<float>(effectiveEnd));
                 } else {
                     voice.active = false;
                     break;

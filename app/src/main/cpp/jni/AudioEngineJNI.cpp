@@ -189,6 +189,12 @@ Java_com_audiopro_djmrec_audio_AudioEngine_updateRmxVoiceLoop(
 }
 
 JNIEXPORT void JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_updateRmxVoicePitch(
+    JNIEnv* /*env*/, jobject /*thiz*/, jint soundOrdinal, jfloat pitchRatio) {
+    UsbAudioEngine::instance().updateRmxVoicePitch(soundOrdinal, pitchRatio);
+}
+
+JNIEXPORT void JNICALL
 Java_com_audiopro_djmrec_audio_AudioEngine_stopRmxSample(JNIEnv* /*env*/, jobject /*thiz*/, jint soundOrdinal) {
     UsbAudioEngine::instance().stopRmxSample(soundOrdinal);
 }

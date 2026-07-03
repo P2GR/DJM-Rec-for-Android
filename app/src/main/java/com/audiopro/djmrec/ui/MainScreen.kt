@@ -53,9 +53,10 @@ fun MainScreen(viewModel: MainViewModel) {
     val scope = rememberCoroutineScope()
     var selectedDestination by rememberSaveable { mutableStateOf(Destination.RECORDING) }
 
+    val drawerLocked = selectedDestination == Destination.RMX_SIM
     ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = selectedDestination != Destination.RMX_SIM,
+        gesturesEnabled = !drawerLocked,
         drawerContent = {
             ModalDrawerSheet(
                 drawerContainerColor = SurfaceDark

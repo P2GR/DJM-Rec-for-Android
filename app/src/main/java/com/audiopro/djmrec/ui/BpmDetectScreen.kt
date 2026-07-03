@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -48,14 +49,14 @@ import kotlinx.coroutines.delay
 
 @Composable
 fun BpmDetectScreen() {
-    var bpm by remember { mutableStateOf(0f) }
+    var bpm by remember { mutableStateOf(130f) }
     var confidence by remember { mutableStateOf(0f) }
     var beatPhase by remember { mutableStateOf(0f) }
     var leadingBand by remember { mutableStateOf(0) }
     var locked by remember { mutableStateOf(false) }
 
     var tapTimes by remember { mutableStateOf(listOf<Long>()) }
-    var manualBpm by remember { mutableStateOf<Float?>(null) }
+    var manualBpm by remember { mutableStateOf<Float?>(130f) }
 
     // Start mic capture on enter, stop on leave.
     DisposableEffect(Unit) {
@@ -68,7 +69,7 @@ fun BpmDetectScreen() {
         while (true) {
             val result = AudioEngine.getBpmResult()
             if (result.size >= 5) {
-                bpm = result[0]
+                if (result[0] > 0f) bpm = result[0]
                 confidence = result[1]
                 beatPhase = result[2]
                 leadingBand = result[3].toInt()
@@ -78,7 +79,7 @@ fun BpmDetectScreen() {
         }
     }
 
-    val displayBpm = manualBpm ?: bpm
+    val displayBpm = manualBpm ?: bpm.takeIf { it > 0f } ?: 130f
     val pulseScale by animateFloatAsState(
         targetValue = if (beatPhase < 0.12f) 1.10f else 1.0f,
         animationSpec = tween(durationMillis = 80),
@@ -153,13 +154,24 @@ fun BpmDetectScreen() {
         Spacer(Modifier.height(8.dp))
         Text(
             text = when {
-                manualBpm != null -> "TAP  — manual BPM set"
-                locked -> "LOCKED  — auto-detected"
+                manualBpm != null -> "MANUAL BPM"
+                locked -> "LOCKED auto-detected"
                 confidence > 0.3f -> "Listening..."
                 else -> "Waiting for audio..."
             },
             fontSize = 12.sp, color = TextSecondary
         )
+
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = { manualBpm = ((manualBpm ?: displayBpm) - 1f).coerceIn(40f, 220f) }) {
+                Text("\u2212", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            }
+            Text("START 130", fontSize = 11.sp, color = TextSecondary)
+            TextButton(onClick = { manualBpm = ((manualBpm ?: displayBpm) + 1f).coerceIn(40f, 220f) }) {
+                Text("+", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            }
+        }
 
         Spacer(Modifier.weight(1f))
 
@@ -171,7 +183,7 @@ fun BpmDetectScreen() {
                 if (tapTimes.size >= 4) {
                     val intervals = tapTimes.zipWithNext { a, b -> b - a }
                     val avgMs = intervals.average().toFloat()
-                    if (avgMs > 0f) manualBpm = 60000f / avgMs
+                    if (avgMs > 0f) manualBpm = (60000f / avgMs).coerceIn(40f, 220f)
                 }
             },
             colors = ButtonDefaults.buttonColors(containerColor = accentColor),
@@ -179,7 +191,7 @@ fun BpmDetectScreen() {
             shape = CircleShape
         ) {
             Text(
-                text = if (manualBpm != null) "TAP TO RESET" else "TAP TEMPO",
+                text = "TAP TEMPO",
                 color = BackgroundDark, fontWeight = FontWeight.Bold, fontSize = 16.sp
             )
         }
@@ -187,11 +199,11 @@ fun BpmDetectScreen() {
         if (manualBpm != null) {
             Spacer(Modifier.height(12.dp))
             Button(
-                onClick = { manualBpm = null },
+                onClick = { manualBpm = null; tapTimes = emptyList() },
                 colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = TextSecondary),
                 modifier = Modifier.height(36.dp)
             ) {
-                Text("Clear manual BPM", fontSize = 12.sp)
+                Text("Use auto detect", fontSize = 12.sp)
             }
         }
         Spacer(Modifier.height(20.dp))

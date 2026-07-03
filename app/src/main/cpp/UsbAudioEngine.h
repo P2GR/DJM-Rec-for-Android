@@ -96,6 +96,7 @@ public:
     void triggerRmxSample(int soundOrdinal, float gain, float pitchRatio);
     void triggerRmxSampleLooping(int soundOrdinal, float gain, float pitchRatio, int loopLengthSamples);
     void updateRmxVoiceLoop(int soundOrdinal, int loopLengthSamples);
+    void updateRmxVoicePitch(int soundOrdinal, float pitchRatio);
     void stopRmxSample(int soundOrdinal);
     void stopAllRmxSamples();
     void setRmxEffectParam(int effectId, float value);

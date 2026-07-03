@@ -590,17 +590,37 @@ public:
     EffectChain* effectChain = nullptr;
     BeatClock* beatClock = nullptr;
     std::atomic<bool>* active = nullptr;
+    int channelCount = 2;
 
     oboe::DataCallbackResult onAudioReady(oboe::AudioStream*, void* audioData, int32_t numFrames) override {
         if (!active || !active->load() || !samplePlayer) {
-            std::memset(audioData, 0, numFrames * 2 * sizeof(float));
+            std::memset(audioData, 0, static_cast<size_t>(numFrames) * channelCount * sizeof(float));
             return oboe::DataCallbackResult::Continue;
         }
         auto* out = static_cast<float*>(audioData);
-        samplePlayer->render(out, numFrames);
+        if (channelCount == 2) {
+            samplePlayer->render(out, numFrames);
+        } else {
+            static thread_local std::vector<float> stereo;
+            const size_t stereoSamples = static_cast<size_t>(numFrames) * 2;
+            if (stereo.size() < stereoSamples) stereo.resize(stereoSamples);
+            samplePlayer->render(stereo.data(), numFrames);
+            for (int i = 0; i < numFrames; ++i) {
+                const float mono = 0.5f * (stereo[i * 2] + stereo[i * 2 + 1]);
+                for (int ch = 0; ch < channelCount; ++ch) out[i * channelCount + ch] = mono;
+            }
+        }
         if (effectChain) {
             for (int i = 0; i < numFrames; ++i) {
-                effectChain->process(out[i * 2], out[i * 2 + 1]);
+                if (channelCount == 2) {
+                    effectChain->process(out[i * 2], out[i * 2 + 1]);
+                } else {
+                    float left = out[i * channelCount];
+                    float right = left;
+                    effectChain->process(left, right);
+                    const float mono = 0.5f * (left + right);
+                    for (int ch = 0; ch < channelCount; ++ch) out[i * channelCount + ch] = mono;
+                }
             }
         }
         if (beatClock) beatClock->advanceSamples(static_cast<size_t>(numFrames));
@@ -624,25 +644,39 @@ int UsbAudioEngine::openRmxOutput(int deviceId, int sampleRate, int channelCount
     callback->effectChain = mEffectChain.get();
     callback->beatClock = mBeatClock.get();
     callback->active = &mRmxOutputActive;
+    callback->channelCount = std::max(1, channelCount);
 
     oboe::AudioStreamBuilder builder;
     builder.setDirection(oboe::Direction::Output)
         ->setAudioApi(oboe::AudioApi::AAudio)
-        ->setDeviceId(deviceId)
         ->setSampleRate(sampleRate)
         ->setChannelCount(channelCount)
         ->setFormat(oboe::AudioFormat::Float)
+        ->setUsage(oboe::Usage::Game)
+        ->setContentType(oboe::ContentType::Music)
         ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
         ->setSharingMode(oboe::SharingMode::Exclusive)
+        ->setChannelConversionAllowed(true)
+        ->setFormatConversionAllowed(true)
         ->setDataCallback(callback);
 
+    if (deviceId > 0) builder.setDeviceId(deviceId);
+
     oboe::Result result = builder.openStream(mRmxOutputStream);
+    if (result != oboe::Result::OK || !mRmxOutputStream) {
+        LOGW("openRmxOutput: exclusive failed (%s); retrying shared mode", oboe::convertToText(result));
+        builder.setSharingMode(oboe::SharingMode::Shared)
+            ->setPerformanceMode(oboe::PerformanceMode::LowLatency);
+        result = builder.openStream(mRmxOutputStream);
+    }
     if (result != oboe::Result::OK || !mRmxOutputStream) {
         LOGE("openRmxOutput: failed to open: %s", oboe::convertToText(result));
         delete callback;
         mSamplePlayer.reset(); mBeatClock.reset(); mEffectChain.reset();
         return -1;
     }
+
+    callback->channelCount = std::max(1, mRmxOutputStream->getChannelCount());
 
     result = mRmxOutputStream->requestStart();
     if (result != oboe::Result::OK) {
@@ -686,6 +720,12 @@ void UsbAudioEngine::triggerRmxSampleLooping(int soundOrdinal, float gain, float
 void UsbAudioEngine::updateRmxVoiceLoop(int soundOrdinal, int loopLengthSamples) {
     if (mSamplePlayer) {
         mSamplePlayer->updateVoiceLoop(static_cast<RmxSound>(soundOrdinal), static_cast<size_t>(loopLengthSamples));
+    }
+}
+
+void UsbAudioEngine::updateRmxVoicePitch(int soundOrdinal, float pitchRatio) {
+    if (mSamplePlayer) {
+        mSamplePlayer->updateVoicePitch(static_cast<RmxSound>(soundOrdinal), pitchRatio);
     }
 }
 

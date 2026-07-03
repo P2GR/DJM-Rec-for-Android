@@ -152,6 +152,9 @@ object AudioEngine {
     /** Update the loop length on an already-playing sample voice. */
     external fun updateRmxVoiceLoop(soundOrdinal: Int, loopLengthSamples: Int)
 
+    /** Update pitch ratio on an already-playing sample voice. */
+    external fun updateRmxVoicePitch(soundOrdinal: Int, pitchRatio: Float)
+
     /** Stop a specific sample sound. */
     external fun stopRmxSample(soundOrdinal: Int)
 
