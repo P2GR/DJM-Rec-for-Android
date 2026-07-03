@@ -267,20 +267,24 @@ fun RecorderScreen(viewModel: MainViewModel) {
                 .padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Recording indicator + elapsed time — topmost, only visible while capturing.
+            // --- Recording visuals: waveform + timer + VU meter, stacked horizontally ---
             if (recordingState is RecordingState.Recording || recordingState is RecordingState.Paused) {
                 RgbWaveform(bins = waveformBins)
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 RecordingTimer(elapsedMillis = elapsedMillis, isPaused = recordingState is RecordingState.Paused)
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(10.dp))
             }
+
+            StereoVuMeter(levels = levels)
+
+            Spacer(modifier = Modifier.height(8.dp))
 
             DeviceStatusCard(
                 device = device,
                 onRescan = viewModel::rescanUsbDevices
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             if (recordingState is RecordingState.Error) {
                 Text(
@@ -289,13 +293,8 @@ fun RecorderScreen(viewModel: MainViewModel) {
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(top = 8.dp)
                 )
+                Spacer(modifier = Modifier.height(12.dp))
             }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            StereoVuMeter(levels = levels, modifier = Modifier.fillMaxSize().weight(1f))
-
-            Spacer(modifier = Modifier.height(24.dp))
 
             FormatSelector(
                 selected = selectedFormat,

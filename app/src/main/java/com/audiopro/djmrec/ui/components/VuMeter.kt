@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -22,7 +22,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.unit.dp
@@ -34,59 +36,36 @@ import com.audiopro.djmrec.ui.theme.MeterRed
 import kotlinx.coroutines.delay
 
 private const val METER_FLOOR_DB = -60f
-private const val METER_CEILING_DB = 3f  // +3 dB headroom above 0 dBFS
+private const val METER_CEILING_DB = 3f
 private const val CLIP_LATCH_MS = 1500L
 
-/** Converts a dBFS value in [-60, +3] to a fill fraction in [0, 1]. */
 private fun dbToFraction(db: Float): Float =
     ((db - METER_FLOOR_DB) / (METER_CEILING_DB - METER_FLOOR_DB)).coerceIn(0f, 1f)
 
 private fun colorForFraction(fraction: Float): Color = when {
-    fraction >= dbToFraction(0f) -> MeterRed     // above 0 dB = hot
-    fraction >= dbToFraction(-6f) -> MeterAmber   // -6 to 0 = warming
-    else -> MeterGreen                             // below -6 = clean
+    fraction >= dbToFraction(0f)  -> MeterRed
+    fraction >= dbToFraction(-6f) -> MeterAmber
+    else                           -> MeterGreen
 }
 
 /**
- * Full stereo VU meter: two vertical bars (RMS fill + peak hold line) with a dB scale and a
- * latched clip indicator per channel. Designed to be driven by a value polled at ~15-60 Hz.
+ * Horizontal stereo VU meter. Two horizontal bars (L on top, R below) with clip indicators
+ * and a compact dB scale row beneath. Designed for a CDJ-style stacked layout.
  */
 @Composable
 fun StereoVuMeter(levels: StereoLevels, modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier.height(155.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalAlignment = Alignment.Bottom
-    ) {
-        DbScale(modifier = Modifier.fillMaxHeight())
-        ChannelMeter(label = "L", level = levels.left, modifier = Modifier.weight(1f).fillMaxHeight())
-        ChannelMeter(label = "R", level = levels.right, modifier = Modifier.weight(1f).fillMaxHeight())
-    }
-}
-
-@Composable
-private fun DbScale(modifier: Modifier = Modifier) {
-    val marks = listOf(3, 0, -6, -12, -24, -48, -60)
     Column(
-        modifier = modifier.width(28.dp),
-        verticalArrangement = Arrangement.SpaceBetween
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        marks.forEach { db ->
-            val label = when {
-                db > 0 -> "+$db"
-                else -> "$db"
-            }
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
+        HorizontalChannelMeter(label = "L", level = levels.left)
+        HorizontalChannelMeter(label = "R", level = levels.right)
+        HorizontalDbScale()
     }
 }
 
 @Composable
-private fun ChannelMeter(label: String, level: ChannelLevel, modifier: Modifier = Modifier) {
+private fun HorizontalChannelMeter(label: String, level: ChannelLevel) {
     var clipLatched by remember { mutableStateOf(false) }
 
     LaunchedEffect(level.isClipping) {
@@ -102,82 +81,105 @@ private fun ChannelMeter(label: String, level: ChannelLevel, modifier: Modifier 
         animationSpec = tween(durationMillis = 80),
         label = "rmsFraction"
     )
-    val peakFraction = dbToFraction(level.peakDb) // no smoothing: peak hold must be instantaneous
+    val peakFraction = dbToFraction(level.peakDb)
 
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Bottom
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth()
     ) {
-        ClipIndicator(active = clipLatched)
-
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            Canvas(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
-                drawMeterTrack()
-                drawMeterFill(rmsFraction)
-                drawPeakLine(peakFraction)
-            }
-        }
-
+        // Channel label
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 4.dp)
+            modifier = Modifier.width(16.dp)
+        )
+
+        // Clip indicator dot
+        Box(
+            modifier = Modifier
+                .padding(horizontal = 4.dp)
+                .width(6.dp)
+                .height(18.dp)
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                drawRoundRect(
+                    color = if (clipLatched) MeterRed else Color(0xFF222433),
+                    cornerRadius = CornerRadius(3f, 3f)
+                )
+            }
+        }
+
+        // Horizontal meter bar
+        Box(modifier = Modifier.weight(1f).height(18.dp)) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                drawHorizontalMeterTrack()
+                drawHorizontalMeterFill(rmsFraction)
+                drawHorizontalPeakLine(peakFraction)
+            }
+        }
+
+        // Peak dB readout
+        Text(
+            text = "${level.peakDb.toInt()}",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(28.dp).padding(start = 6.dp)
         )
     }
 }
 
 @Composable
-private fun ClipIndicator(active: Boolean) {
-    val color = if (active) MeterRed else MaterialTheme.colorScheme.surfaceVariant
-    Box(
-        modifier = Modifier
-            .padding(bottom = 6.dp)
-            .width(28.dp)
-            .height(8.dp)
+private fun HorizontalDbScale() {
+    val marks = listOf(-60, -48, -36, -24, -12, -6, 0, 3)
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = 30.dp, end = 34.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Canvas(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
-            drawRoundRect(color = color, cornerRadius = androidx.compose.ui.geometry.CornerRadius(4f, 4f))
+        marks.forEach { db ->
+            Text(
+                text = if (db > 0) "+$db" else "$db",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                modifier = Modifier.width(24.dp)
+            )
         }
     }
 }
 
-private fun DrawScope.drawMeterTrack() {
+// --- Horizontal meter drawing helpers ---
+
+private fun DrawScope.drawHorizontalMeterTrack() {
     drawRoundRect(
         color = Color(0xFF11141D),
-        cornerRadius = androidx.compose.ui.geometry.CornerRadius(6f, 6f)
+        cornerRadius = CornerRadius(6f, 6f)
     )
 }
 
-private fun DrawScope.drawMeterFill(fraction: Float) {
-    val fillHeight = size.height * fraction
-    val top = size.height - fillHeight
-
-    // Segmented look: draw thin horizontal "LED" slices instead of one solid gradient block,
-    // each colored according to its own position on the dB scale.
-    val segmentCount = 40
-    val segmentHeight = size.height / segmentCount
-    val gapRatio = 0.18f
+private fun DrawScope.drawHorizontalMeterFill(fraction: Float) {
+    val fillWidth = size.width * fraction
+    val segmentCount = 60
+    val segmentWidth = size.width / segmentCount
+    val gapRatio = 0.15f
 
     for (i in 0 until segmentCount) {
-        val segmentTopY = size.height - (i + 1) * segmentHeight
-        if (segmentTopY < top) continue
-        val segmentFraction = 1f - (segmentTopY / size.height)
-        val color = colorForFraction(segmentFraction)
+        val segLeft = i * segmentWidth
+        if (segLeft >= fillWidth) break
+        val segFraction = segLeft / size.width
+        val color = colorForFraction(segFraction)
         drawRect(
             color = color,
-            topLeft = Offset(0f, segmentTopY + segmentHeight * gapRatio / 2f),
-            size = androidx.compose.ui.geometry.Size(size.width, segmentHeight * (1f - gapRatio))
+            topLeft = Offset(segLeft + segmentWidth * gapRatio / 2f, 0f),
+            size = Size(segmentWidth * (1f - gapRatio), size.height)
         )
     }
 }
 
-private fun DrawScope.drawPeakLine(fraction: Float) {
-    val y = size.height * (1f - fraction)
+private fun DrawScope.drawHorizontalPeakLine(fraction: Float) {
+    val x = (size.width * fraction).coerceIn(0f, size.width - 2f)
     drawRect(
         color = Color.White,
-        topLeft = Offset(0f, (y - 1.5f).coerceIn(0f, size.height - 3f)),
-        size = androidx.compose.ui.geometry.Size(size.width, 3f)
+        topLeft = Offset(x, 0f),
+        size = Size(3f, size.height)
     )
 }
