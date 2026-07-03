@@ -476,28 +476,29 @@ private fun ParamDial(
     knobSize: Dp,
     onValueChange: (Float) -> Unit
 ) {
-    var startValue by remember { mutableFloatStateOf(0f) }
-    var totalDragY by remember { mutableFloatStateOf(0f) }
+    val dragState = remember { DragState() }
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             Modifier
                 .size(knobSize + 18.dp)
                 .clip(CircleShape)
-                .pointerInput(normalized) {
+                .pointerInput(Unit) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         val pointerId: PointerId = down.id
                         var lastY = down.position.y
-                        startValue = normalized
-                        totalDragY = 0f
+                        dragState.startValue = normalized
+                        dragState.totalDragY = 0f
                         down.consume()
                         while (true) {
                             val event = awaitPointerEvent()
                             val change = event.changes.firstOrNull { it.id == pointerId } ?: break
                             if (!change.pressed) break
-                            totalDragY += change.position.y - lastY
+                            val dy = change.position.y - lastY
                             lastY = change.position.y
-                            onValueChange((startValue - totalDragY / 320f).coerceIn(0f, 1f))
+                            dragState.totalDragY += dy
+                            val newVal = (dragState.startValue - dragState.totalDragY / 280f).coerceIn(0f, 1f)
+                            onValueChange(newVal)
                             change.consume()
                         }
                     }
@@ -684,6 +685,11 @@ private fun normToFilter(value: Float): Float {
 private fun filterDisplay(hz: Float): String = if (hz >= 1000f) "%.1fk".format(hz / 1000f) else "${hz.toInt()}"
 
 private fun percentDisplay(value: Float): String = "${(value.coerceIn(0f, 1f) * 100f).toInt()}%"
+
+private class DragState {
+    var startValue: Float = 0f
+    var totalDragY: Float = 0f
+}
 
 private fun loadRmxSamples(context: Context): List<FloatArray> {
     val files = listOf("samples/kick.wav", "samples/snare.wav", "samples/hihat.wav", "samples/clap.wav")
