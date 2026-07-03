@@ -38,6 +38,7 @@ public:
         const float* sampleData = nullptr;
         size_t sampleLength = 0;
         size_t readPos = 0;
+        size_t loopEnd = 0;       // 0 = one-shot, >0 = loop from 0 to loopEnd
         float gain = 1.0f;
         float pitchRatio = 1.0f;
         bool active = false;
@@ -50,11 +51,12 @@ public:
     void loadSample(RmxSound sound, const float* data, size_t length);
 
     /**
-     * Trigger a one-shot sample. If looping, the sample restarts at loopStart when it
-     * reaches loopEnd. Set loopLengthSamples to 0 for one-shot (no loop).
-     */
+    /** Trigger a looping or one-shot sample. Pass loopEnd > 0 to enable looping (wraps back to 0). */
     void trigger(RmxSound sound, float gain = 1.0f, float pitchRatio = 1.0f,
-                 size_t loopStartSamples = 0, size_t loopEndSamples = 0);
+                 size_t loopEndSamples = 0);
+
+    /** Update the loop length on the active voice for the given sound. */
+    void updateVoiceLoop(RmxSound sound, size_t loopEndSamples);
 
     /** Stop all voices for a given sound. */
     void stopSound(RmxSound sound);

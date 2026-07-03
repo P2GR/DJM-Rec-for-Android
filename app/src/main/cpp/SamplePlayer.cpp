@@ -21,7 +21,7 @@ void SamplePlayer::loadSample(RmxSound sound, const float* data, size_t length) 
 }
 
 void SamplePlayer::trigger(RmxSound sound, float gain, float pitchRatio,
-                           size_t loopStartSamples, size_t loopEndSamples) {
+                           size_t loopEndSamples) {
     const int idx = static_cast<int>(sound);
     if (idx < 0 || idx >= static_cast<int>(RmxSound::Count)) return;
     if (mSampleBank[idx].empty()) return;
@@ -34,10 +34,19 @@ void SamplePlayer::trigger(RmxSound sound, float gain, float pitchRatio,
     v.sampleData = mSampleBank[idx].data();
     v.sampleLength = mSampleBank[idx].size();
     v.readPos = 0;
+    v.loopEnd = loopEndSamples > 0 ? std::min(loopEndSamples, v.sampleLength) : 0;
     v.gain = gain;
     v.pitchRatio = pitchRatio;
     v.active = true;
     v.sound = sound;
+}
+
+void SamplePlayer::updateVoiceLoop(RmxSound sound, size_t loopEndSamples) {
+    for (int i = 0; i < kVoiceCount; ++i) {
+        if (mVoices[i].active && mVoices[i].sound == sound) {
+            mVoices[i].loopEnd = loopEndSamples > 0 ? std::min(loopEndSamples, mVoices[i].sampleLength) : 0;
+        }
+    }
 }
 
 void SamplePlayer::stopSound(RmxSound sound) {
@@ -63,9 +72,14 @@ void SamplePlayer::render(float* stereoOut, int frameCount) {
         if (!voice.active || !voice.sampleData) continue;
 
         for (int f = 0; f < frameCount; ++f) {
-            if (voice.readPos >= voice.sampleLength) {
-                voice.active = false;
-                break;
+            const size_t effectiveEnd = voice.loopEnd > 0 ? voice.loopEnd : voice.sampleLength;
+            if (voice.readPos >= effectiveEnd) {
+                if (voice.loopEnd > 0) {
+                    voice.readPos = 0; // loop back to start
+                } else {
+                    voice.active = false;
+                    break;
+                }
             }
 
             const size_t idx = static_cast<size_t>(voice.readPos);

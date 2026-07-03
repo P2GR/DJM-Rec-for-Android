@@ -143,8 +143,14 @@ object AudioEngine {
     /** Close the RMX output stream. */
     external fun closeRmxOutput()
 
-    /** Trigger a one-shot sample. soundOrdinal matches RmxSound enum in native code. */
+    /** Trigger a one-shot sample without looping. */
     external fun triggerRmxSample(soundOrdinal: Int, gain: Float, pitchRatio: Float)
+
+    /** Trigger a looping sample that wraps at loopLengthSamples frames. */
+    external fun triggerRmxSampleLooping(soundOrdinal: Int, gain: Float, pitchRatio: Float, loopLengthSamples: Int)
+
+    /** Update the loop length on an already-playing sample voice. */
+    external fun updateRmxVoiceLoop(soundOrdinal: Int, loopLengthSamples: Int)
 
     /** Stop a specific sample sound. */
     external fun stopRmxSample(soundOrdinal: Int)

@@ -177,6 +177,18 @@ Java_com_audiopro_djmrec_audio_AudioEngine_triggerRmxSample(
 }
 
 JNIEXPORT void JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_triggerRmxSampleLooping(
+    JNIEnv* /*env*/, jobject /*thiz*/, jint soundOrdinal, jfloat gain, jfloat pitchRatio, jint loopLengthSamples) {
+    UsbAudioEngine::instance().triggerRmxSampleLooping(soundOrdinal, gain, pitchRatio, loopLengthSamples);
+}
+
+JNIEXPORT void JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_updateRmxVoiceLoop(
+    JNIEnv* /*env*/, jobject /*thiz*/, jint soundOrdinal, jint loopLengthSamples) {
+    UsbAudioEngine::instance().updateRmxVoiceLoop(soundOrdinal, loopLengthSamples);
+}
+
+JNIEXPORT void JNICALL
 Java_com_audiopro_djmrec_audio_AudioEngine_stopRmxSample(JNIEnv* /*env*/, jobject /*thiz*/, jint soundOrdinal) {
     UsbAudioEngine::instance().stopRmxSample(soundOrdinal);
 }

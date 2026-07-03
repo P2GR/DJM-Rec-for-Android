@@ -677,6 +677,18 @@ void UsbAudioEngine::triggerRmxSample(int soundOrdinal, float gain, float pitchR
     }
 }
 
+void UsbAudioEngine::triggerRmxSampleLooping(int soundOrdinal, float gain, float pitchRatio, int loopLengthSamples) {
+    if (mSamplePlayer) {
+        mSamplePlayer->trigger(static_cast<RmxSound>(soundOrdinal), gain, pitchRatio, static_cast<size_t>(loopLengthSamples));
+    }
+}
+
+void UsbAudioEngine::updateRmxVoiceLoop(int soundOrdinal, int loopLengthSamples) {
+    if (mSamplePlayer) {
+        mSamplePlayer->updateVoiceLoop(static_cast<RmxSound>(soundOrdinal), static_cast<size_t>(loopLengthSamples));
+    }
+}
+
 void UsbAudioEngine::stopRmxSample(int soundOrdinal) {
     if (mSamplePlayer) {
         mSamplePlayer->stopSound(static_cast<RmxSound>(soundOrdinal));
