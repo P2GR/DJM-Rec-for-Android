@@ -93,13 +93,13 @@ android {
     }
 
     // ── APK output naming ──────────────────────────────────────────────────
-    // Produces: DJM-Rec-for-Android-v1.0.0-debug.apk
-    //           DJM-Rec-for-Android-v1.0.0-release.apk
+    // Produces: DeckLab-v0.30-debug.apk
+    //           DeckLab-v0.30-release.apk
     applicationVariants.all {
         val variant = this
         outputs.all {
             val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
-            output.outputFileName = "DJM-Rec-for-Android-v${variant.versionName}-${variant.buildType.name}.apk"
+            output.outputFileName = "DeckLab-v${variant.versionName}-${variant.buildType.name}.apk"
         }
     }
 

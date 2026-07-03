@@ -1,11 +1,12 @@
-# DJM-Rec for Android
+# DeckLab for Android
 
 [![AGP](https://img.shields.io/badge/AGP-8.5.2-3DDC84?logo=android&logoColor=white)](https://developer.android.com/build)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0.20-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
 [![NDK](https://img.shields.io/badge/NDK-26.1-blue?logo=android&logoColor=white)](https://developer.android.com/ndk)
 [![Min SDK](https://img.shields.io/badge/minSdk-29-32DE84?logo=android&logoColor=white)]()
 
-Record multichannel USB audio from a Pioneer DJM-A9 mixer to WAV, FLAC, or MP3 on Android.
+DJ toolbox for Android — record multichannel USB audio from a Pioneer DJM mixer, play samples
+through an RMX-1000-style effects simulator, and detect BPM from live audio.
 
 AAudio can only reach channels 1/2 of a UAC2 interface. The DJM-A9 puts its master mix on
 channels 9/10. This app works around that by using `libusb` to do raw isochronous capture —
@@ -15,8 +16,8 @@ required.
 ## Build
 
 ```bash
-./gradlew assembleDebug    # → DJM-Rec-for-Android-v0.2-debug.apk
-./gradlew assembleRelease  # → DJM-Rec-for-Android-v0.2-release.apk
+./gradlew assembleDebug    # → DeckLab-v0.30-debug.apk
+./gradlew assembleRelease  # → DeckLab-v0.30-release.apk
 ```
 
 Needs JDK 17, NDK 26.1, CMake 3.22.1. Emulator won't work — you need a physical device with
@@ -24,6 +25,14 @@ USB host and a UAC2 mixer plugged in.
 
 Release builds sign with `~/.android/debug.keystore` by default. Drop a `keystore.properties`
 in the project root to use a real key (the file is gitignored).
+
+## Features
+
+| Module | Description |
+|---|---|
+| USB Recording | Capture multichannel UAC2 audio from Pioneer DJM mixers to WAV/FLAC/MP3 |
+| RMX Simulator | Play one-shot samples through a full RMX-1000-style effects chain with beat-synced looping, key shift, and scene/release FX |
+| BPM Detect | Tap tempo, manual BPM, or auto-detect BPM from the built-in mic |
 
 ## Releases
 
