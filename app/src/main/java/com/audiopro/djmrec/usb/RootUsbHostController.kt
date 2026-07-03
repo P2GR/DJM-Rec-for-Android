@@ -146,13 +146,49 @@ object RootUsbHostController {
                 echo 'djmrec persistent host start'
                 id
                 getenforce 2>/dev/null || echo selinux-unavailable
+
+                # -- iOS-like PHY / dwc3 tweaks -------------------------------------------
+                # iPhones use USB 2.0 (High-Speed) for DJM REC; disable SuperSpeed so the
+                # PHY doesn't waste time trying USB 3.0 negotiation that the DJM may reject.
+                for ss in /sys/devices/platform/soc/*.ssusb/power/control \
+                          /sys/devices/platform/soc/*.dwc3/power/control; do
+                  if [ -e "${'$'}ss" ]; then
+                    echo "power/control ${'$'}ss was $(cat ${'$'}ss 2>/dev/null)"
+                    echo on > "${'$'}ss" 2>/dev/null || echo "   write failed"
+                  fi
+                done
+
+                # Tell the DWC3 core to stay in host-only mode via its debugfs mode file.
+                for d in /sys/kernel/debug/usb/*dwc3/mode \
+                         /sys/kernel/debug/*.dwc3/mode; do
+                  if [ -e "${'$'}d" ]; then
+                    echo "dwc3 mode ${'$'}d was $(cat ${'$'}d 2>/dev/null)"
+                    echo host > "${'$'}d" 2>/dev/null || echo "   write failed (may need debugfs mounted)"
+                  fi
+                done
+
+                # Prevent the DWC3 core from suspending / entering low-power.
+                for lpm in /sys/devices/platform/soc/*.dwc3/power/autosuspend_delay_ms; do
+                  if [ -e "${'$'}lpm" ]; then
+                    echo -1 > "${'$'}lpm" 2>/dev/null || true
+                  fi
+                done
+
+                # -- Disable Android USB gadget framework --------------------------------
+                # iOS has no "gadget" concept -- the phone is host-only from the start.
+                # We kill every Android gadget path so the kernel can't flip to device mode.
                 setprop sys.usb.config none 2>/dev/null || true
+                setprop vendor.usb.config none 2>/dev/null || true
+                setprop persist.sys.usb.config none 2>/dev/null || true
+                setprop persist.vendor.usb.config none 2>/dev/null || true
                 for f in /sys/kernel/config/usb_gadget/*/UDC; do
                   if [ -e "${'$'}f" ]; then
                     echo "disable gadget: ${'$'}f was $(cat ${'$'}f 2>/dev/null)"
                     echo "" > "${'$'}f" 2>/dev/null || echo "   write failed"
                   fi
                 done
+
+                # -- Force host role on all kernel switches --------------------------------
                 for f in /sys/class/typec/*/data_role /sys/class/typec/*/port*/data_role; do
                   if [ -e "${'$'}f" ]; then echo host > "${'$'}f" 2>/dev/null || true; fi
                 done
@@ -165,6 +201,7 @@ object RootUsbHostController {
                 for f in /sys/class/usb_role/*/role; do
                   if [ -e "${'$'}f" ]; then echo host > "${'$'}f" 2>/dev/null || true; fi
                 done
+
                 echo 'after force:'
                 for f in /sys/class/typec/*/data_role /sys/class/typec/*/power_role /sys/class/usb_role/*/role; do
                   if [ -e "${'$'}f" ]; then echo "  ${'$'}f=$(cat ${'$'}f 2>/dev/null)"; fi
@@ -173,7 +210,7 @@ object RootUsbHostController {
                 echo 'sys.usb.state='$(getprop sys.usb.state 2>/dev/null)
                 echo 'djmrec persistent host end'
             """.trimIndent(),
-            timeoutSeconds = 10
+            timeoutSeconds = 12
         )
     }
 
