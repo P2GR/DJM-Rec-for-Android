@@ -70,6 +70,7 @@ fun RecorderScreen(viewModel: MainViewModel) {
     val usbChannelOffset by viewModel.usbChannelOffset.collectAsState()
     val forceAndroidCapture by viewModel.forceAndroidCapture.collectAsState()
     val djmrecPortMode by viewModel.djmrecPortMode.collectAsState()
+    val otgStatus by viewModel.otgStatus.collectAsState()
 
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -167,6 +168,49 @@ fun RecorderScreen(viewModel: MainViewModel) {
             confirmButton = {
                 TextButton(onClick = { showSettings = false }) {
                     Text(text = "Done")
+                }
+            }
+        )
+    }
+
+    // OTG warning dialog: shown when DJM REC Port is enabled but OTG appears off.
+    val otgWarning = otgStatus
+    if (djmrecPortMode && otgWarning != null && !otgWarning.enabled) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissOtgWarning() },
+            title = { Text(text = "USB OTG may be disabled") },
+            text = {
+                Column {
+                    Text(
+                        text = "USB On-The-Go (OTG) appears to be OFF on this device. " +
+                            "Without OTG, the phone cannot act as a USB host and the DJM-A9 " +
+                            "will never be detected.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    if (otgWarning.suggestions.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Detected: ${otgWarning.suggestions.joinToString("; ")}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Go to Settings → Connected devices → OTG and enable it.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.openOtgSettings(context) }) {
+                    Text(text = "Open OTG Settings")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissOtgWarning() }) {
+                    Text(text = "Dismiss")
                 }
             }
         )

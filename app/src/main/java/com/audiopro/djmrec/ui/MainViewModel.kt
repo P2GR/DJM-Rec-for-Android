@@ -20,10 +20,12 @@ import com.audiopro.djmrec.service.RecordingService
 import com.audiopro.djmrec.usb.UsbAudioDeviceInfo
 import com.audiopro.djmrec.usb.UsbAudioManager
 import com.audiopro.djmrec.usb.RootUsbHostController
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Wires the USB device stream, the bound [RecordingService], and the Compose UI together.
@@ -138,13 +140,60 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _forceAndroidCapture.value = enabled
     }
 
+    private val _otgStatus = MutableStateFlow<RootUsbHostController.OtgStatus?>(null)
+    val otgStatus: StateFlow<RootUsbHostController.OtgStatus?> = _otgStatus.asStateFlow()
+
     fun setDjmrecPortMode(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_DJMREC_PORT_MODE, enabled).apply()
         _djmrecPortMode.value = enabled
         if (enabled) {
             setRootUsbModeEnabled(true)
             setForceAndroidCapture(true)
+            checkOtgAndWarn()
+        } else {
+            _otgStatus.value = null
         }
+    }
+
+    fun checkOtgAndWarn() {
+        viewModelScope.launch {
+            val status = withContext(Dispatchers.IO) {
+                RootUsbHostController.checkOtgStatus()
+            }
+            _otgStatus.value = status
+            Log.i(TAG, "OTG status: enabled=${status.enabled} suggestions=${status.suggestions}")
+        }
+    }
+
+    fun dismissOtgWarning() {
+        _otgStatus.value = null
+    }
+
+    fun openOtgSettings(context: Context) {
+        val specificIntents = listOf(
+            "com.android.settings.Settings\$ConnectedDeviceDashboardActivity",
+            "com.android.settings.connecteddevice.ConnectedDeviceDashboardActivity",
+            "com.android.settings.connecteddevice.usb.UsbDetailsActivity",
+        )
+        for (className in specificIntents) {
+            try {
+                val intent = Intent().apply {
+                    setClassName("com.android.settings", className)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                if (intent.resolveActivity(context.packageManager) != null) {
+                    context.startActivity(intent)
+                    return
+                }
+            } catch (_: Exception) { }
+        }
+        try {
+            context.startActivity(
+                Intent(android.provider.Settings.ACTION_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            )
+        } catch (_: Exception) { }
     }
 
     fun startRecording() {

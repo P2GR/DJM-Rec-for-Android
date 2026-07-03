@@ -66,6 +66,60 @@ object RootUsbHostController {
         return result.exitCode == 0 && result.output.contains("uid=0")
     }
 
+    /**
+     * Checks whether USB OTG / host mode appears enabled at the Android framework level.
+     * Uses root to inspect sysprops and type-c role files.
+     */
+    fun checkOtgStatus(): OtgStatus {
+        if (!isRootAvailable()) {
+            return OtgStatus(
+                enabled = true,
+                details = "Root unavailable; cannot inspect OTG state",
+                suggestions = emptyList()
+            )
+        }
+        val result = runSu(
+            command = """
+                echo 'persist.sys.usb.config='$(getprop persist.sys.usb.config 2>/dev/null)
+                echo 'sys.usb.config='$(getprop sys.usb.config 2>/dev/null)
+                echo 'persist.vendor.usb.config='$(getprop persist.vendor.usb.config 2>/dev/null)
+                echo 'sys.usb.state='$(getprop sys.usb.state 2>/dev/null)
+                for f in /sys/class/typec/*/data_role /sys/class/typec/*/port*/data_role; do
+                  if [ -e "${'$'}f" ]; then echo "typec_role=${'$'}f=${'$'}(cat ${'$'}f 2>/dev/null)"; fi
+                done
+            """.trimIndent(),
+            timeoutSeconds = 5
+        )
+        val output = result.output
+        val usbConfig = output.lineSequence()
+            .firstNotNullOfOrNull { line ->
+                if (line.startsWith("persist.sys.usb.config=")) line.substringAfter("=") else null
+            }?.trim().orEmpty()
+        val typecRole = output.lineSequence()
+            .firstNotNullOfOrNull { line ->
+                if (line.startsWith("typec_role=")) line.substringAfter("=") else null
+            }?.trim().orEmpty()
+
+        val isHostRole = typecRole.contains("[host]") || typecRole.contains("host")
+        val configLooksOff = usbConfig.equals("none", ignoreCase = true) || usbConfig.isBlank()
+        val otgLikelyOff = configLooksOff && !isHostRole
+        val suggestions = mutableListOf<String>()
+        if (configLooksOff) suggestions.add("USB default config is 'none' or empty")
+        if (!isHostRole) suggestions.add("Type-C data role is not set to host")
+
+        return OtgStatus(
+            enabled = !otgLikelyOff,
+            details = output,
+            suggestions = suggestions
+        )
+    }
+
+    data class OtgStatus(
+        val enabled: Boolean,
+        val details: String,
+        val suggestions: List<String>
+    )
+
     fun tryForceHostMode(): CommandResult {
         return runSu(
             command = """
