@@ -491,6 +491,26 @@ private fun ParamDial(
                 contentAlignment = Alignment.Center
             ) {
                 Canvas(Modifier.fillMaxSize()) {
+                    val knobCx = size.width / 2f
+                    val knobCy = size.height / 2f
+                    val knobR = size.minDimension / 2f - 12f
+                    val valueAngle = Math.toRadians((-150.0 + normalized.coerceIn(0f, 1f) * 300.0))
+                    val lineEnd = Offset(
+                        knobCx + cos(valueAngle).toFloat() * knobR,
+                        knobCy + sin(valueAngle).toFloat() * knobR
+                    )
+                    drawLine(
+                        color = accent,
+                        start = Offset(knobCx, knobCy),
+                        end = lineEnd,
+                        strokeWidth = 3.5f,
+                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                    )
+                    drawCircle(
+                        color = accent,
+                        radius = 5f,
+                        center = Offset(knobCx, knobCy)
+                    )
                     drawArc(
                         accent,
                         -150f,
