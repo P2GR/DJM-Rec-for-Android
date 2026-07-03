@@ -663,10 +663,10 @@ int UsbAudioEngine::openRmxOutput(int deviceId, int sampleRate, int channelCount
         ->setSampleRate(sampleRate)
         ->setChannelCount(channelCount)
         ->setFormat(oboe::AudioFormat::Float)
-        ->setUsage(oboe::Usage::Media)
+        ->setUsage(oboe::Usage::Game)
         ->setContentType(oboe::ContentType::Music)
-        ->setPerformanceMode(oboe::PerformanceMode::None)
-        ->setSharingMode(oboe::SharingMode::Shared)
+        ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
+        ->setSharingMode(oboe::SharingMode::Exclusive)
         ->setChannelConversionAllowed(true)
         ->setFormatConversionAllowed(true)
         ->setDataCallback(callback);
@@ -675,7 +675,7 @@ int UsbAudioEngine::openRmxOutput(int deviceId, int sampleRate, int channelCount
 
     oboe::Result result = builder.openStream(mRmxOutputStream);
     if (result != oboe::Result::OK || !mRmxOutputStream) {
-        LOGW("openRmxOutput: power-balanced open failed (%s); retrying low-latency shared mode", oboe::convertToText(result));
+        LOGW("openRmxOutput: exclusive low-latency failed (%s); retrying shared low-latency", oboe::convertToText(result));
         builder.setSharingMode(oboe::SharingMode::Shared)
             ->setPerformanceMode(oboe::PerformanceMode::LowLatency);
         result = builder.openStream(mRmxOutputStream);

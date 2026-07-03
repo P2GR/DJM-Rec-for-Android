@@ -63,7 +63,7 @@ fun MainScreen(viewModel: MainViewModel) {
             ) {
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "DJM-REC",
+                    text = "DeckLab",
                     style = MaterialTheme.typography.titleLarge,
                     color = TextPrimary,
                     modifier = Modifier.padding(horizontal = 28.dp, vertical = 12.dp)

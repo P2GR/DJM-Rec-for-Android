@@ -5,6 +5,8 @@ import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -42,6 +44,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -58,10 +61,13 @@ import com.audiopro.djmrec.ui.theme.MeterAmber
 import com.audiopro.djmrec.ui.theme.SurfaceDark
 import com.audiopro.djmrec.ui.theme.TextPrimary
 import com.audiopro.djmrec.ui.theme.TextSecondary
+import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.floor
 import kotlin.math.ln
 import kotlin.math.pow
+import kotlin.math.sin
 import kotlinx.coroutines.delay
 
 private val sampleNames = listOf("KICK", "SNARE", "HIHAT", "CLAP")
@@ -201,14 +207,6 @@ fun RmxSimulatorScreen() {
 
     fun applySceneFx(index: Int) {
         sceneFx = index
-        when (index) {
-            0 -> { bitCrush = 0f; filterCutoff = MAX_FILTER_HZ; delayMix = 0f; reverbMix = 0f }
-            1 -> { bitCrush = 0f; filterCutoff = 900f; filterType = 1; delayMix = 0.12f; reverbMix = 0f }
-            2 -> { bitCrush = 0f; filterCutoff = MAX_FILTER_HZ; delayMix = 0.58f; reverbMix = 0.08f }
-            3 -> { bitCrush = 0.12f; filterCutoff = 1300f; filterType = 2; delayMix = 0.72f; reverbMix = 0.18f }
-            4 -> { bitCrush = 0f; filterCutoff = 4200f; filterType = 0; delayMix = 0.2f; reverbMix = 0.62f }
-            5 -> { bitCrush = 0.7f; filterCutoff = 2800f; filterType = 1; delayMix = 0.24f; reverbMix = 0.08f }
-        }
     }
 
     fun releaseFx(kind: Int) {
@@ -465,17 +463,23 @@ private fun ParamDial(
                 .size(knobSize + 18.dp)
                 .clip(CircleShape)
                 .pointerInput(normalized) {
-                    detectDragGestures(
-                        onDragStart = {
-                            startValue = normalized
-                            totalDragY = 0f
-                        },
-                        onDrag = { change, dragAmount ->
-                            change.consume()
-                            totalDragY += dragAmount.y
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val pointerId: PointerId = down.id
+                        var lastY = down.position.y
+                        startValue = normalized
+                        totalDragY = 0f
+                        down.consume()
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == pointerId } ?: break
+                            if (!change.pressed) break
+                            totalDragY += change.position.y - lastY
+                            lastY = change.position.y
                             onValueChange((startValue - totalDragY / 320f).coerceIn(0f, 1f))
+                            change.consume()
                         }
-                    )
+                    }
                 },
             contentAlignment = Alignment.Center
         ) {
@@ -500,6 +504,25 @@ private fun ParamDial(
                 Text(display, color = TextPrimary, fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, maxLines = 1)
             }
             Canvas(Modifier.fillMaxSize()) {
+                val center = Offset(size.width / 2f, size.height / 2f)
+                val radius = size.minDimension / 2f - 7f
+                for (tick in 0..10) {
+                    val angle = Math.toRadians((-150.0 + tick * 30.0))
+                    val outer = Offset(
+                        center.x + cos(angle).toFloat() * radius,
+                        center.y + sin(angle).toFloat() * radius
+                    )
+                    val inner = Offset(
+                        center.x + cos(angle).toFloat() * (radius - if (tick % 5 == 0) 8f else 5f),
+                        center.y + sin(angle).toFloat() * (radius - if (tick % 5 == 0) 8f else 5f)
+                    )
+                    drawLine(
+                        color = TextSecondary.copy(alpha = if (tick % 5 == 0) 0.5f else 0.32f),
+                        start = inner,
+                        end = outer,
+                        strokeWidth = if (tick % 5 == 0) 2f else 1.4f
+                    )
+                }
                 drawArc(
                     accent.copy(alpha = 0.18f),
                     -150f,
@@ -553,21 +576,49 @@ private fun loadShiftedSamples(sourceSamples: List<FloatArray>, semitones: Int) 
     if (sourceSamples.isEmpty()) return
     val ratio = pitchRatioForKey(semitones)
     sourceSamples.forEachIndexed { index, source ->
-        val shifted = if (semitones == 0) source else pitchShiftSameLength(source, ratio)
+        val shifted = if (semitones == 0) source else pitchShiftTempoLocked(source, ratio)
         AudioEngine.loadRmxSample(index, shifted)
     }
 }
 
-private fun pitchShiftSameLength(source: FloatArray, ratio: Float): FloatArray {
+private fun pitchShiftTempoLocked(source: FloatArray, ratio: Float): FloatArray {
     if (source.isEmpty()) return FloatArray(0)
-    val out = FloatArray(source.size)
-    val last = source.lastIndex
+    val pitchedLength = (source.size / ratio).toInt().coerceAtLeast(128)
+    val pitched = FloatArray(pitchedLength)
+    for (i in pitched.indices) pitched[i] = sampleLinear(source, i * ratio)
+    return timeStretchOla(pitched, source.size)
+}
+
+private fun sampleLinear(source: FloatArray, position: Float): Float {
+    if (source.isEmpty()) return 0f
+    val wrapped = ((position % source.size) + source.size) % source.size
+    val base = floor(wrapped).toInt().coerceIn(0, source.lastIndex)
+    val next = if (base == source.lastIndex) 0 else base + 1
+    val frac = wrapped - base.toFloat()
+    return source[base] + (source[next] - source[base]) * frac
+}
+
+private fun timeStretchOla(source: FloatArray, targetLength: Int): FloatArray {
+    val out = FloatArray(targetLength)
+    val windowSize = 2048.coerceAtMost(source.size).coerceAtLeast(128)
+    val hopOut = (windowSize / 4).coerceAtLeast(32)
+    val hopIn = (hopOut * source.size.toFloat() / targetLength.toFloat()).coerceAtLeast(1f)
+    val gain = FloatArray(targetLength)
+    var outPos = 0
+    var inPos = 0f
+    while (outPos < targetLength) {
+        for (i in 0 until windowSize) {
+            val dst = outPos + i
+            if (dst >= targetLength) break
+            val window = 0.5f - 0.5f * cos((2.0 * PI * i) / (windowSize - 1)).toFloat()
+            out[dst] += sampleLinear(source, inPos + i) * window
+            gain[dst] += window
+        }
+        outPos += hopOut
+        inPos += hopIn
+    }
     for (i in out.indices) {
-        val wrapped = (i.toFloat() * ratio) % source.size.toFloat()
-        val base = floor(wrapped).toInt().coerceIn(0, last)
-        val next = if (base == last) 0 else base + 1
-        val frac = wrapped - base.toFloat()
-        out[i] = source[base] + (source[next] - source[base]) * frac
+        if (gain[i] > 0.0001f) out[i] /= gain[i]
     }
     return out
 }
