@@ -36,6 +36,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,7 +69,10 @@ import kotlin.math.floor
 import kotlin.math.ln
 import kotlin.math.pow
 import kotlin.math.sin
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private val sampleNames = listOf("KICK", "SNARE", "HIHAT", "CLAP")
 private val sampleColors = listOf(AccentRed, MeterAmber, AccentGreen, Color(0xFF4488CC))
@@ -107,6 +111,8 @@ fun RmxSimulatorScreen() {
     var keyShift by remember { mutableIntStateOf(0) }
     var sceneFx by remember { mutableIntStateOf(0) }
     var sourceSamples by remember { mutableStateOf<List<FloatArray>>(emptyList()) }
+    var stopping by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     DisposableEffect(Unit) {
         val audioMgr = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -197,10 +203,12 @@ fun RmxSimulatorScreen() {
         val nextKey = (keyShift + delta).coerceIn(MIN_KEY, MAX_KEY)
         if (nextKey == keyShift) return
         keyShift = nextKey
-        loadShiftedSamples(sourceSamples, nextKey)
-        activePads.forEachIndexed { idx, active ->
-            if (active) {
-                AudioEngine.updateRmxVoiceLoop(idx, bpmToLoopLengthSamples(bpm, loopDivisionIndex))
+        scope.launch(Dispatchers.Default) {
+            loadShiftedSamples(sourceSamples, nextKey)
+            withContext(Dispatchers.Main) {
+                activePads.forEachIndexed { idx, active ->
+                    if (active) AudioEngine.updateRmxVoiceLoop(idx, bpmToLoopLengthSamples(bpm, loopDivisionIndex))
+                }
             }
         }
     }
@@ -298,8 +306,17 @@ fun RmxSimulatorScreen() {
             Spacer(Modifier.height(6.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 CompactButton("STOP", AccentRed, Modifier.weight(1f)) {
-                    AudioEngine.stopAllRmxSamples()
+                    if (stopping) return@CompactButton
+                    stopping = true
+                    val hadWet = delayMix > 0.01f || reverbMix > 0.01f
+                    if (!hadWet) { delayMix = 0.35f; reverbMix = 0.22f }
                     activePads = listOf(false, false, false, false)
+                    scope.launch {
+                        delay(1200L)
+                        if (!hadWet) { delayMix = 0f; reverbMix = 0f }
+                        AudioEngine.stopAllRmxSamples()
+                        stopping = false
+                    }
                 }
                 CompactButton("ECHO OUT", SurfaceDark, Modifier.weight(1f)) { releaseFx(0) }
                 CompactButton("BRAKE", SurfaceDark, Modifier.weight(1f)) { releaseFx(2) }
@@ -329,9 +346,13 @@ fun RmxSimulatorScreen() {
                 }
                 CompactButton("RESET", SurfaceDark, Modifier.width(74.dp)) {
                     keyShift = 0
-                    loadShiftedSamples(sourceSamples, 0)
-                    activePads.forEachIndexed { idx, active ->
-                        if (active) AudioEngine.updateRmxVoiceLoop(idx, bpmToLoopLengthSamples(bpm, loopDivisionIndex))
+                    scope.launch(Dispatchers.Default) {
+                        loadShiftedSamples(sourceSamples, 0)
+                        withContext(Dispatchers.Main) {
+                            activePads.forEachIndexed { idx, active ->
+                                if (active) AudioEngine.updateRmxVoiceLoop(idx, bpmToLoopLengthSamples(bpm, loopDivisionIndex))
+                            }
+                        }
                     }
                 }
             }
