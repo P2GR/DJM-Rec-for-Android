@@ -267,17 +267,11 @@ fun RecorderScreen(viewModel: MainViewModel) {
                 .padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // --- Recording visuals: waveform + timer + VU meter ---
+            // --- Top section: waveform + VU meter + device status ---
             if (recordingState is RecordingState.Recording || recordingState is RecordingState.Paused ||
                 recordingState is RecordingState.Monitoring) {
                 RgbWaveform(bins = waveformBins)
                 Spacer(modifier = Modifier.height(8.dp))
-                if (recordingState is RecordingState.Recording || recordingState is RecordingState.Paused) {
-                    RecordingTimer(elapsedMillis = elapsedMillis, isPaused = recordingState is RecordingState.Paused)
-                } else {
-                    RecordingTimer(elapsedMillis = 0L, isPaused = false)
-                }
-                Spacer(modifier = Modifier.height(10.dp))
             }
 
             StereoVuMeter(levels = levels)
@@ -289,16 +283,22 @@ fun RecorderScreen(viewModel: MainViewModel) {
                 onRescan = viewModel::rescanUsbDevices
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
-
             if (recordingState is RecordingState.Error) {
+                Spacer(modifier = Modifier.height(12.dp))
                 Text(
                     text = (recordingState as RecordingState.Error).message,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(top = 8.dp)
+                    modifier = Modifier.padding(top = 4.dp)
                 )
-                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            // --- Bottom section: timer + format + transport ---
+            if (recordingState is RecordingState.Recording || recordingState is RecordingState.Paused) {
+                RecordingTimer(elapsedMillis = elapsedMillis, isPaused = recordingState is RecordingState.Paused)
+                Spacer(modifier = Modifier.height(8.dp))
             }
 
             FormatSelector(
@@ -308,7 +308,7 @@ fun RecorderScreen(viewModel: MainViewModel) {
                 onSelect = viewModel::selectFormat
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             TransportControls(
                 state = recordingState,
