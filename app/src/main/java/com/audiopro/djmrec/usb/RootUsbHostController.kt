@@ -83,6 +83,83 @@ object RootUsbHostController {
         )
     }
 
+    /** Returns the app's own Linux UID for use with [grantUsbDeviceAccess]. */
+    fun getAppUid(): Int = android.os.Process.myUid()
+
+    fun forcePersistentHostMode(): CommandResult {
+        return runSu(
+            command = """
+                echo 'djmrec persistent host start'
+                id
+                getenforce 2>/dev/null || echo selinux-unavailable
+                setprop sys.usb.config none 2>/dev/null || true
+                for f in /sys/kernel/config/usb_gadget/*/UDC; do
+                  if [ -e "${'$'}f" ]; then
+                    echo "disable gadget: ${'$'}f was $(cat ${'$'}f 2>/dev/null)"
+                    echo "" > "${'$'}f" 2>/dev/null || echo "   write failed"
+                  fi
+                done
+                for f in /sys/class/typec/*/data_role /sys/class/typec/*/port*/data_role; do
+                  if [ -e "${'$'}f" ]; then echo host > "${'$'}f" 2>/dev/null || true; fi
+                done
+                for f in /sys/class/typec/*/power_role /sys/class/typec/*/port*/power_role; do
+                  if [ -e "${'$'}f" ]; then echo source > "${'$'}f" 2>/dev/null || true; fi
+                done
+                for f in /sys/class/dual_role_usb/*/mode; do
+                  if [ -e "${'$'}f" ]; then echo host > "${'$'}f" 2>/dev/null || true; fi
+                done
+                for f in /sys/class/usb_role/*/role; do
+                  if [ -e "${'$'}f" ]; then echo host > "${'$'}f" 2>/dev/null || true; fi
+                done
+                echo 'after force:'
+                for f in /sys/class/typec/*/data_role /sys/class/typec/*/power_role /sys/class/usb_role/*/role; do
+                  if [ -e "${'$'}f" ]; then echo "  ${'$'}f=$(cat ${'$'}f 2>/dev/null)"; fi
+                done
+                echo 'sys.usb.config='$(getprop sys.usb.config 2>/dev/null)
+                echo 'sys.usb.state='$(getprop sys.usb.state 2>/dev/null)
+                echo 'djmrec persistent host end'
+            """.trimIndent(),
+            timeoutSeconds = 10
+        )
+    }
+
+    fun scanKernelUsbDevices(): CommandResult {
+        return runSu(
+            command = """
+                echo 'kernel usb device scan: start'
+                for dev in /sys/bus/usb/devices/*/idVendor; do
+                  dir=$(dirname "${'$'}dev")
+                  vid=$(cat "${'$'}dev" 2>/dev/null)
+                  pid=$(cat "${'$'}dir/idProduct" 2>/dev/null)
+                  speed=$(cat "${'$'}dir/speed" 2>/dev/null)
+                  product=$(cat "${'$'}dir/product" 2>/dev/null)
+                  manufacturer=$(cat "${'$'}dir/manufacturer" 2>/dev/null)
+                  echo "usb_dev ${'$'}dir vid=0x${'$'}vid pid=0x${'$'}pid speed=${'$'}speed product=${'$'}product mfr=${'$'}manufacturer"
+                done
+                echo 'kernel usb device scan: end'
+                find /dev/bus/usb -type c -ls 2>/dev/null
+            """.trimIndent(),
+            timeoutSeconds = 8
+        )
+    }
+
+    fun grantUsbDeviceAccess(appUid: Int): CommandResult {
+        return runSu(
+            command = """
+                echo 'grant usb access to uid ${appUid}: start'
+                for node in /dev/bus/usb/*/*; do
+                  if [ -c "${'$'}node" ]; then
+                    chown ${appUid}:${appUid} "${'$'}node" 2>/dev/null || true
+                    chmod 666 "${'$'}node" 2>/dev/null || true
+                    ls -l "${'$'}node" 2>/dev/null
+                  fi
+                done
+                echo 'grant usb access: end'
+            """.trimIndent(),
+            timeoutSeconds = 6
+        )
+    }
+
     fun collectRootStatus(): CommandResult {
         return runSu(
             command = """

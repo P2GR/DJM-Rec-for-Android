@@ -38,6 +38,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val KEY_ROOT_USB_MODE = "root_usb_mode"
         private const val KEY_USB_CHANNEL_OFFSET = "usb_channel_offset"
         private const val KEY_FORCE_ANDROID_CAPTURE = "force_android_capture"
+        private const val KEY_DJMREC_PORT_MODE = "djmrec_port_mode"
     }
 
     private val usbAudioManager = (application as DjmRecApplication).usbAudioManager
@@ -75,6 +76,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _forceAndroidCapture = MutableStateFlow(prefs.getBoolean(KEY_FORCE_ANDROID_CAPTURE, false))
     val forceAndroidCapture: StateFlow<Boolean> = _forceAndroidCapture.asStateFlow()
+
+    private val _djmrecPortMode = MutableStateFlow(prefs.getBoolean(KEY_DJMREC_PORT_MODE, false))
+    val djmrecPortMode: StateFlow<Boolean> = _djmrecPortMode.asStateFlow()
 
     private var boundService: RecordingService? = null
     private var isBound = false
@@ -134,17 +138,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _forceAndroidCapture.value = enabled
     }
 
+    fun setDjmrecPortMode(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_DJMREC_PORT_MODE, enabled).apply()
+        _djmrecPortMode.value = enabled
+        if (enabled) {
+            setRootUsbModeEnabled(true)
+            setForceAndroidCapture(true)
+        }
+    }
+
     fun startRecording() {
         val context = getApplication<Application>()
+
+        // DJM REC port mode: persistent host + kernel scan + AAudio stereo capture.
+        if (_djmrecPortMode.value) {
+            val hostResult = RootUsbHostController.forcePersistentHostMode()
+            Log.i(TAG, "DJM REC persistent host: exit=${hostResult.exitCode}\n${hostResult.output}")
+            RootUsbHostController.grantUsbDeviceAccess(RootUsbHostController.getAppUid())
+            val kernelScan = RootUsbHostController.scanKernelUsbDevices()
+            Log.i(TAG, "DJM REC kernel scan: exit=${kernelScan.exitCode}\n${kernelScan.output}")
+            if (tryDjmrecPortCapture(context)) return
+        }
+
         val device = deviceState.value ?: run {
-            if (_rootUsbMode.value && startRootAlsaRecording(context, null)) {
+            if (_rootUsbMode.value && !_djmrecPortMode.value && startRootAlsaRecording(context, null)) {
                 return
             }
             usbAudioManager.scanForConnectedMixer("record-button-rescan")
             return
         }
 
-        if (_rootUsbMode.value && startRootAlsaRecording(context, device)) {
+        if (_rootUsbMode.value && !_djmrecPortMode.value && startRootAlsaRecording(context, device)) {
             return
         }
 
@@ -232,6 +256,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         ContextCompat.startForegroundService(context, intent)
         boundService?.setDeviceLabel("Root ALSA ${rootAlsaDevice.description}")
         Log.i(TAG, "starting root ALSA capture from ${rootAlsaDevice.path}: ${rootAlsaDevice.description}")
+        return true
+    }
+
+    /**
+     * DJM REC port capture: scan for USB audio input via AudioManager, then use AAudio.
+     * The DJM REC port outputs a stereo master mix, so 48k/24bit/2ch is the right profile.
+     */
+    private fun tryDjmrecPortCapture(context: Context): Boolean {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+        val usbInputs = audioManager.getDevices(android.media.AudioManager.GET_DEVICES_INPUTS)
+            .filter { it.type == android.media.AudioDeviceInfo.TYPE_USB_DEVICE }
+        Log.i(TAG, "DJM REC port: ${usbInputs.size} USB audio input(s) found via AudioManager")
+        usbInputs.forEach { info ->
+            Log.i(TAG, "  id=${info.id} product=${info.productName} rates=${info.sampleRates.toList()}")
+        }
+        val usbDevice = usbInputs.firstOrNull()
+        if (usbDevice == null) {
+            Log.w(TAG, "DJM REC port: no USB audio input in AudioManager; trying root ALSA")
+            return startRootAlsaRecording(context, null)
+        }
+        val sampleRate = if (48000 in usbDevice.sampleRates.toList()) 48000 else usbDevice.sampleRates[0]
+        val intent = Intent(context, RecordingService::class.java).apply {
+            action = RecordingService.ACTION_START
+            putExtra(RecordingService.EXTRA_CAPTURE_MODE, RecordingService.CAPTURE_MODE_AAUDIO)
+            putExtra(RecordingService.EXTRA_DEVICE_ID, usbDevice.id)
+            putExtra(RecordingService.EXTRA_SAMPLE_RATE, sampleRate)
+            putExtra(RecordingService.EXTRA_BIT_DEPTH, 24)
+            putExtra(RecordingService.EXTRA_CHANNEL_COUNT, 2)
+            putExtra(RecordingService.EXTRA_FORMAT, _selectedFormat.value.nativeValue)
+        }
+        ContextCompat.startForegroundService(context, intent)
+        boundService?.setDeviceLabel("DJM REC Port (${usbDevice.productName})")
+        Log.i(TAG, "DJM REC port: starting AAudio capture deviceId=${usbDevice.id} @ ${sampleRate}Hz")
         return true
     }
 

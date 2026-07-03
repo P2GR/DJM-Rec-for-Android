@@ -151,6 +151,11 @@ object LogExporter {
                 }
             }
 
+            val kernelUsbScan = RootUsbHostController.scanKernelUsbDevices()
+            sb.appendLine("--- kernel-level USB device scan (bypasses Android UsbManager) ---")
+            sb.appendLine("scan exit=${kernelUsbScan.exitCode} timedOut=${kernelUsbScan.timedOut}")
+            sb.appendLine(kernelUsbScan.output)
+
             sb.appendLine("--- kernel dmesg (usb/typec/dwc3/xhci lines, last 150) ---")
             sb.appendLine(
                 "This is the KERNEL's own view of USB attach events, independent of what " +

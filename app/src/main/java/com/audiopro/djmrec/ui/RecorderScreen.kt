@@ -69,6 +69,7 @@ fun RecorderScreen(viewModel: MainViewModel) {
     val rootUsbMode by viewModel.rootUsbMode.collectAsState()
     val usbChannelOffset by viewModel.usbChannelOffset.collectAsState()
     val forceAndroidCapture by viewModel.forceAndroidCapture.collectAsState()
+    val djmrecPortMode by viewModel.djmrecPortMode.collectAsState()
 
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -105,6 +106,29 @@ fun RecorderScreen(viewModel: MainViewModel) {
                         Switch(
                             checked = rootUsbMode,
                             onCheckedChange = viewModel::setRootUsbModeEnabled
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "DJM REC Port",
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                            Text(
+                                text = "Top-right DJM REC USB port (stereo master mix). Enables root + Android audio path automatically.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = djmrecPortMode,
+                            onCheckedChange = viewModel::setDjmrecPortMode
                         )
                     }
 

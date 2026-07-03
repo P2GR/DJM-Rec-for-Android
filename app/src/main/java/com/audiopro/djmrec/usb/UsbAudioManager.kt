@@ -135,11 +135,12 @@ class UsbAudioManager(private val context: Context) {
     /** Explicit UI-triggered scan. If Android exposes the mixer in UsbManager, this requests permission/opens it. */
     fun scanForConnectedMixer(reason: String = "manual-rescan"): Boolean {
         if (rootModeEnabled) {
-            val rootResult = RootUsbHostController.tryForceHostMode()
-            Log.i(
-                TAG,
-                "$reason: root USB assist exit=${rootResult.exitCode} timedOut=${rootResult.timedOut}\n${rootResult.output}"
-            )
+            // Persistent host-mode + kernel USB scan for the DJM REC port.
+            val hostResult = RootUsbHostController.forcePersistentHostMode()
+            Log.i(TAG, "$reason: root persistent host exit=${hostResult.exitCode} timedOut=${hostResult.timedOut}\n${hostResult.output}")
+            RootUsbHostController.grantUsbDeviceAccess(RootUsbHostController.getAppUid())
+            val kernelScan = RootUsbHostController.scanKernelUsbDevices()
+            Log.i(TAG, "$reason: kernel USB scan exit=${kernelScan.exitCode} timedOut=${kernelScan.timedOut}\n${kernelScan.output}")
         }
         logEnumeratedDevices(reason)
         val device = findConnectedAudioClassDevice()
