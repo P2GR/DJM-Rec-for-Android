@@ -9,6 +9,7 @@
 #include <oboe/Oboe.h>
 
 #include "AlsaPcmAudioSource.h"
+#include "BpmDetector.h"
 #include "RingBuffer.h"
 #include "UsbIsoAudioSource.h"
 #include "WaveformAnalyzer.h"
@@ -81,6 +82,11 @@ public:
     void getWaveformBins(float* outBins) const;
     static constexpr int kWaveformBinCount = WaveformAnalyzer::kBinCount;
 
+    // --- BPM detector (mic input) ---
+    int startMicCapture();
+    void stopMicCapture();
+    bool getBpmResult(float& outBpm, float& outConfidence, float& outBeatPhase, int& outLeadingBand);
+
     // oboe::AudioStreamDataCallback
     oboe::DataCallbackResult onAudioReady(oboe::AudioStream* stream, void* audioData, int32_t numFrames) override;
 
@@ -105,6 +111,7 @@ private:
     std::unique_ptr<RingBuffer> mRingBuffer;
     std::unique_ptr<AudioWriter> mWriter;
     std::unique_ptr<WaveformAnalyzer> mWaveformAnalyzer;
+    std::unique_ptr<BpmDetector> mBpmDetector;
     std::thread mEncoderThread;
 
     std::mutex mControlMutex; // guards start/stop/pause transitions (not the realtime path)
@@ -132,6 +139,17 @@ private:
     std::atomic<float> mRightPeakDb{-60.0f};
     std::atomic<float> mRightRmsDb{-60.0f};
     std::atomic<bool> mClipping{false};
+
+    // Mic capture for BPM detection (separate from DJM USB capture).
+    std::shared_ptr<oboe::AudioStream> mMicStream;
+    std::unique_ptr<RingBuffer> mMicRingBuffer;
+    std::thread mMicCaptureThread;
+    std::atomic<bool> mMicCaptureActive{false};
+    std::atomic<bool> mMicStopRequested{false};
+
+    // Mic callback.
+    oboe::DataCallbackResult onMicAudioReady(oboe::AudioStream* stream, void* audioData, int32_t numFrames);
+    void micCaptureThreadLoop();
 };
 
 } // namespace djmrec

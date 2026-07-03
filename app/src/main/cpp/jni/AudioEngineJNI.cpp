@@ -133,4 +133,28 @@ Java_com_audiopro_djmrec_audio_AudioEngine_getWaveformBins(JNIEnv* env, jobject 
     return result;
 }
 
+JNIEXPORT jint JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_startMicCapture(JNIEnv* /*env*/, jobject /*thiz*/) {
+    return UsbAudioEngine::instance().startMicCapture();
+}
+
+JNIEXPORT void JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_stopMicCapture(JNIEnv* /*env*/, jobject /*thiz*/) {
+    UsbAudioEngine::instance().stopMicCapture();
+}
+
+JNIEXPORT jfloatArray JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_getBpmResult(JNIEnv* env, jobject /*thiz*/) {
+    float bpm = 0.0f;
+    float confidence = 0.0f;
+    float beatPhase = 0.0f;
+    int leadingBand = 0;
+    bool locked = UsbAudioEngine::instance().getBpmResult(bpm, confidence, beatPhase, leadingBand);
+
+    jfloatArray result = env->NewFloatArray(5);
+    float values[5] = { bpm, confidence, beatPhase, static_cast<float>(leadingBand), locked ? 1.0f : 0.0f };
+    env->SetFloatArrayRegion(result, 0, 5, values);
+    return result;
+}
+
 } // extern "C"

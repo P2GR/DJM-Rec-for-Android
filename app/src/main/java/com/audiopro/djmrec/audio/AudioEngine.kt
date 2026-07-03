@@ -116,4 +116,22 @@ object AudioEngine {
      * Intended to be polled at ~15–30 Hz from the UI thread.
      */
     external fun getWaveformBins(): FloatArray
+
+    // --- BPM detector (mic input) ---
+
+    /** Starts microphone capture for BPM detection. Returns sample rate on success, -1 on failure. */
+    external fun startMicCapture(): Int
+
+    /** Stops microphone capture. Safe to call even if not active. */
+    external fun stopMicCapture()
+
+    /**
+     * Returns [bpm, confidence, beatPhase, leadingBand, locked] where:
+     *   bpm: detected BPM (0 if not yet detected)
+     *   confidence: [0, 1] how reliable the detection is
+     *   beatPhase: [0, 1) position within the current beat
+     *   leadingBand: 0=low, 1=mid, 2=high
+     *   locked: 1.0 if detection has stabilised, 0.0 if still listening
+     */
+    external fun getBpmResult(): FloatArray
 }

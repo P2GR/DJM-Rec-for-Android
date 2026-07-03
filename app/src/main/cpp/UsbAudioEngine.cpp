@@ -514,4 +514,102 @@ void UsbAudioEngine::getWaveformBins(float* outBins) const {
     }
 }
 
+// --- BPM detector (mic capture) ----------------------------------------------------
+
+int UsbAudioEngine::startMicCapture() {
+    if (mMicCaptureActive.load()) {
+        LOGW("Mic capture already active");
+        return 0;
+    }
+
+    mBpmDetector = std::make_unique<BpmDetector>();
+    mMicRingBuffer = std::make_unique<RingBuffer>(BpmDetector::kSampleRate * 4); // 4 s of float mono
+
+    oboe::AudioStreamBuilder builder;
+    builder.setDirection(oboe::Direction::Input)
+        ->setAudioApi(oboe::AudioApi::AAudio)
+        ->setDeviceId(oboe::kUnspecified) // built-in mic
+        ->setSampleRate(BpmDetector::kSampleRate)
+        ->setChannelCount(1) // mono
+        ->setFormat(oboe::AudioFormat::Float)
+        ->setInputPreset(oboe::InputPreset::VoiceRecognition)
+        ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
+        ->setSharingMode(oboe::SharingMode::Exclusive);
+
+    oboe::Result result = builder.openStream(mMicStream);
+    if (result != oboe::Result::OK || !mMicStream) {
+        LOGE("startMicCapture: failed to open mic stream: %s", oboe::convertToText(result));
+        mBpmDetector.reset();
+        mMicRingBuffer.reset();
+        return -1;
+    }
+
+    result = mMicStream->requestStart();
+    if (result != oboe::Result::OK) {
+        LOGE("startMicCapture: failed to start mic stream: %s", oboe::convertToText(result));
+        mMicStream->close();
+        mMicStream.reset();
+        mBpmDetector.reset();
+        mMicRingBuffer.reset();
+        return -1;
+    }
+
+    mMicStopRequested.store(false);
+    mMicCaptureActive.store(true);
+    mMicCaptureThread = std::thread(&UsbAudioEngine::micCaptureThreadLoop, this);
+
+    LOGI("Mic capture started at %d Hz mono float", BpmDetector::kSampleRate);
+    return BpmDetector::kSampleRate;
+}
+
+void UsbAudioEngine::stopMicCapture() {
+    mMicStopRequested.store(true);
+    if (mMicCaptureThread.joinable()) {
+        mMicCaptureThread.join();
+    }
+    if (mMicStream) {
+        mMicStream->requestStop();
+        mMicStream->close();
+        mMicStream.reset();
+    }
+    mMicRingBuffer.reset();
+    mBpmDetector.reset();
+    mMicCaptureActive.store(false);
+    LOGI("Mic capture stopped");
+}
+
+bool UsbAudioEngine::getBpmResult(float& outBpm, float& outConfidence, float& outBeatPhase, int& outLeadingBand) {
+    if (!mBpmDetector) return false;
+    BpmDetector::Result r;
+    const bool locked = mBpmDetector->getResult(r);
+    outBpm = r.bpm;
+    outConfidence = r.confidence;
+    outBeatPhase = r.beatPhase;
+    outLeadingBand = r.leadingBand;
+    return locked;
+}
+
+void UsbAudioEngine::micCaptureThreadLoop() {
+    constexpr int kFramesPerRead = 512;
+    std::vector<float> buffer(kFramesPerRead); // mono float
+
+    while (!mMicStopRequested.load()) {
+        if (!mMicStream || !mMicCaptureActive.load()) break;
+
+        const auto result = mMicStream->read(buffer.data(), kFramesPerRead, 0 /* timeoutNs */);
+        if (result.error() != oboe::Result::OK) {
+            if (result.error() == oboe::Result::ErrorTimeout) continue;
+            LOGW("Mic read error: %s", oboe::convertToText(result.error()));
+            break;
+        }
+        const int32_t framesRead = result.value();
+        if (framesRead <= 0) continue;
+
+        // Feed to BPM detector.
+        if (mBpmDetector) {
+            mBpmDetector->processFrames(buffer.data(), static_cast<size_t>(framesRead));
+        }
+    }
+}
+
 } // namespace djmrec
