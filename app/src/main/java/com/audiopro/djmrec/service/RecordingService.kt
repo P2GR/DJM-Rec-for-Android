@@ -292,7 +292,9 @@ class RecordingService : LifecycleService() {
     /** Shared tail of both [startSession] and [startUsbIsoSession] once the native capture
      *  source is open: creates the output file, starts the encoder, and flips to Recording. */
     private fun beginEncodingOrFail(bitDepth: Int, format: RecordingFormat) {
-        val outputDir = File(getExternalFilesDir(Environment.DIRECTORY_MUSIC), "DJMRec").apply { mkdirs() }
+        val outputDir = File(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "DJMRec"
+        ).apply { mkdirs() }
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         val outputFile = File(outputDir, "mix_$timestamp.${format.extension}")
         currentOutputFile = outputFile

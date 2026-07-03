@@ -99,7 +99,7 @@ private fun formatDuration(ms: Long): String {
 @Composable
 fun LibraryScreen(onBack: () -> Unit) {
     val context = LocalContext.current
-    val dir = File(context.getExternalFilesDir(android.os.Environment.DIRECTORY_MUSIC), "DJMRec")
+    val dir = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "DJMRec")
     val recordings = remember(dir) {
         dir.mkdirs()
         dir.listFiles()
