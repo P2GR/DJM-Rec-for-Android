@@ -17,6 +17,14 @@ void SamplePlayer::loadSample(RmxSound sound, const float* data, size_t length) 
     const int idx = static_cast<int>(sound);
     if (idx < 0 || idx >= static_cast<int>(RmxSound::Count)) return;
     mSampleBank[idx].assign(data, data + length);
+    for (int i = 0; i < kVoiceCount; ++i) {
+        if (mVoices[i].active && mVoices[i].sound == sound) {
+            mVoices[i].sampleData = mSampleBank[idx].data();
+            mVoices[i].sampleLength = mSampleBank[idx].size();
+            mVoices[i].readPos = std::fmod(mVoices[i].readPos, static_cast<float>(std::max<size_t>(1, mVoices[i].sampleLength)));
+            if (mVoices[i].loopEnd > mVoices[i].sampleLength) mVoices[i].loopEnd = mVoices[i].sampleLength;
+        }
+    }
     LOGI("Loaded sample %d: %zu samples", idx, length);
 }
 

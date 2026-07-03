@@ -598,6 +598,17 @@ public:
             return oboe::DataCallbackResult::Continue;
         }
         auto* out = static_cast<float*>(audioData);
+        const bool idleClean = samplePlayer->activeVoiceCount() == 0 &&
+                               (!effectChain ||
+                                (effectChain->getBitCrush() <= 0.0001f &&
+                                 effectChain->getDelayMix() <= 0.0001f &&
+                                 effectChain->getReverbMix() <= 0.0001f &&
+                                 effectChain->getFilterCutoff() >= 19999.0f));
+        if (idleClean) {
+            std::memset(audioData, 0, static_cast<size_t>(numFrames) * channelCount * sizeof(float));
+            if (beatClock) beatClock->advanceSamples(static_cast<size_t>(numFrames));
+            return oboe::DataCallbackResult::Continue;
+        }
         if (channelCount == 2) {
             samplePlayer->render(out, numFrames);
         } else {
@@ -652,10 +663,10 @@ int UsbAudioEngine::openRmxOutput(int deviceId, int sampleRate, int channelCount
         ->setSampleRate(sampleRate)
         ->setChannelCount(channelCount)
         ->setFormat(oboe::AudioFormat::Float)
-        ->setUsage(oboe::Usage::Game)
+        ->setUsage(oboe::Usage::Media)
         ->setContentType(oboe::ContentType::Music)
-        ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
-        ->setSharingMode(oboe::SharingMode::Exclusive)
+        ->setPerformanceMode(oboe::PerformanceMode::None)
+        ->setSharingMode(oboe::SharingMode::Shared)
         ->setChannelConversionAllowed(true)
         ->setFormatConversionAllowed(true)
         ->setDataCallback(callback);
@@ -664,7 +675,7 @@ int UsbAudioEngine::openRmxOutput(int deviceId, int sampleRate, int channelCount
 
     oboe::Result result = builder.openStream(mRmxOutputStream);
     if (result != oboe::Result::OK || !mRmxOutputStream) {
-        LOGW("openRmxOutput: exclusive failed (%s); retrying shared mode", oboe::convertToText(result));
+        LOGW("openRmxOutput: power-balanced open failed (%s); retrying low-latency shared mode", oboe::convertToText(result));
         builder.setSharingMode(oboe::SharingMode::Shared)
             ->setPerformanceMode(oboe::PerformanceMode::LowLatency);
         result = builder.openStream(mRmxOutputStream);

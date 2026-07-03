@@ -59,6 +59,7 @@ import com.audiopro.djmrec.ui.theme.SurfaceDark
 import com.audiopro.djmrec.ui.theme.TextPrimary
 import com.audiopro.djmrec.ui.theme.TextSecondary
 import kotlin.math.exp
+import kotlin.math.floor
 import kotlin.math.ln
 import kotlin.math.pow
 import kotlinx.coroutines.delay
@@ -76,6 +77,8 @@ private const val MIN_FILTER_HZ = 50f
 private const val MAX_FILTER_HZ = 20000f
 private const val MIN_KEY = -12
 private const val MAX_KEY = 12
+private const val RMX_ACTIVE_REFRESH_MS = 33L
+private const val RMX_IDLE_REFRESH_MS = 250L
 
 @Composable
 fun RmxSimulatorScreen() {
@@ -97,6 +100,7 @@ fun RmxSimulatorScreen() {
     var outputStatus by remember { mutableStateOf("Opening speaker") }
     var keyShift by remember { mutableIntStateOf(0) }
     var sceneFx by remember { mutableIntStateOf(0) }
+    var sourceSamples by remember { mutableStateOf<List<FloatArray>>(emptyList()) }
 
     DisposableEffect(Unit) {
         val audioMgr = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -106,7 +110,7 @@ fun RmxSimulatorScreen() {
         val result = AudioEngine.openRmxOutput(outDeviceId, 44100, 2)
         outputStatus = if (result > 0) "Speaker ready" else "Audio unavailable"
         if (!samplesLoaded) {
-            loadRmxSamples(context)
+            sourceSamples = loadRmxSamples(context)
             samplesLoaded = true
         }
         onDispose {
@@ -118,16 +122,15 @@ fun RmxSimulatorScreen() {
 
     LaunchedEffect(Unit) {
         while (true) {
-            val result = AudioEngine.getBpmResult()
-            val detectedBpm = if (result.size >= 5 && result[4] > 0.5f && result[0] > 0f) result[0] else 0f
-            val detectedPhase = if (result.size >= 5) result[2] else 0f
+            val result = if (autoBpm) AudioEngine.getBpmResult() else FloatArray(0)
+            val detectedBpm = if (autoBpm && result.size >= 5 && result[4] > 0.5f && result[0] > 0f) result[0] else 0f
+            val detectedPhase = if (autoBpm && result.size >= 5) result[2] else 0f
             val effectiveBpm = if (autoBpm && detectedBpm > 0f) detectedBpm else manualBpm
             bpm = effectiveBpm
             AudioEngine.updateRmxBeatClock(effectiveBpm, if (autoBpm) detectedPhase else 0f, autoBpm)
             activePads.forEachIndexed { i, active ->
                 if (active) {
                     AudioEngine.updateRmxVoiceLoop(i, bpmToLoopLengthSamples(effectiveBpm, loopDivisionIndex))
-                    AudioEngine.updateRmxVoicePitch(i, pitchRatioForKey(keyShift))
                 }
             }
             AudioEngine.setRmxEffectParam(0, bitCrush)
@@ -137,7 +140,8 @@ fun RmxSimulatorScreen() {
             AudioEngine.setRmxEffectParam(4, bpmToLoopLengthSamples(effectiveBpm, loopDivisionIndex).toFloat())
             AudioEngine.setRmxEffectParam(5, 0.45f)
             AudioEngine.setRmxEffectParam(7, reverbMix)
-            delay(33L)
+            val activeAudio = activePads.any { it } || autoBpm || delayMix > 0f || reverbMix > 0f || bitCrush > 0f || filterCutoff < MAX_FILTER_HZ
+            delay(if (activeAudio) RMX_ACTIVE_REFRESH_MS else RMX_IDLE_REFRESH_MS)
         }
     }
 
@@ -151,7 +155,7 @@ fun RmxSimulatorScreen() {
             AudioEngine.triggerRmxSampleLooping(
                 idx,
                 1.0f,
-                pitchRatioForKey(keyShift),
+                1.0f,
                 bpmToLoopLengthSamples(bpm, loopDivisionIndex)
             )
         }
@@ -184,9 +188,14 @@ fun RmxSimulatorScreen() {
     }
 
     fun adjustKey(delta: Int) {
-        keyShift = (keyShift + delta).coerceIn(MIN_KEY, MAX_KEY)
+        val nextKey = (keyShift + delta).coerceIn(MIN_KEY, MAX_KEY)
+        if (nextKey == keyShift) return
+        keyShift = nextKey
+        loadShiftedSamples(sourceSamples, nextKey)
         activePads.forEachIndexed { idx, active ->
-            if (active) AudioEngine.updateRmxVoicePitch(idx, pitchRatioForKey(keyShift))
+            if (active) {
+                AudioEngine.updateRmxVoiceLoop(idx, bpmToLoopLengthSamples(bpm, loopDivisionIndex))
+            }
         }
     }
 
@@ -322,7 +331,10 @@ fun RmxSimulatorScreen() {
                 }
                 CompactButton("RESET", SurfaceDark, Modifier.width(74.dp)) {
                     keyShift = 0
-                    activePads.forEachIndexed { idx, active -> if (active) AudioEngine.updateRmxVoicePitch(idx, 1.0f) }
+                    loadShiftedSamples(sourceSamples, 0)
+                    activePads.forEachIndexed { idx, active ->
+                        if (active) AudioEngine.updateRmxVoiceLoop(idx, bpmToLoopLengthSamples(bpm, loopDivisionIndex))
+                    }
                 }
             }
 
@@ -340,12 +352,12 @@ fun RmxSimulatorScreen() {
 
             Spacer(Modifier.height(10.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                ParamDial("FILTER", filterNorm(filterCutoff), filterDisplay(filterCutoff), MeterAmber, 58.dp) {
+                ParamDial("FILTER", filterNorm(filterCutoff), filterDisplay(filterCutoff), MeterAmber, 80.dp) {
                     filterCutoff = normToFilter(it)
                 }
-                ParamDial("DELAY", delayMix, percentDisplay(delayMix), AccentGreen, 58.dp) { delayMix = it }
-                ParamDial("REVERB", reverbMix, percentDisplay(reverbMix), Color(0xFF74A7FF), 58.dp) { reverbMix = it }
-                ParamDial("CRUSH", bitCrush, percentDisplay(bitCrush), AccentRed, 58.dp) { bitCrush = it }
+                ParamDial("DELAY", delayMix, percentDisplay(delayMix), AccentGreen, 80.dp) { delayMix = it }
+                ParamDial("REVERB", reverbMix, percentDisplay(reverbMix), Color(0xFF74A7FF), 80.dp) { reverbMix = it }
+                ParamDial("CRUSH", bitCrush, percentDisplay(bitCrush), AccentRed, 80.dp) { bitCrush = it }
             }
 
             Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.Center) {
@@ -450,9 +462,8 @@ private fun ParamDial(
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             Modifier
-                .size(knobSize)
+                .size(knobSize + 18.dp)
                 .clip(CircleShape)
-                .background(SurfaceDark)
                 .pointerInput(normalized) {
                     detectDragGestures(
                         onDragStart = {
@@ -462,26 +473,45 @@ private fun ParamDial(
                         onDrag = { change, dragAmount ->
                             change.consume()
                             totalDragY += dragAmount.y
-                            onValueChange((startValue - totalDragY / 220f).coerceIn(0f, 1f))
+                            onValueChange((startValue - totalDragY / 320f).coerceIn(0f, 1f))
                         }
                     )
                 },
             contentAlignment = Alignment.Center
         ) {
+            Box(
+                Modifier
+                    .size(knobSize)
+                    .clip(CircleShape)
+                    .background(SurfaceDark),
+                contentAlignment = Alignment.Center
+            ) {
+                Canvas(Modifier.fillMaxSize()) {
+                    drawArc(
+                        accent,
+                        -150f,
+                        normalized.coerceIn(0f, 1f) * 300f,
+                        false,
+                        style = Stroke(width = 5f),
+                        size = Size(size.width - 12f, size.height - 12f),
+                        topLeft = Offset(6f, 6f)
+                    )
+                }
+                Text(display, color = TextPrimary, fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, maxLines = 1)
+            }
             Canvas(Modifier.fillMaxSize()) {
                 drawArc(
-                    accent,
+                    accent.copy(alpha = 0.18f),
                     -150f,
-                    normalized.coerceIn(0f, 1f) * 300f,
+                    300f,
                     false,
-                    style = Stroke(width = 4f),
-                    size = Size(size.width - 10f, size.height - 10f),
-                    topLeft = Offset(5f, 5f)
+                    style = Stroke(width = 2f),
+                    size = Size(size.width - 8f, size.height - 8f),
+                    topLeft = Offset(4f, 4f)
                 )
             }
-            Text(display, color = TextPrimary, fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, maxLines = 1)
         }
-        Text(label, fontSize = 8.sp, color = TextSecondary, modifier = Modifier.padding(top = 2.dp), maxLines = 1)
+        Text(label, fontSize = 10.sp, color = TextSecondary, modifier = Modifier.padding(top = 1.dp), maxLines = 1)
     }
 }
 
@@ -519,6 +549,29 @@ private fun divisionIndexForX(x: Float, width: Float): Int {
 
 private fun pitchRatioForKey(semitones: Int): Float = 2.0.pow(semitones.toDouble() / 12.0).toFloat()
 
+private fun loadShiftedSamples(sourceSamples: List<FloatArray>, semitones: Int) {
+    if (sourceSamples.isEmpty()) return
+    val ratio = pitchRatioForKey(semitones)
+    sourceSamples.forEachIndexed { index, source ->
+        val shifted = if (semitones == 0) source else pitchShiftSameLength(source, ratio)
+        AudioEngine.loadRmxSample(index, shifted)
+    }
+}
+
+private fun pitchShiftSameLength(source: FloatArray, ratio: Float): FloatArray {
+    if (source.isEmpty()) return FloatArray(0)
+    val out = FloatArray(source.size)
+    val last = source.lastIndex
+    for (i in out.indices) {
+        val wrapped = (i.toFloat() * ratio) % source.size.toFloat()
+        val base = floor(wrapped).toInt().coerceIn(0, last)
+        val next = if (base == last) 0 else base + 1
+        val frac = wrapped - base.toFloat()
+        out[i] = source[base] + (source[next] - source[base]) * frac
+    }
+    return out
+}
+
 private fun signedKey(value: Int): String = when {
     value > 0 -> "+$value"
     else -> value.toString()
@@ -540,16 +593,24 @@ private fun filterDisplay(hz: Float): String = if (hz >= 1000f) "%.1fk".format(h
 
 private fun percentDisplay(value: Float): String = "${(value.coerceIn(0f, 1f) * 100f).toInt()}%"
 
-private fun loadRmxSamples(context: Context) {
+private fun loadRmxSamples(context: Context): List<FloatArray> {
     val files = listOf("samples/kick.wav", "samples/snare.wav", "samples/hihat.wav", "samples/clap.wav")
+    val loaded = mutableListOf<FloatArray>()
     files.forEachIndexed { i, path ->
         try {
             context.assets.open(path).use { input ->
                 val sample = com.audiopro.djmrec.audio.WavSampleLoader.loadFromMemory(input.readBytes())
-                if (sample.valid) AudioEngine.loadRmxSample(i, sample.data)
+                if (sample.valid) {
+                    loaded += sample.data
+                    AudioEngine.loadRmxSample(i, sample.data)
+                } else {
+                    loaded += FloatArray(0)
+                }
             }
         } catch (e: Exception) {
+            loaded += FloatArray(0)
             android.util.Log.e("RmxScreen", "Failed to load $path: ${e.message}")
         }
     }
+    return loaded
 }
