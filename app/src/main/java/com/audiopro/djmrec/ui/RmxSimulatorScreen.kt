@@ -2,8 +2,11 @@ package com.audiopro.djmrec.ui
 
 import android.content.Context
 import androidx.compose.foundation.Canvas
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,14 +21,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -86,7 +83,13 @@ fun RmxSimulatorScreen() {
 
     // Lifecycle.
     DisposableEffect(Unit) {
-        AudioEngine.openRmxOutput(-1, 44100, 2)
+        // Find a usable output device: USB if connected, else built-in speaker.
+        val audioMgr = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val outputs = audioMgr.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+        val usbOut = outputs.firstOrNull { it.type == AudioDeviceInfo.TYPE_USB_DEVICE }
+        val spkOut = outputs.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+        val outDeviceId = usbOut?.id ?: spkOut?.id ?: -1
+        AudioEngine.openRmxOutput(outDeviceId, 44100, 2)
         if (!samplesLoaded) { loadRmxSamples(context); samplesLoaded = true }
         onDispose {
             AudioEngine.stopAllRmxSamples()
@@ -169,11 +172,10 @@ fun RmxSimulatorScreen() {
             Spacer(Modifier.weight(1f))
 
             // - button
-            IconButton(
+            TextButton(
                 onClick = { manualBpm = (manualBpm - 1f).coerceAtLeast(40f) },
-                colors = IconButtonDefaults.iconButtonColors(contentColor = TextPrimary),
-                modifier = Modifier.size(32.dp)
-            ) { Text("−", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary) }
+                modifier = Modifier.size(36.dp)
+            ) { Text("\u2212", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = TextPrimary) }
 
             // BPM number
             Text(
@@ -183,11 +185,10 @@ fun RmxSimulatorScreen() {
             )
 
             // + button
-            IconButton(
+            TextButton(
                 onClick = { manualBpm = (manualBpm + 1f).coerceAtMost(220f) },
-                colors = IconButtonDefaults.iconButtonColors(contentColor = TextPrimary),
-                modifier = Modifier.size(32.dp)
-            ) { Text("+", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary) }
+                modifier = Modifier.size(36.dp)
+            ) { Text("+", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = TextPrimary) }
 
             Spacer(Modifier.weight(1f))
 
@@ -208,14 +209,19 @@ fun RmxSimulatorScreen() {
                 val active = activePads[i]
                 Button(
                     onClick = { togglePad(i) },
-                    modifier = Modifier.size(62.dp),
-                    shape = CircleShape,
+                    modifier = Modifier.size(72.dp),
+                    shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if (active) sampleColors[i] else SurfaceDark
                     )
                 ) {
-                    Text(sampleNames[i], fontSize = 9.sp, fontWeight = FontWeight.Bold,
-                        color = if (active) BackgroundDark else TextPrimary)
+                    Text(
+                        text = sampleNames[i].replace("-", "\n"),
+                        fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                        maxLines = 2, softWrap = true,
+                        color = if (active) BackgroundDark else TextPrimary,
+                        lineHeight = 11.sp
+                    )
                 }
             }
         }
@@ -230,12 +236,18 @@ fun RmxSimulatorScreen() {
                 .clip(RoundedCornerShape(8.dp))
                 .background(Color(0xFF1A1D2E))
                 .pointerInput(selectedPad) {
-                    detectTapGestures(onPress = { offset ->
-                        isXpadHeld = true; xpadTouchX = offset.x
-                        // If the selected pad isn't playing, start it.
-                        if (!activePads[selectedPad]) togglePad(selectedPad)
-                        tryAwaitRelease(); isXpadHeld = false
-                    })
+                    detectDragGestures(
+                        onDragStart = { offset ->
+                            isXpadHeld = true; xpadTouchX = offset.x
+                            if (!activePads[selectedPad]) togglePad(selectedPad)
+                        },
+                        onDragEnd = { isXpadHeld = false },
+                        onDragCancel = { isXpadHeld = false },
+                        onDrag = { change, _ ->
+                            change.consume()
+                            xpadTouchX = change.position.x
+                        }
+                    )
                 }
         ) {
             Canvas(Modifier.fillMaxSize()) {
@@ -298,7 +310,22 @@ private fun bpmToLoopLengthSamples(bpm: Float): Int {
 @Composable
 private fun EffectKnob(label: String, value: Float, min: Float, max: Float, format: String, onValueChange: (Float) -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.size(40.dp).clip(CircleShape).background(SurfaceDark), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(SurfaceDark)
+                .pointerInput(Unit) {
+                    detectDragGestures { change, dragAmount ->
+                        change.consume()
+                        val delta = -dragAmount.y / 100f
+                        val range = max - min
+                        val newVal = (value + delta * range).coerceIn(min, max)
+                        onValueChange(newVal)
+                    }
+                },
+            contentAlignment = Alignment.Center
+        ) {
             Canvas(Modifier.fillMaxSize()) {
                 drawArc(AccentGreen, -150f, ((value - min) / (max - min)).coerceIn(0f, 1f) * 300f, false,
                     style = Stroke(width = 3.5f), size = Size(size.width - 8f, size.height - 8f), topLeft = Offset(4f, 4f))

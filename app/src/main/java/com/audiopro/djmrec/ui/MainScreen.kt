@@ -55,6 +55,7 @@ fun MainScreen(viewModel: MainViewModel) {
 
     ModalNavigationDrawer(
         drawerState = drawerState,
+        gesturesEnabled = selectedDestination != Destination.RMX_SIM,
         drawerContent = {
             ModalDrawerSheet(
                 drawerContainerColor = SurfaceDark
