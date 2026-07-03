@@ -6,9 +6,75 @@
 
 namespace djmrec {
 
+// --- Biquad coefficient helpers (RBJ cookbook) ---
+
+static float dbToLinear(float db) { return std::pow(10.0f, db / 20.0f); }
+
+void Biquad::setLowShelf(float fc, float gainDb, float fs) {
+    const float A = dbToLinear(gainDb);
+    const float w0 = 2.0f * 3.14159265f * fc / fs;
+    const float cosW = std::cos(w0);
+    const float sinW = std::sin(w0);
+    const float S = 0.65f;
+    const float alpha = sinW / 2.0f * std::sqrt((A + 1.0f / A) * (1.0f / S - 1.0f) + 2.0f);
+    const float twoSqrtAAlpha = 2.0f * std::sqrt(A) * alpha;
+    const float Ap1 = A + 1.0f;
+    const float Am1 = A - 1.0f;
+    const float a0inv = 1.0f / (Ap1 + Am1 * cosW + twoSqrtAAlpha);
+    b0 = A * (Ap1 - Am1 * cosW + twoSqrtAAlpha) * a0inv;
+    b1 = 2.0f * A * (Am1 - Ap1 * cosW) * a0inv;
+    b2 = A * (Ap1 - Am1 * cosW - twoSqrtAAlpha) * a0inv;
+    a1 = -2.0f * (Am1 + Ap1 * cosW) * a0inv;
+    a2 = (Ap1 + Am1 * cosW - twoSqrtAAlpha) * a0inv;
+}
+
+void Biquad::setHighShelf(float fc, float gainDb, float fs) {
+    const float A = dbToLinear(gainDb);
+    const float w0 = 2.0f * 3.14159265f * fc / fs;
+    const float cosW = std::cos(w0);
+    const float sinW = std::sin(w0);
+    const float S = 0.65f;
+    const float alpha = sinW / 2.0f * std::sqrt((A + 1.0f / A) * (1.0f / S - 1.0f) + 2.0f);
+    const float twoSqrtAAlpha = 2.0f * std::sqrt(A) * alpha;
+    const float Ap1 = A + 1.0f;
+    const float Am1 = A - 1.0f;
+    const float a0inv = 1.0f / (Ap1 - Am1 * cosW + twoSqrtAAlpha);
+    b0 = A * (Ap1 + Am1 * cosW + twoSqrtAAlpha) * a0inv;
+    b1 = -2.0f * A * (Am1 + Ap1 * cosW) * a0inv;
+    b2 = A * (Ap1 + Am1 * cosW - twoSqrtAAlpha) * a0inv;
+    a1 = 2.0f * (Am1 - Ap1 * cosW) * a0inv;
+    a2 = (Ap1 - Am1 * cosW - twoSqrtAAlpha) * a0inv;
+}
+
+void Biquad::setPeaking(float fc, float gainDb, float Q, float fs) {
+    const float A = dbToLinear(gainDb);
+    const float w0 = 2.0f * 3.14159265f * fc / fs;
+    const float cosW = std::cos(w0);
+    const float sinW = std::sin(w0);
+    const float alpha = sinW / (2.0f * Q);
+    const float a0inv = 1.0f / (1.0f + alpha / A);
+    b0 = (1.0f + alpha * A) * a0inv;
+    b1 = -2.0f * cosW * a0inv;
+    b2 = (1.0f - alpha * A) * a0inv;
+    a1 = -2.0f * cosW * a0inv;
+    a2 = (1.0f - alpha / A) * a0inv;
+}
+
 EffectChain::EffectChain() {
-    mDelayLine.resize(4 * 44100); // up to 4 seconds of delay
+    mDelayLine.resize(4 * 44100);
     mDelayLength = 22050;
+    updateIsoCoeffs();
+}
+
+void EffectChain::updateIsoCoeffs() {
+    auto normToDb = [](float n) -> float {
+        if (n < 0.001f) return -60.0f;
+        if (n <= 0.5f) return -60.0f + (n / 0.5f) * 60.0f;
+        return ((n - 0.5f) / 0.5f) * 6.0f;
+    };
+    mIsoLowShelf.setLowShelf(300.0f, normToDb(mIsoPrevLow), 44100.0f);
+    mIsoMidPeak.setPeaking(1500.0f, normToDb(mIsoPrevMid), 0.8f, 44100.0f);
+    mIsoHighShelf.setHighShelf(3000.0f, normToDb(mIsoPrevHigh), 44100.0f);
 }
 
 void EffectChain::reset() {
@@ -53,6 +119,23 @@ void EffectChain::process(float& left, float& right) {
         const float crushRight = std::round(right * steps) / steps;
         left = left + bitCrush * (crushLeft - left);
         right = right + bitCrush * (crushRight - right);
+    }
+
+    // --- 3-band isolator EQ ---
+    const float isoLow  = mIsoLow.load(std::memory_order_relaxed);
+    const float isoMid  = mIsoMid.load(std::memory_order_relaxed);
+    const float isoHigh = mIsoHigh.load(std::memory_order_relaxed);
+    if (isoLow != mIsoPrevLow || isoMid != mIsoPrevMid || isoHigh != mIsoPrevHigh) {
+        mIsoPrevLow = isoLow; mIsoPrevMid = isoMid; mIsoPrevHigh = isoHigh;
+        updateIsoCoeffs();
+    }
+    {
+        const float monoIso = (left + right) * 0.5f;
+        const float isoOut = mIsoLowShelf.process(monoIso)
+                           + mIsoMidPeak.process(monoIso)
+                           + mIsoHighShelf.process(monoIso);
+        left = isoOut;
+        right = isoOut;
     }
 
     // --- State-variable filter ---

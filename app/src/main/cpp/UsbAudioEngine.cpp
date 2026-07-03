@@ -761,6 +761,9 @@ void UsbAudioEngine::setRmxEffectParam(int effectId, float value) {
         case 5: mEffectChain->setDelayFeedback(value); break;
         case 6: mEffectChain->setReverbRoomSize(value); break;
         case 7: mEffectChain->setReverbMix(value); break;
+        case 8: mEffectChain->setIsoLow(value); break;
+        case 9: mEffectChain->setIsoMid(value); break;
+        case 10: mEffectChain->setIsoHigh(value); break;
     }
 }
 

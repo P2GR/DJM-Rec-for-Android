@@ -1,10 +1,31 @@
 #pragma once
 
 #include <atomic>
+#include <cmath>
 #include <cstdint>
 #include <vector>
 
 namespace djmrec {
+
+/** Single biquad filter — RBJ cookbook formulas, realtime-safe once configured. */
+struct Biquad {
+    float b0 = 1.0f, b1 = 0.0f, b2 = 0.0f;
+    float a1 = 0.0f, a2 = 0.0f;
+    float x1 = 0.0f, x2 = 0.0f, y1 = 0.0f, y2 = 0.0f;
+
+    void setLowShelf(float fc, float gainDb, float fs);
+    void setHighShelf(float fc, float gainDb, float fs);
+    void setPeaking(float fc, float gainDb, float Q, float fs);
+
+    float process(float x) {
+        float y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+        x2 = x1; x1 = x;
+        y2 = y1; y1 = y;
+        return y;
+    }
+
+    void reset() { x1 = x2 = y1 = y2 = 0.0f; }
+};
 
 /**
  * Realtime effects chain for RMX-1000 simulator.
@@ -46,6 +67,11 @@ public:
     /** Reverb wet mix: 0.0 = dry, 1.0 = fully wet. */
     void setReverbMix(float mix);
     float getReverbMix() const { return mReverbMix.load(std::memory_order_relaxed); }
+
+    /** Isolator EQ band gains: 0.5 = 0 dB (unity), 0.0 = -inf (kill), 1.0 = +6 dB. */
+    void setIsoLow(float norm)  { mIsoLow.store(std::max(0.0f, std::min(1.0f, norm)), std::memory_order_release); }
+    void setIsoMid(float norm)  { mIsoMid.store(std::max(0.0f, std::min(1.0f, norm)), std::memory_order_release); }
+    void setIsoHigh(float norm) { mIsoHigh.store(std::max(0.0f, std::min(1.0f, norm)), std::memory_order_release); }
 
     /** Reset all effect state (call on new session). */
     void reset();
@@ -91,6 +117,14 @@ private:
     AllpassFilter mAllpasses[2];
     bool mReverbInitialized = false;
     void initReverb();
+
+    // 3-band isolator EQ
+    std::atomic<float> mIsoLow{0.5f};
+    std::atomic<float> mIsoMid{0.5f};
+    std::atomic<float> mIsoHigh{0.5f};
+    Biquad mIsoLowShelf, mIsoMidPeak, mIsoHighShelf;
+    float mIsoPrevLow = 0.5f, mIsoPrevMid = 0.5f, mIsoPrevHigh = 0.5f;
+    void updateIsoCoeffs();
 };
 
 } // namespace djmrec

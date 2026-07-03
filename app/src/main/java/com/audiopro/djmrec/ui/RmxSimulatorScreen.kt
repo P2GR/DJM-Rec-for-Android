@@ -89,6 +89,9 @@ private const val MIN_KEY = -12
 private const val MAX_KEY = 12
 private const val RMX_ACTIVE_REFRESH_MS = 33L
 private const val RMX_IDLE_REFRESH_MS = 250L
+private const val FX_ISOLATOR_LOW = 8
+private const val FX_ISOLATOR_MID = 9
+private const val FX_ISOLATOR_HIGH = 10
 
 @Composable
 fun RmxSimulatorScreen() {
@@ -112,6 +115,9 @@ fun RmxSimulatorScreen() {
     var sceneFx by remember { mutableIntStateOf(0) }
     var sourceSamples by remember { mutableStateOf<List<FloatArray>>(emptyList()) }
     var stopping by remember { mutableStateOf(false) }
+    var isoLow by remember { mutableFloatStateOf(0.5f) }
+    var isoMid by remember { mutableFloatStateOf(0.5f) }
+    var isoHigh by remember { mutableFloatStateOf(0.5f) }
     val scope = rememberCoroutineScope()
 
     DisposableEffect(Unit) {
@@ -152,6 +158,9 @@ fun RmxSimulatorScreen() {
             AudioEngine.setRmxEffectParam(4, bpmToLoopLengthSamples(effectiveBpm, loopDivisionIndex).toFloat())
             AudioEngine.setRmxEffectParam(5, 0.45f)
             AudioEngine.setRmxEffectParam(7, reverbMix)
+            AudioEngine.setRmxEffectParam(FX_ISOLATOR_LOW, isoLow)
+            AudioEngine.setRmxEffectParam(FX_ISOLATOR_MID, isoMid)
+            AudioEngine.setRmxEffectParam(FX_ISOLATOR_HIGH, isoHigh)
             val activeAudio = activePads.any { it } || autoBpm || delayMix > 0f || reverbMix > 0f || bitCrush > 0f || filterCutoff < MAX_FILTER_HZ
             delay(if (activeAudio) RMX_ACTIVE_REFRESH_MS else RMX_IDLE_REFRESH_MS)
         }
@@ -369,6 +378,14 @@ fun RmxSimulatorScreen() {
                 }
             }
 
+            Spacer(Modifier.height(10.dp))
+            Text("ISOLATOR", fontSize = 10.sp, color = TextSecondary.copy(alpha = 0.7f), fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                ParamDial("LOW", isoLow, isoDisplay(isoLow), Color(0xFFE53935), 65.dp) { isoLow = it }
+                ParamDial("MID", isoMid, isoDisplay(isoMid), Color(0xFFFB8C00), 65.dp) { isoMid = it }
+                ParamDial("HIGH", isoHigh, isoDisplay(isoHigh), Color(0xFF43A047), 65.dp) { isoHigh = it }
+            }
             Spacer(Modifier.height(10.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 ParamDial("FILTER", filterNorm(filterCutoff), filterDisplay(filterCutoff), MeterAmber, 80.dp) {
@@ -685,6 +702,16 @@ private fun normToFilter(value: Float): Float {
 private fun filterDisplay(hz: Float): String = if (hz >= 1000f) "%.1fk".format(hz / 1000f) else "${hz.toInt()}"
 
 private fun percentDisplay(value: Float): String = "${(value.coerceIn(0f, 1f) * 100f).toInt()}%"
+
+private fun isoDisplay(norm: Float): String {
+    if (norm <= 0.001f) return "KILL"
+    if (norm <= 0.5f) {
+        val db = (-60f + (norm / 0.5f) * 60f).toInt()
+        return "${db}dB"
+    }
+    val db = ((norm - 0.5f) / 0.5f * 6f)
+    return "+%.1fdB".format(db)
+}
 
 private class DragState {
     var startValue: Float = 0f
