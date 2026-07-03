@@ -56,7 +56,7 @@ android {
         minSdk = 29
         targetSdk = 34
         versionCode = 1
-        versionName = "0.30"
+        versionName = "0.31"
 
         // Only ship arm64-v8a: all modern DJ-capable Android hardware (USB-C host + UAC2)
         // is 64-bit ARM. Keeping a single ABI keeps the native audio path easy to validate.
