@@ -199,10 +199,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun startRecording() {
         val context = getApplication<Application>()
 
-        // DJM REC port mode: persistent host + kernel scan + AAudio stereo capture.
+        // DJM REC port mode: try everything, then capture.
         if (_djmrecPortMode.value) {
-            val hostResult = RootUsbHostController.forcePersistentHostMode()
-            Log.i(TAG, "DJM REC persistent host: exit=${hostResult.exitCode}\n${hostResult.output}")
+            val tryAll = RootUsbHostController.tryAllConnectionStrategies()
+            Log.i(TAG, "DJM REC try-everything:\n${tryAll.output}")
             RootUsbHostController.grantUsbDeviceAccess(RootUsbHostController.getAppUid())
             val kernelScan = RootUsbHostController.scanKernelUsbDevices()
             Log.i(TAG, "DJM REC kernel scan: exit=${kernelScan.exitCode}\n${kernelScan.output}")

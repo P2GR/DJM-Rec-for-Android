@@ -251,6 +251,138 @@ object RootUsbHostController {
         )
     }
 
+    /**
+     * Tries every known USB connection strategy in sequence and reports results.
+     * Designed for the DJM-A9 Multi I/O port which can be stubborn to enumerate.
+     * Returns detailed output showing which strategy (if any) found a Pioneer device.
+     */
+    fun tryAllConnectionStrategies(): CommandResult {
+        return runSu(
+            command = """
+                echo '===== DJMREC TRY-EVERYTHING START ====='
+                id
+                getenforce 2>/dev/null || echo selinux-unavailable
+
+                # Helper: quick scan for Pioneer/AlphaTheta devices.
+                scan_pioneer() {
+                  for dev in /sys/bus/usb/devices/*/idVendor; do
+                    vid=$(cat "${'$'}dev" 2>/dev/null)
+                    case "${'$'}vid" in 2b73|08e4|2B73|08E4)
+                      pid=$(cat "${'$'}(dirname ${'$'}dev)/idProduct" 2>/dev/null)
+                      speed=$(cat "${'$'}(dirname ${'$'}dev)/speed" 2>/dev/null)
+                      echo "  FOUND Pioneer vid=0x${'$'}vid pid=0x${'$'}pid speed=${'$'}speed at ${'$'}(dirname ${'$'}dev)"
+                      return 0
+                    esac
+                  done
+                  echo "  (no Pioneer device on bus)"
+                  return 1
+                }
+
+                # Helper: force host role on all switches.
+                force_host() {
+                  for f in /sys/class/typec/*/data_role /sys/class/typec/*/port*/data_role; do
+                    [ -e "${'$'}f" ] && echo host > "${'$'}f" 2>/dev/null || true
+                  done
+                  for f in /sys/class/typec/*/power_role /sys/class/typec/*/port*/power_role; do
+                    [ -e "${'$'}f" ] && echo source > "${'$'}f" 2>/dev/null || true
+                  done
+                  for f in /sys/class/dual_role_usb/*/mode; do
+                    [ -e "${'$'}f" ] && echo host > "${'$'}f" 2>/dev/null || true
+                  done
+                  for f in /sys/class/usb_role/*/role; do
+                    [ -e "${'$'}f" ] && echo host > "${'$'}f" 2>/dev/null || true
+                  done
+                }
+
+                # Kill gadget first.
+                setprop sys.usb.config none 2>/dev/null || true
+                setprop vendor.usb.config none 2>/dev/null || true
+                for f in /sys/kernel/config/usb_gadget/*/UDC; do
+                  [ -e "${'$'}f" ] && echo "" > "${'$'}f" 2>/dev/null || true
+                done
+
+                # --- Strategy 1: USB 2.0 High-Speed only (like iPhone Lightning) ---
+                echo '=== Strategy 1: Force USB 2.0 High-Speed + host ==='
+                for ms in /sys/devices/platform/soc/*.dwc3/maximum_speed \
+                         /sys/kernel/debug/usb/*dwc3/maximum_speed; do
+                  if [ -e "${'$'}ms" ]; then
+                    echo "max_speed was $(cat ${'$'}ms 2>/dev/null)"
+                    echo high-speed > "${'$'}ms" 2>/dev/null && echo "  -> set to high-speed" || echo "  write failed"
+                  fi
+                done
+                force_host
+                sleep 3
+                scan_pioneer
+
+                # --- Strategy 2: USB 3.0 SuperSpeed ---
+                echo '=== Strategy 2: Force USB 3.0 SuperSpeed + host ==='
+                for ms in /sys/devices/platform/soc/*.dwc3/maximum_speed \
+                         /sys/kernel/debug/usb/*dwc3/maximum_speed; do
+                  if [ -e "${'$'}ms" ]; then
+                    echo super-speed > "${'$'}ms" 2>/dev/null && echo "  -> set to super-speed" || echo "  write failed"
+                  fi
+                done
+                force_host
+                sleep 3
+                scan_pioneer
+
+                # --- Strategy 3: USB bus reset (unbind/rebind xHCI) ---
+                echo '=== Strategy 3: USB bus reset (xhci unbind/rebind) ==='
+                for xhci in /sys/bus/platform/drivers/xhci-hcd/*.auto; do
+                  if [ -e "${'$'}xhci" ]; then
+                    echo "unbind ${'$'}xhci"
+                    echo "${'$'}(basename ${'$'}xhci)" > /sys/bus/platform/drivers/xhci-hcd/unbind 2>/dev/null || true
+                    sleep 1
+                    echo "${'$'}(basename ${'$'}xhci)" > /sys/bus/platform/drivers/xhci-hcd/bind 2>/dev/null || true
+                    echo "rebound ${'$'}xhci"
+                  fi
+                done
+                force_host
+                sleep 3
+                scan_pioneer
+
+                # --- Strategy 4: Gadget probe then back to host ---
+                echo '=== Strategy 4: Brief gadget mode, then return to host ==='
+                setprop sys.usb.config adb 2>/dev/null || true
+                sleep 2
+                force_host
+                setprop sys.usb.config none 2>/dev/null || true
+                sleep 2
+                scan_pioneer
+
+                # --- Strategy 5: Aggressive PHY power-on + host ---
+                echo '=== Strategy 5: Aggressive PHY wake + host ==='
+                for p in /sys/devices/platform/soc/*.ssusb/power/control \
+                         /sys/devices/platform/soc/*.dwc3/power/control \
+                         /sys/devices/platform/soc/*.hsphy/power/control; do
+                  [ -e "${'$'}p" ] && echo on > "${'$'}p" 2>/dev/null || true
+                done
+                for lpm in /sys/devices/platform/soc/*.dwc3/power/autosuspend_delay_ms; do
+                  [ -e "${'$'}lpm" ] && echo -1 > "${'$'}lpm" 2>/dev/null || true
+                done
+                force_host
+                sleep 3
+                scan_pioneer
+
+                # --- Final poll: watch the bus for 10 seconds ---
+                echo '=== Final poll: watching bus for 10s ==='
+                for i in 1 2 3 4 5 6 7 8 9 10; do
+                  echo "  poll ${'$'}i:"
+                  for dev in /sys/bus/usb/devices/*/idVendor; do
+                    vid=$(cat "${'$'}dev" 2>/dev/null)
+                    pid=$(cat "${'$'}(dirname ${'$'}dev)/idProduct" 2>/dev/null)
+                    speed=$(cat "${'$'}(dirname ${'$'}dev)/speed" 2>/dev/null)
+                    echo "    vid=0x${'$'}vid pid=0x${'$'}pid speed=${'$'}speed"
+                  done
+                  sleep 1
+                done
+
+                echo '===== DJMREC TRY-EVERYTHING END ====='
+            """.trimIndent(),
+            timeoutSeconds = 60
+        )
+    }
+
     fun collectRootStatus(): CommandResult {
         return runSu(
             command = """
