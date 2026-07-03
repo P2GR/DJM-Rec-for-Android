@@ -157,4 +157,64 @@ Java_com_audiopro_djmrec_audio_AudioEngine_getBpmResult(JNIEnv* env, jobject /*t
     return result;
 }
 
+// --- RMX-1000 JNI ----------------------------------------------------------------
+
+JNIEXPORT jint JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_openRmxOutput(
+    JNIEnv* /*env*/, jobject /*thiz*/, jint deviceId, jint sampleRate, jint channelCount) {
+    return UsbAudioEngine::instance().openRmxOutput(deviceId, sampleRate, channelCount);
+}
+
+JNIEXPORT void JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_closeRmxOutput(JNIEnv* /*env*/, jobject /*thiz*/) {
+    UsbAudioEngine::instance().closeRmxOutput();
+}
+
+JNIEXPORT void JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_triggerRmxSample(
+    JNIEnv* /*env*/, jobject /*thiz*/, jint soundOrdinal, jfloat gain, jfloat pitchRatio) {
+    UsbAudioEngine::instance().triggerRmxSample(soundOrdinal, gain, pitchRatio);
+}
+
+JNIEXPORT void JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_stopRmxSample(JNIEnv* /*env*/, jobject /*thiz*/, jint soundOrdinal) {
+    UsbAudioEngine::instance().stopRmxSample(soundOrdinal);
+}
+
+JNIEXPORT void JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_stopAllRmxSamples(JNIEnv* /*env*/, jobject /*thiz*/) {
+    UsbAudioEngine::instance().stopAllRmxSamples();
+}
+
+JNIEXPORT void JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_setRmxEffectParam(
+    JNIEnv* /*env*/, jobject /*thiz*/, jint effectId, jfloat value) {
+    UsbAudioEngine::instance().setRmxEffectParam(effectId, value);
+}
+
+JNIEXPORT void JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_loadRmxSample(
+    JNIEnv* env, jobject /*thiz*/, jint soundOrdinal, jfloatArray jData) {
+    jsize len = env->GetArrayLength(jData);
+    std::vector<float> buf(len);
+    env->GetFloatArrayRegion(jData, 0, len, buf.data());
+    UsbAudioEngine::instance().loadRmxSample(soundOrdinal, buf.data(), len);
+}
+
+JNIEXPORT void JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_updateRmxBeatClock(
+    JNIEnv* /*env*/, jobject /*thiz*/, jfloat bpm, jfloat beatPhase, jboolean locked) {
+    UsbAudioEngine::instance().updateRmxBeatClock(bpm, beatPhase, locked);
+}
+
+JNIEXPORT void JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_setRmxManualBpm(JNIEnv* /*env*/, jobject /*thiz*/, jfloat bpm) {
+    UsbAudioEngine::instance().setRmxManualBpm(bpm);
+}
+
+JNIEXPORT void JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_clearRmxManualBpm(JNIEnv* /*env*/, jobject /*thiz*/) {
+    UsbAudioEngine::instance().clearRmxManualBpm();
+}
+
 } // extern "C"

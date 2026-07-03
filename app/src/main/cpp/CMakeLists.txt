@@ -167,6 +167,10 @@ add_library(
     UsbIsoAudioSource.cpp
     AlsaPcmAudioSource.cpp
     BpmDetector.cpp
+    BeatClock.cpp
+    EffectChain.cpp
+    SamplePlayer.cpp
+    WavSampleLoader.cpp
     WaveformAnalyzer.cpp
     writers/WavWriter.cpp
     writers/FlacWriter.cpp

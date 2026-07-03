@@ -9,8 +9,11 @@
 #include <oboe/Oboe.h>
 
 #include "AlsaPcmAudioSource.h"
+#include "BeatClock.h"
 #include "BpmDetector.h"
+#include "EffectChain.h"
 #include "RingBuffer.h"
+#include "SamplePlayer.h"
 #include "UsbIsoAudioSource.h"
 #include "WaveformAnalyzer.h"
 #include "writers/AudioWriter.h"
@@ -87,6 +90,18 @@ public:
     void stopMicCapture();
     bool getBpmResult(float& outBpm, float& outConfidence, float& outBeatPhase, int& outLeadingBand);
 
+    // --- RMX-1000 engine ---
+    int openRmxOutput(int deviceId, int sampleRate, int channelCount);
+    void closeRmxOutput();
+    void triggerRmxSample(int soundOrdinal, float gain, float pitchRatio);
+    void stopRmxSample(int soundOrdinal);
+    void stopAllRmxSamples();
+    void setRmxEffectParam(int effectId, float value);
+    void loadRmxSample(int soundOrdinal, const float* data, int length);
+    void updateRmxBeatClock(float bpm, float beatPhase, bool locked);
+    void setRmxManualBpm(float bpm);
+    void clearRmxManualBpm();
+
     // oboe::AudioStreamDataCallback
     oboe::DataCallbackResult onAudioReady(oboe::AudioStream* stream, void* audioData, int32_t numFrames) override;
 
@@ -112,6 +127,9 @@ private:
     std::unique_ptr<AudioWriter> mWriter;
     std::unique_ptr<WaveformAnalyzer> mWaveformAnalyzer;
     std::unique_ptr<BpmDetector> mBpmDetector;
+    std::unique_ptr<SamplePlayer> mSamplePlayer;
+    std::unique_ptr<BeatClock> mBeatClock;
+    std::unique_ptr<EffectChain> mEffectChain;
     std::thread mEncoderThread;
 
     std::mutex mControlMutex; // guards start/stop/pause transitions (not the realtime path)
@@ -150,6 +168,10 @@ private:
     // Mic callback.
     oboe::DataCallbackResult onMicAudioReady(oboe::AudioStream* stream, void* audioData, int32_t numFrames);
     void micCaptureThreadLoop();
+
+    // RMX output stream.
+    std::shared_ptr<oboe::AudioStream> mRmxOutputStream;
+    std::atomic<bool> mRmxOutputActive{false};
 };
 
 } // namespace djmrec

@@ -506,6 +506,8 @@ int32_t UsbAudioEngine::getXRunCount() const {
     return mXRunCount.load(std::memory_order_relaxed);
 }
 
+constexpr int kRmxSampleRate = 44100;
+
 void UsbAudioEngine::getWaveformBins(float* outBins) const {
     if (mWaveformAnalyzer) {
         mWaveformAnalyzer->getBins(outBins);
@@ -576,6 +578,145 @@ void UsbAudioEngine::stopMicCapture() {
     mBpmDetector.reset();
     mMicCaptureActive.store(false);
     LOGI("Mic capture stopped");
+}
+
+// --- RMX-1000 output engine --------------------------------------------------------
+
+namespace {
+/** Dedicated callback for the RMX output stream — separate from the main DJM input callback. */
+class RmxOutputCallback : public oboe::AudioStreamDataCallback {
+public:
+    SamplePlayer* samplePlayer = nullptr;
+    EffectChain* effectChain = nullptr;
+    BeatClock* beatClock = nullptr;
+    std::atomic<bool>* active = nullptr;
+
+    oboe::DataCallbackResult onAudioReady(oboe::AudioStream*, void* audioData, int32_t numFrames) override {
+        if (!active || !active->load() || !samplePlayer) {
+            std::memset(audioData, 0, numFrames * 2 * sizeof(float));
+            return oboe::DataCallbackResult::Continue;
+        }
+        auto* out = static_cast<float*>(audioData);
+        samplePlayer->render(out, numFrames);
+        if (effectChain) {
+            for (int i = 0; i < numFrames; ++i) {
+                effectChain->process(out[i * 2], out[i * 2 + 1]);
+            }
+        }
+        if (beatClock) beatClock->advanceSamples(static_cast<size_t>(numFrames));
+        return oboe::DataCallbackResult::Continue;
+    }
+};
+} // namespace
+
+int UsbAudioEngine::openRmxOutput(int deviceId, int sampleRate, int channelCount) {
+    if (mRmxOutputActive.load()) {
+        LOGW("RMX output already active");
+        return 0;
+    }
+
+    mSamplePlayer = std::make_unique<SamplePlayer>();
+    mBeatClock = std::make_unique<BeatClock>();
+    mEffectChain = std::make_unique<EffectChain>();
+
+    auto* callback = new RmxOutputCallback();
+    callback->samplePlayer = mSamplePlayer.get();
+    callback->effectChain = mEffectChain.get();
+    callback->beatClock = mBeatClock.get();
+    callback->active = &mRmxOutputActive;
+
+    oboe::AudioStreamBuilder builder;
+    builder.setDirection(oboe::Direction::Output)
+        ->setAudioApi(oboe::AudioApi::AAudio)
+        ->setDeviceId(deviceId)
+        ->setSampleRate(sampleRate)
+        ->setChannelCount(channelCount)
+        ->setFormat(oboe::AudioFormat::Float)
+        ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
+        ->setSharingMode(oboe::SharingMode::Exclusive)
+        ->setDataCallback(callback);
+
+    oboe::Result result = builder.openStream(mRmxOutputStream);
+    if (result != oboe::Result::OK || !mRmxOutputStream) {
+        LOGE("openRmxOutput: failed to open: %s", oboe::convertToText(result));
+        delete callback;
+        mSamplePlayer.reset(); mBeatClock.reset(); mEffectChain.reset();
+        return -1;
+    }
+
+    result = mRmxOutputStream->requestStart();
+    if (result != oboe::Result::OK) {
+        LOGE("openRmxOutput: failed to start: %s", oboe::convertToText(result));
+        mRmxOutputStream->close(); mRmxOutputStream.reset();
+        delete callback;
+        mSamplePlayer.reset(); mBeatClock.reset(); mEffectChain.reset();
+        return -1;
+    }
+
+    mRmxOutputActive.store(true);
+    LOGI("RMX output open: %dHz %dch device=%d", sampleRate, channelCount, deviceId);
+    return sampleRate;
+}
+
+void UsbAudioEngine::closeRmxOutput() {
+    mRmxOutputActive.store(false);
+    if (mRmxOutputStream) {
+        mRmxOutputStream->requestStop();
+        mRmxOutputStream->close();
+        mRmxOutputStream.reset();
+    }
+    mSamplePlayer.reset();
+    mBeatClock.reset();
+    mEffectChain.reset();
+    LOGI("RMX output closed");
+}
+
+void UsbAudioEngine::triggerRmxSample(int soundOrdinal, float gain, float pitchRatio) {
+    if (mSamplePlayer) {
+        mSamplePlayer->trigger(static_cast<RmxSound>(soundOrdinal), gain, pitchRatio);
+    }
+}
+
+void UsbAudioEngine::stopRmxSample(int soundOrdinal) {
+    if (mSamplePlayer) {
+        mSamplePlayer->stopSound(static_cast<RmxSound>(soundOrdinal));
+    }
+}
+
+void UsbAudioEngine::stopAllRmxSamples() {
+    if (mSamplePlayer) mSamplePlayer->stopAll();
+}
+
+void UsbAudioEngine::setRmxEffectParam(int effectId, float value) {
+    if (!mEffectChain) return;
+    switch (effectId) {
+        case 0: mEffectChain->setBitCrush(value); break;
+        case 1: mEffectChain->setFilterCutoff(value); break;
+        case 2: mEffectChain->setFilterType(static_cast<int>(value)); break;
+        case 3: mEffectChain->setDelayMix(value); break;
+        case 4: mEffectChain->setDelayTimeSamples(static_cast<size_t>(value)); break;
+        case 5: mEffectChain->setDelayFeedback(value); break;
+        case 6: mEffectChain->setReverbRoomSize(value); break;
+        case 7: mEffectChain->setReverbMix(value); break;
+    }
+}
+
+void UsbAudioEngine::loadRmxSample(int soundOrdinal, const float* data, int length) {
+    if (mSamplePlayer && data && length > 0) {
+        mSamplePlayer->loadSample(static_cast<RmxSound>(soundOrdinal), data, static_cast<size_t>(length));
+    }
+}
+
+void UsbAudioEngine::updateRmxBeatClock(float bpm, float beatPhase, bool locked) {
+    if (mBeatClock) mBeatClock->update(bpm, beatPhase, locked);
+}
+
+void UsbAudioEngine::setRmxManualBpm(float bpm) {
+    if (mBeatClock) mBeatClock->setManualBpm(bpm);
+}
+
+void UsbAudioEngine::clearRmxManualBpm() {
+    if (mBeatClock) mBeatClock->clearManualBpm();
 }
 
 bool UsbAudioEngine::getBpmResult(float& outBpm, float& outConfidence, float& outBeatPhase, int& outLeadingBand) {
