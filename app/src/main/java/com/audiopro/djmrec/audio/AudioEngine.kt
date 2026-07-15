@@ -34,9 +34,8 @@ object AudioEngine {
      * a stereo pair out of a wider multichannel USB Audio interface. This exists because
      * AAudio has no API to select an arbitrary channel *offset* out of a multichannel UAC2
      * interface -- it only ever gives you channels 1/2 (or all N channels, undifferentiated).
-     * Mixers like the Pioneer DJM-A9 put the Master Mix on channels 9/10 of a combined
-     * 12-channel interface, which this path reaches directly via a raw isochronous transfer
-     * loop, bypassing the OS audio stack entirely.
+     * Mixers like the Pioneer DJM-A9 expose a combined 12-channel interface. This path can
+     * select any stereo pair and, for the DJM-A9, routes MIX (REC OUT) to that pair first.
      *
      * @param fd an *open* `UsbDeviceConnection.getFileDescriptor()` -- the connection must be
      *   kept open (not `.close()`'d) for the entire capture session; see
@@ -49,8 +48,7 @@ object AudioEngine {
      * @param totalChannels total interleaved channel count in the *wire* format (e.g. 12).
      * @param subframeSize bytes per sample container on the wire (1/2/3/4).
      * @param bitResolution significant bits per sample within that container (e.g. 24).
-     * @param extractChannelOffset 0-indexed first channel of the stereo pair to pull out (e.g.
-     *   8 for channels 9/10).
+     * @param extractChannelOffset 0-indexed first channel of the stereo pair to pull out.
      * @param sampleRateHint trusted as-is; nothing in this path negotiates a rate back from
      *   the device the way AAudio does.
      * @return `sampleRateHint` on success, or -1 on failure.
@@ -65,6 +63,14 @@ object AudioEngine {
         subframeSize: Int,
         bitResolution: Int,
         extractChannelOffset: Int,
+        clockControlInterfaceNumber: Int,
+        clockSourceId: Int,
+        clockSupportsFrequencySet: Boolean,
+        feedbackEndpointAddress: Int,
+        feedbackMaxPacketSize: Int,
+        vendorId: Int,
+        productId: Int,
+        rawDescriptors: ByteArray,
         sampleRateHint: Int
     ): Int
 
@@ -108,6 +114,9 @@ object AudioEngine {
 
     /** Underrun/overrun counters on the ring buffer, useful for diagnosing dropped audio. */
     external fun getXRunCount(): Int
+
+    /** [completed, missed, empty, partial, bytes, nonZeroBytes, resubmitFailures] for raw USB capture. */
+    external fun getUsbIsoTransferStats(): LongArray
 
     /**
      * RGB waveform snapshot: returns `kWaveformBinCount * 4` floats in the layout

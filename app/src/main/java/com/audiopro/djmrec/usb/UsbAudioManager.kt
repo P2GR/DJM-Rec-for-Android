@@ -35,16 +35,11 @@ class UsbAudioManager(private val context: Context) {
         /** Pioneer Corporation (legacy) and AlphaTheta/Pioneer DJ (current) USB vendor IDs. */
         val PIONEER_VENDOR_IDS = setOf(0x08E4, 0x2B73)
 
-        /**
-         * 0-indexed offset of the "Master Mix" stereo pair within the DJM-A9's combined USB
-         * audio interface. Pioneer club mixers typically expose one stereo pair per input
-         * channel followed by the master/booth sends; per the DJM-A9's USB channel assignment
-         * table this puts Master Out at USB channels 9-10 (1-indexed). VERIFY against your
-         * specific unit/firmware -- if the recorded audio is the wrong channel pair, this is
-         * the single constant to change.
-         */
+        /** Default pair; native DJM-A9 setup temporarily routes MIX (REC OUT) to this output. */
         const val MASTER_MIX_CHANNEL_OFFSET = 8
         const val AUTO_CHANNEL_OFFSET = -1
+        private const val DJM_A9_VENDOR_ID = 0x2B73
+        private const val DJM_A9_PRODUCT_ID = 0x003C
 
         private fun isPioneerDevice(device: UsbDevice) = device.vendorId in PIONEER_VENDOR_IDS
     }
@@ -241,10 +236,19 @@ class UsbAudioManager(private val context: Context) {
         }
 
         val streamingInterfaces: List<AudioStreamingInterfaceInfo>
+        val rawDescriptors: ByteArray
+        val topology: UacTopology
+        var clockSampleRates = emptyList<Int>()
         val bestInterface = try {
-            val rawDescriptors = connection.rawDescriptors ?: ByteArray(0)
+            rawDescriptors = connection.rawDescriptors ?: ByteArray(0)
             Log.i(TAG, "${device.deviceName}: read ${rawDescriptors.size} bytes of raw descriptors")
             streamingInterfaces = UsbAudioDescriptorParser.findAudioStreamingInterfaces(rawDescriptors)
+            topology = UsbAudioDescriptorParser.parseTopology(rawDescriptors)
+            clockSampleRates = if (isDjmA9(device.vendorId, device.productId)) {
+                emptyList()
+            } else {
+                queryClockSampleRates(device, connection, topology)
+            }
             Log.i(
                 TAG,
                 "${device.deviceName}: found ${streamingInterfaces.size} AudioStreaming alternate setting(s): " +
@@ -253,6 +257,17 @@ class UsbAudioManager(private val context: Context) {
                             "${it.bitResolution}bit ep=${it.isochronousInEndpointAddress}"
                     }
             )
+                    Log.i(
+                    TAG,
+                    "${device.deviceName}: UAC topology AC=" +
+                        topology.audioControlInterfaces.joinToString(prefix = "[", postfix = "]") {
+                            "if${it.interfaceNumber}:v${it.audioClassVersion.toString(16)}"
+                        } + " " +
+                        "clocks=${topology.clockSources.size} selectors=${topology.clockSelectors.size} " +
+                        "features=${topology.featureUnits.size} mixers=${topology.mixerUnits.size} " +
+                        "terminals=${topology.inputTerminals.size}/${topology.outputTerminals.size} " +
+                            "descriptorRates=${topology.descriptorSampleRates} clockRates=$clockSampleRates"
+                    )
             UsbAudioDescriptorParser.selectBestStereoInterface(streamingInterfaces)
         } finally {
             // We only needed the descriptors; AAudio/AudioFlinger owns the real data connection.
@@ -287,12 +302,75 @@ class UsbAudioManager(private val context: Context) {
             channelCount = bestInterface.channelCount,
             bitResolution = bestInterface.bitResolution,
             subframeSize = bestInterface.subframeSize,
-            supportedSampleRates = routedDeviceId?.second ?: emptyList(),
+            supportedSampleRates = (topology.descriptorSampleRates + clockSampleRates +
+                (routedDeviceId?.second ?: emptyList())).distinct(),
             audioManagerDeviceId = routedDeviceId?.first ?: -1,
             hasPermission = true,
-            isPioneer = isPioneerDevice(device)
+            isPioneer = isPioneerDevice(device),
+            rawDescriptors = rawDescriptors,
+            topology = topology
         )
     }
+
+    private fun queryClockSampleRates(
+        device: UsbDevice,
+        connection: UsbDeviceConnection,
+        topology: UacTopology
+    ): List<Int> {
+        val rates = linkedSetOf<Int>()
+        topology.clockSources.filter { it.supportsFrequencyControl }.forEach { clock ->
+            val controlInterface = (0 until device.interfaceCount)
+                .map { device.getInterface(it) }
+                .firstOrNull { it.id == clock.interfaceNumber }
+            if (controlInterface == null || !connection.claimInterface(controlInterface, true)) {
+                Log.w(TAG, "Clock source ${clock.id}: could not claim AC interface ${clock.interfaceNumber}")
+                return@forEach
+            }
+            val buffer = ByteArray(2 + 12 * 32)
+            val transferred = try {
+                connection.controlTransfer(
+                    UsbConstants.USB_DIR_IN or UsbConstants.USB_TYPE_CLASS or 0x01,
+                    0x82,
+                    0x0100,
+                    (clock.id shl 8) or clock.interfaceNumber,
+                    buffer,
+                    buffer.size,
+                    500
+                )
+            } finally {
+                connection.releaseInterface(controlInterface)
+            }
+            if (transferred < 2) {
+                Log.w(TAG, "Clock source ${clock.id}: GET_RANGE failed or unsupported ($transferred)")
+                return@forEach
+            }
+            val rangeCount = (buffer[0].toInt() and 0xFF) or ((buffer[1].toInt() and 0xFF) shl 8)
+            for (rangeIndex in 0 until rangeCount) {
+                val base = 2 + rangeIndex * 12
+                if (base + 11 >= transferred) break
+                val minimum = readLe32(buffer, base)
+                val maximum = readLe32(buffer, base + 4)
+                if (minimum == maximum && minimum in 1..384000) rates += minimum
+                else Log.i(TAG, "Clock source ${clock.id}: continuous rate range $minimum-$maximum")
+            }
+        }
+        return rates.toList()
+    }
+
+    private fun clockFor(
+        streaming: AudioStreamingInterfaceInfo,
+        topology: UacTopology
+    ): ClockSourceInfo? {
+        val terminal = (topology.inputTerminals + topology.outputTerminals)
+            .firstOrNull { it.id == streaming.terminalLink }
+        return topology.clockSources.firstOrNull { it.id == terminal?.clockSourceId }
+    }
+
+    private fun readLe32(bytes: ByteArray, offset: Int): Int =
+        (bytes[offset].toInt() and 0xFF) or
+            ((bytes[offset + 1].toInt() and 0xFF) shl 8) or
+            ((bytes[offset + 2].toInt() and 0xFF) shl 16) or
+            ((bytes[offset + 3].toInt() and 0xFF) shl 24)
 
     /**
      * AAudio/Oboe binds to devices via the *AudioManager* device id space, which is separate
@@ -360,6 +438,22 @@ class UsbAudioManager(private val context: Context) {
             return null
         }
         activeIsoConnection = connection
+        val streaming = info.topology?.audioStreamingInterfaces?.firstOrNull {
+            it.interfaceNumber == info.streamingInterfaceNumber && it.alternateSetting == info.activeAlternateSetting
+        }
+        // The A9 descriptor set is hybrid, but Pioneer's driver initializes its streaming
+        // interfaces and endpoint clock directly. UAC2 entity requests stall this device.
+        val clock = if (isDjmA9(info.vendorId, info.productId)) {
+            null
+        } else {
+            streaming?.let { info.topology?.let { topology -> clockFor(it, topology) } }
+        }
+        Log.i(
+            TAG,
+            "openIsoCaptureHandle: if${info.streamingInterfaceNumber}/alt${info.activeAlternateSetting} " +
+                "terminal=${streaming?.terminalLink} clock=${clock?.id}@if${clock?.interfaceNumber} " +
+                "settable=${clock?.supportsFrequencySet}"
+        )
 
         return UsbIsoCaptureHandle(
             fd = connection.fileDescriptor,
@@ -369,9 +463,28 @@ class UsbAudioManager(private val context: Context) {
             maxPacketSize = info.isochronousInMaxPacketSize,
             totalChannels = info.channelCount,
             subframeSize = info.subframeSize,
-            bitResolution = info.bitResolution
+            bitResolution = info.bitResolution,
+            rawDescriptors = info.rawDescriptors,
+            clockControlInterfaceNumber = clock?.interfaceNumber ?: -1,
+            clockSourceId = clock?.id ?: -1,
+            clockSupportsFrequencySet = clock?.supportsFrequencySet == true,
+            feedbackEndpointAddress = info.streamingInterfaceNumber.let { interfaceNumber ->
+                info.topology?.audioStreamingInterfaces
+                    ?.firstOrNull { it.interfaceNumber == interfaceNumber && it.alternateSetting == info.activeAlternateSetting }
+                    ?.isochronousFeedbackEndpointAddress ?: -1
+            },
+            feedbackMaxPacketSize = info.streamingInterfaceNumber.let { interfaceNumber ->
+                info.topology?.audioStreamingInterfaces
+                    ?.firstOrNull { it.interfaceNumber == interfaceNumber && it.alternateSetting == info.activeAlternateSetting }
+                    ?.isochronousFeedbackMaxPacketSize ?: -1
+            },
+            vendorId = info.vendorId,
+            productId = info.productId
         )
     }
+
+    private fun isDjmA9(vendorId: Int, productId: Int): Boolean =
+        vendorId == DJM_A9_VENDOR_ID && productId == DJM_A9_PRODUCT_ID
 
     /**
      * Closes the connection opened by [openIsoCaptureHandle], if any. Must only be called once

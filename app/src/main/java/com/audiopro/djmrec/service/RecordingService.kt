@@ -1,20 +1,27 @@
 package com.audiopro.djmrec.service
 
+import android.Manifest
+
 import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.media.MediaScannerConnection
 import android.os.Environment
+import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
 import android.os.PowerManager
 import android.os.Process
+import android.os.SystemClock
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleService
 import com.audiopro.djmrec.DjmRecApplication
 import com.audiopro.djmrec.MainActivity
@@ -73,11 +80,21 @@ class RecordingService : LifecycleService() {
         const val EXTRA_USB_TOTAL_CHANNELS = "extra_usb_total_channels"
         const val EXTRA_USB_SUBFRAME_SIZE = "extra_usb_subframe_size"
         const val EXTRA_USB_CHANNEL_OFFSET = "extra_usb_channel_offset"
+        const val EXTRA_USB_CLOCK_CONTROL_INTERFACE = "extra_usb_clock_control_interface"
+        const val EXTRA_USB_CLOCK_SOURCE_ID = "extra_usb_clock_source_id"
+        const val EXTRA_USB_CLOCK_FREQUENCY_SETTABLE = "extra_usb_clock_frequency_settable"
+        const val EXTRA_USB_FEEDBACK_ENDPOINT = "extra_usb_feedback_endpoint"
+        const val EXTRA_USB_FEEDBACK_MAX_PACKET_SIZE = "extra_usb_feedback_max_packet_size"
+        const val EXTRA_USB_VENDOR_ID = "extra_usb_vendor_id"
+        const val EXTRA_USB_PRODUCT_ID = "extra_usb_product_id"
+        const val EXTRA_USB_RAW_DESCRIPTORS = "extra_usb_raw_descriptors"
 
         private const val CHANNEL_ID = "recording_channel"
         private const val NOTIFICATION_ID = 1001
         private const val METER_UPDATE_INTERVAL_MS = 66L // ~15 fps, plenty for a VU meter
         private const val NOTIFICATION_UPDATE_INTERVAL_MS = 500L
+        private const val USB_SIGNAL_CHECK_INTERVAL_MS = 100L
+        private const val USB_SIGNAL_CHECK_TIMEOUT_MS = 1500L
     }
 
     inner class LocalBinder : android.os.Binder() {
@@ -157,8 +174,20 @@ class RecordingService : LifecycleService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
+        if ((intent?.action == ACTION_START || intent?.action == ACTION_MONITOR) &&
+            (_state.value is RecordingState.Idle || _state.value is RecordingState.Error)) {
+            _state.value = RecordingState.Preparing
+            // Android requires foreground promotion before native USB open/rate probing can block.
+            startForegroundNotification()
+        }
         when (intent?.action) {
             ACTION_MONITOR -> {
+                if (_state.value is RecordingState.Monitoring ||
+                    _state.value is RecordingState.Recording ||
+                    _state.value is RecordingState.Paused ||
+                    _state.value is RecordingState.Preparing) {
+                    return START_NOT_STICKY
+                }
                 val sampleRate = intent.getIntExtra(EXTRA_SAMPLE_RATE, 48000)
                 val bitDepth = intent.getIntExtra(EXTRA_BIT_DEPTH, 24)
                 val captureMode = intent.getIntExtra(EXTRA_CAPTURE_MODE, CAPTURE_MODE_AAUDIO)
@@ -181,6 +210,14 @@ class RecordingService : LifecycleService() {
                         maxPacketSize = intent.getIntExtra(EXTRA_USB_MAX_PACKET_SIZE, -1),
                         totalChannels = intent.getIntExtra(EXTRA_USB_TOTAL_CHANNELS, 2),
                         subframeSize = intent.getIntExtra(EXTRA_USB_SUBFRAME_SIZE, 4),
+                        clockControlInterfaceNumber = intent.getIntExtra(EXTRA_USB_CLOCK_CONTROL_INTERFACE, -1),
+                        clockSourceId = intent.getIntExtra(EXTRA_USB_CLOCK_SOURCE_ID, -1),
+                        clockSupportsFrequencySet = intent.getBooleanExtra(EXTRA_USB_CLOCK_FREQUENCY_SETTABLE, false),
+                        feedbackEndpointAddress = intent.getIntExtra(EXTRA_USB_FEEDBACK_ENDPOINT, -1),
+                        feedbackMaxPacketSize = intent.getIntExtra(EXTRA_USB_FEEDBACK_MAX_PACKET_SIZE, -1),
+                        vendorId = intent.getIntExtra(EXTRA_USB_VENDOR_ID, -1),
+                        productId = intent.getIntExtra(EXTRA_USB_PRODUCT_ID, -1),
+                        rawDescriptors = intent.getByteArrayExtra(EXTRA_USB_RAW_DESCRIPTORS) ?: byteArrayOf(),
                         bitDepth = bitDepth,
                         channelOffset = intent.getIntExtra(EXTRA_USB_CHANNEL_OFFSET, 0),
                         sampleRateHint = sampleRate,
@@ -196,14 +233,14 @@ class RecordingService : LifecycleService() {
             ACTION_START -> {
                 // If already monitoring, just begin encoding.
                 if (_state.value is RecordingState.Monitoring) {
+                    currentFormat = recordingFormatFrom(intent)
                     beginRecordingNow()
                     return START_NOT_STICKY
                 }
                 // Otherwise, open stream + encode immediately (full recording from idle).
                 val sampleRate = intent.getIntExtra(EXTRA_SAMPLE_RATE, 48000)
                 val bitDepth = intent.getIntExtra(EXTRA_BIT_DEPTH, 24)
-                val formatOrdinal = intent.getIntExtra(EXTRA_FORMAT, RecordingFormat.WAV.nativeValue)
-                val format = RecordingFormat.entries.first { it.nativeValue == formatOrdinal }
+                val format = recordingFormatFrom(intent)
                 val captureMode = intent.getIntExtra(EXTRA_CAPTURE_MODE, CAPTURE_MODE_AAUDIO)
 
                 if (captureMode == CAPTURE_MODE_ROOT_ALSA) {
@@ -226,6 +263,14 @@ class RecordingService : LifecycleService() {
                         maxPacketSize = intent.getIntExtra(EXTRA_USB_MAX_PACKET_SIZE, -1),
                         totalChannels = intent.getIntExtra(EXTRA_USB_TOTAL_CHANNELS, 2),
                         subframeSize = intent.getIntExtra(EXTRA_USB_SUBFRAME_SIZE, 4),
+                        clockControlInterfaceNumber = intent.getIntExtra(EXTRA_USB_CLOCK_CONTROL_INTERFACE, -1),
+                        clockSourceId = intent.getIntExtra(EXTRA_USB_CLOCK_SOURCE_ID, -1),
+                        clockSupportsFrequencySet = intent.getBooleanExtra(EXTRA_USB_CLOCK_FREQUENCY_SETTABLE, false),
+                        feedbackEndpointAddress = intent.getIntExtra(EXTRA_USB_FEEDBACK_ENDPOINT, -1),
+                        feedbackMaxPacketSize = intent.getIntExtra(EXTRA_USB_FEEDBACK_MAX_PACKET_SIZE, -1),
+                        vendorId = intent.getIntExtra(EXTRA_USB_VENDOR_ID, -1),
+                        productId = intent.getIntExtra(EXTRA_USB_PRODUCT_ID, -1),
+                        rawDescriptors = intent.getByteArrayExtra(EXTRA_USB_RAW_DESCRIPTORS) ?: byteArrayOf(),
                         bitDepth = bitDepth,
                         channelOffset = intent.getIntExtra(EXTRA_USB_CHANNEL_OFFSET, 0),
                         sampleRateHint = sampleRate,
@@ -249,6 +294,11 @@ class RecordingService : LifecycleService() {
         return START_NOT_STICKY
     }
 
+    private fun recordingFormatFrom(intent: Intent): RecordingFormat {
+        val value = intent.getIntExtra(EXTRA_FORMAT, currentFormat.nativeValue)
+        return RecordingFormat.entries.firstOrNull { it.nativeValue == value } ?: RecordingFormat.WAV
+    }
+
     fun startSession(
         audioManagerDeviceId: Int,
         sampleRateHint: Int,
@@ -264,7 +314,7 @@ class RecordingService : LifecycleService() {
 
         val negotiatedRate = AudioEngine.open(audioManagerDeviceId, sampleRateHint, channelCount, bitDepth)
         if (negotiatedRate <= 0) {
-            _state.value = RecordingState.Error("Failed to open exclusive audio stream")
+            failPreparation("Failed to open exclusive audio stream")
             return
         }
 
@@ -283,6 +333,14 @@ class RecordingService : LifecycleService() {
         maxPacketSize: Int,
         totalChannels: Int,
         subframeSize: Int,
+        clockControlInterfaceNumber: Int,
+        clockSourceId: Int,
+        clockSupportsFrequencySet: Boolean,
+        feedbackEndpointAddress: Int,
+        feedbackMaxPacketSize: Int,
+        vendorId: Int,
+        productId: Int,
+        rawDescriptors: ByteArray,
         bitDepth: Int,
         channelOffset: Int,
         sampleRateHint: Int,
@@ -295,17 +353,20 @@ class RecordingService : LifecycleService() {
         isMonitoringOnly = monitorOnly
 
         if (fd < 0 || interfaceNumber < 0 || endpointAddress < 0 || maxPacketSize <= 0) {
-            _state.value = RecordingState.Error("Invalid USB capture parameters")
+            failPreparation("Invalid USB capture parameters")
             releaseIsoConnectionIfNeeded()
             return
         }
 
         val negotiatedRate = AudioEngine.openUsbIso(
             fd, interfaceNumber, alternateSetting, endpointAddress, maxPacketSize,
-            totalChannels, subframeSize, bitDepth, channelOffset, sampleRateHint
+            totalChannels, subframeSize, bitDepth, channelOffset,
+            clockControlInterfaceNumber, clockSourceId, clockSupportsFrequencySet,
+            feedbackEndpointAddress, feedbackMaxPacketSize, vendorId, productId,
+            rawDescriptors, sampleRateHint
         )
         if (negotiatedRate <= 0) {
-            _state.value = RecordingState.Error("Failed to open USB isochronous capture")
+            failPreparation("Failed to open USB isochronous capture")
             releaseIsoConnectionIfNeeded()
             return
         }
@@ -313,7 +374,7 @@ class RecordingService : LifecycleService() {
         if (monitorOnly) {
             beginMonitoring()
         } else {
-            beginEncodingOrFail(bitDepth, format)
+            beginUsbIsoEncodingWhenSignalReady(bitDepth, format, totalChannels)
         }
     }
 
@@ -336,7 +397,7 @@ class RecordingService : LifecycleService() {
             card, device, sampleRateHint, totalChannels, bitDepth, channelOffset
         )
         if (negotiatedRate <= 0) {
-            _state.value = RecordingState.Error("Failed to open root ALSA capture")
+            failPreparation("Failed to open root ALSA capture")
             return
         }
 
@@ -379,7 +440,7 @@ class RecordingService : LifecycleService() {
         if (!started) {
             AudioEngine.close()
             releaseIsoConnectionIfNeeded()
-            _state.value = RecordingState.Error("Failed to start ${format.name} encoder")
+            failPreparation("Failed to start ${format.name} encoder")
             return
         }
 
@@ -390,11 +451,62 @@ class RecordingService : LifecycleService() {
         _state.value = RecordingState.Recording
     }
 
+    /**
+     * A successful USB isochronous transfer only proves transport works. A DJM-A9 rear USB-B
+     * port can still deliver a valid all-zero stream when its USB output routing is not set.
+     * Wait for source bytes before creating an apparently-valid but silent recording.
+     */
+    private fun beginUsbIsoEncodingWhenSignalReady(
+        bitDepth: Int,
+        format: RecordingFormat,
+        totalChannels: Int
+    ) {
+        val deadlineMs = SystemClock.elapsedRealtime() + USB_SIGNAL_CHECK_TIMEOUT_MS
+        val checkSignal = object : Runnable {
+            override fun run() {
+                if (_state.value !is RecordingState.Preparing || !isUsbIsoSession) return
+
+                val stats = AudioEngine.getUsbIsoTransferStats()
+                val receivedBytes = stats.getOrElse(4) { 0L }
+                val nonZeroBytes = stats.getOrElse(5) { 0L }
+                if (nonZeroBytes > 0L) {
+                    beginEncodingOrFail(bitDepth, format)
+                    return
+                }
+
+                if (SystemClock.elapsedRealtime() < deadlineMs) {
+                    monitorHandler.postDelayed(this, USB_SIGNAL_CHECK_INTERVAL_MS)
+                    return
+                }
+
+                AudioEngine.close()
+                releaseIsoConnectionIfNeeded()
+                failPreparation(
+                    if (receivedBytes == 0L) {
+                        "USB audio endpoint sent no data. Reconnect the mixer and retry."
+                    } else if (totalChannels >= 12) {
+                        "DJM-A9 rear USB-B sent digital silence. In DJM-A9 Setting Utility, " +
+                            "route USB 1/2 for this port to MIX (REC OUT with/without MIC), " +
+                            "play audio, then retry. iOS DJM-REC uses the top digital send/return USB port."
+                    } else {
+                        "Mixer USB stream contains only digital silence. Check its USB output routing, then retry."
+                    }
+                )
+            }
+        }
+        monitorHandler.postDelayed(checkSignal, USB_SIGNAL_CHECK_INTERVAL_MS)
+    }
+
     /** Closes the [UsbAudioManager] connection backing native libusb capture, if this session used it. */
     private fun releaseIsoConnectionIfNeeded() {
         if (isUsbIsoSession) {
             (application as DjmRecApplication).usbAudioManager.releaseIsoCaptureConnection()
         }
+    }
+
+    private fun failPreparation(message: String) {
+        _state.value = RecordingState.Error(message)
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
     }
 
     fun pauseSession() {
@@ -412,6 +524,14 @@ class RecordingService : LifecycleService() {
     }
 
     fun stopSession() {
+        if (_state.value is RecordingState.Preparing || _state.value is RecordingState.Error) {
+            AudioEngine.close()
+            releaseIsoConnectionIfNeeded()
+            _state.value = RecordingState.Idle
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return
+        }
         if (_state.value is RecordingState.Idle || _state.value is RecordingState.Monitoring) {
             // Full stop from monitoring: close the stream.
             if (_state.value is RecordingState.Monitoring) {
@@ -428,12 +548,28 @@ class RecordingService : LifecycleService() {
             return
         }
         // Recording → stop encoding, keep monitoring.
+        val outputFile = currentOutputFile
         AudioEngine.stopRecording()
+        outputFile?.takeIf { it.isFile && it.length() > 0L }?.let { file ->
+            MediaScannerConnection.scanFile(
+                this,
+                arrayOf(file.absolutePath),
+                arrayOf(mimeTypeFor(currentFormat)),
+                null
+            )
+        }
+        currentOutputFile = null
         releaseWakeLock()
         _state.value = RecordingState.Monitoring
         isMonitoringOnly = true
         _elapsedMillis.value = 0L
         updateNotification()
+    }
+
+    private fun mimeTypeFor(format: RecordingFormat): String = when (format) {
+        RecordingFormat.WAV -> "audio/wav"
+        RecordingFormat.FLAC -> "audio/flac"
+        RecordingFormat.MP3 -> "audio/mpeg"
     }
 
     fun setDeviceLabel(label: String) {
@@ -484,14 +620,21 @@ class RecordingService : LifecycleService() {
         val notification = buildNotification()
         // minSdk is 29 (Q), so the ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE overload is
         // always available — no legacy startForeground(id, notification) fallback needed.
-        ServiceCompat.startForeground(
-            this, NOTIFICATION_ID, notification,
+        val foregroundType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-        )
+        } else {
+            0
+        }
+        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, foregroundType)
     }
 
     private fun updateNotification() {
-        NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, buildNotification())
+        val canNotify = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        if (canNotify) {
+            NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, buildNotification())
+        }
     }
 
     private fun buildNotification(): Notification {

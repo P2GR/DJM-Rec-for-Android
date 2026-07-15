@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <android/log.h>
 #include <cstring>
+#include <limits>
 
 #define TAG "WavWriter"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
@@ -17,6 +18,12 @@ void writeU16(FILE* f, uint16_t v) { fwrite(&v, sizeof(v), 1, f); }
 }
 
 bool WavWriter::open(const std::string& path, const AudioFormatInfo& format) {
+    if (format.sampleRate <= 0 || format.channelCount <= 0 ||
+        (format.bitsPerSample != 16 && format.bitsPerSample != 24 && format.bitsPerSample != 32)) {
+        LOGE("Invalid WAV format: %dHz / %d-bit / %dch", format.sampleRate,
+             format.bitsPerSample, format.channelCount);
+        return false;
+    }
     mFormat = format;
     mBytesPerSample = format.bitsPerSample / 8;
     mDataBytesWritten = 0;
@@ -28,6 +35,12 @@ bool WavWriter::open(const std::string& path, const AudioFormatInfo& format) {
     }
 
     writeHeaderPlaceholder();
+    if (ferror(mFile)) {
+        LOGE("Failed to write WAV header for %s", path.c_str());
+        fclose(mFile);
+        mFile = nullptr;
+        return false;
+    }
     LOGI("Opened WAV %s @ %dHz / %d-bit / %dch", path.c_str(), mFormat.sampleRate,
          mFormat.bitsPerSample, mFormat.channelCount);
     return true;
@@ -57,6 +70,11 @@ void WavWriter::writeHeaderPlaceholder() {
 bool WavWriter::writeFrames(const int32_t* interleaved, size_t frameCount) {
     if (!mFile) return false;
     const size_t sampleCount = frameCount * mFormat.channelCount;
+    const uint64_t bytesRequested = sampleCount * static_cast<uint64_t>(mBytesPerSample);
+    if (mDataBytesWritten + bytesRequested > std::numeric_limits<uint32_t>::max()) {
+        LOGE("WAV reached the 4 GiB RIFF limit; finalizing current file");
+        return false;
+    }
 
     // Repack each full-scale int32 sample down to the container width the source hardware
     // actually negotiated (16/24/32-bit) so the file reflects true captured resolution rather
@@ -109,23 +127,26 @@ bool WavWriter::writeFrames(const int32_t* interleaved, size_t frameCount) {
     return true;
 }
 
-void WavWriter::patchHeaderSizes() {
+bool WavWriter::patchHeaderSizes() {
     const uint32_t riffSize = static_cast<uint32_t>(36 + mDataBytesWritten);
     const uint32_t dataSize = static_cast<uint32_t>(mDataBytesWritten);
 
-    fseek(mFile, 4, SEEK_SET);
+    if (fseek(mFile, 4, SEEK_SET) != 0) return false;
     writeU32(mFile, riffSize);
 
-    fseek(mFile, 40, SEEK_SET);
+    if (fseek(mFile, 40, SEEK_SET) != 0) return false;
     writeU32(mFile, dataSize);
+    return fflush(mFile) == 0 && !ferror(mFile);
 }
 
 bool WavWriter::close() {
     if (!mFile) return true;
-    patchHeaderSizes();
-    const bool ok = fclose(mFile) == 0;
+    const bool headerOk = patchHeaderSizes();
+    const bool closeOk = fclose(mFile) == 0;
+    const bool ok = headerOk && closeOk;
     mFile = nullptr;
-    LOGI("Closed WAV, %llu bytes of audio data", static_cast<unsigned long long>(mDataBytesWritten));
+    LOGI("Closed WAV, %llu bytes of audio data (finalized=%d)",
+         static_cast<unsigned long long>(mDataBytesWritten), ok);
     return ok;
 }
 

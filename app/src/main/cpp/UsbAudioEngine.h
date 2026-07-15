@@ -29,8 +29,8 @@ enum class ContainerFormat : int {
 /**
  * Which producer is currently feeding mRingBuffer. Oboe is the default AAudio/AudioRecord
  * path (used for plain stereo UAC2 devices); UsbIso is the libusb raw-isochronous path used
- * to reach into a multichannel interface for a specific channel pair (e.g. the Pioneer
- * DJM-A9's Master Mix on channels 9/10) that AAudio itself has no way to select.
+ * to reach into a multichannel interface for a specific channel pair that AAudio itself has
+ * no way to select.
  */
 enum class SourceMode { None, Oboe, UsbIso, RootAlsa };
 
@@ -56,13 +56,9 @@ public:
 
     /**
      * Opens the raw libusb isochronous capture path instead of AAudio, extracting a stereo
-     * pair out of a wider multichannel USB Audio interface (e.g. channels 9/10 out of a
-     * 12-channel Pioneer DJM-A9 interface). `sampleRateHint` is trusted as-is -- unlike the
-     * AAudio path, nothing here negotiates a rate back from the device; it is assumed to
-     * already be clocked at `sampleRateHint` (true for fixed-rate mixers; devices with a
-     * host-selectable clock source would need an explicit UAC2 SET_CUR on the Clock Source
-     * entity first, which this minimal implementation does not perform). Returns
-     * `sampleRateHint` on success, or -1 on failure.
+     * pair out of a wider multichannel USB Audio interface. The source briefly measures actual frame cadence
+     * before returning, which covers UAC2 devices that do not answer clock-frequency queries.
+     * Returns the measured sample rate on success, or -1 on failure.
      */
     int openUsbIso(const UsbIsoAudioSource::Config& isoConfig, int32_t sampleRateHint);
     int openRootAlsa(const AlsaPcmAudioSource::Config& alsaConfig);
@@ -79,6 +75,7 @@ public:
     bool isClipping() const;
     int64_t getElapsedMillis() const;
     int32_t getXRunCount() const;
+    void getUsbIsoTransferStats(uint64_t outStats[7]) const;
 
     /** Copies the RGB waveform snapshot into @p outBins (kBinCount * 4 floats).
      *  Safe to call from any thread. */

@@ -11,6 +11,12 @@
 namespace djmrec {
 
 bool FlacWriter::open(const std::string& path, const AudioFormatInfo& format) {
+    if (format.sampleRate <= 0 || format.channelCount <= 0 || format.channelCount > 8 ||
+        format.bitsPerSample < 8 || format.bitsPerSample > 32) {
+        LOGE("Invalid FLAC format: %dHz / %d-bit / %dch", format.sampleRate,
+             format.bitsPerSample, format.channelCount);
+        return false;
+    }
     mFormat = format;
 
     // The FLAC "streamable subset" (required for broad decoder/player compatibility) caps
@@ -26,11 +32,19 @@ bool FlacWriter::open(const std::string& path, const AudioFormatInfo& format) {
         return false;
     }
 
-    FLAC__stream_encoder_set_channels(mEncoder, format.channelCount);
-    FLAC__stream_encoder_set_bits_per_sample(mEncoder, flacBitsPerSample);
-    FLAC__stream_encoder_set_sample_rate(mEncoder, format.sampleRate);
-    FLAC__stream_encoder_set_compression_level(mEncoder, 5); // balanced speed/ratio for realtime use
-    FLAC__stream_encoder_set_streamable_subset(mEncoder, true);
+    const bool configured =
+        FLAC__stream_encoder_set_channels(mEncoder, format.channelCount) &&
+        FLAC__stream_encoder_set_bits_per_sample(mEncoder, flacBitsPerSample) &&
+        FLAC__stream_encoder_set_sample_rate(mEncoder, format.sampleRate) &&
+        FLAC__stream_encoder_set_compression_level(mEncoder, 5) &&
+        FLAC__stream_encoder_set_streamable_subset(mEncoder, true);
+    if (!configured) {
+        LOGE("FLAC encoder rejected %dHz / %d-bit / %dch", format.sampleRate,
+             flacBitsPerSample, format.channelCount);
+        FLAC__stream_encoder_delete(mEncoder);
+        mEncoder = nullptr;
+        return false;
+    }
 
     const FLAC__StreamEncoderInitStatus status =
         FLAC__stream_encoder_init_file(mEncoder, path.c_str(), nullptr, nullptr);
@@ -60,8 +74,13 @@ bool FlacWriter::writeFrames(const int32_t* interleaved, size_t frameCount) {
         scratch[i] = interleaved[i] >> mShiftAmount;
     }
 
-    return FLAC__stream_encoder_process_interleaved(
+    const bool ok = FLAC__stream_encoder_process_interleaved(
         mEncoder, scratch.data(), static_cast<uint32_t>(frameCount));
+    if (!ok) {
+        LOGE("FLAC encode failed: %s",
+             FLAC__StreamEncoderStateString[FLAC__stream_encoder_get_state(mEncoder)]);
+    }
+    return ok;
 }
 
 bool FlacWriter::close() {

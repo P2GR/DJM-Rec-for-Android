@@ -1,23 +1,25 @@
 package com.audiopro.djmrec.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import com.audiopro.djmrec.R
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import com.audiopro.djmrec.audio.RecordingFormat
 
-/** Radio-button row for choosing the output container. Disabled entirely while recording. */
+/** Compact output-format tiles. Selection remains available during live monitoring. */
 @Composable
 fun FormatSelector(
     selected: RecordingFormat,
@@ -28,34 +30,45 @@ fun FormatSelector(
 ) {
     Row(
         modifier = modifier.fillMaxWidth().selectableGroup(),
-        horizontalArrangement = Arrangement.SpaceEvenly
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         formats.forEach { format ->
-            val labelRes = when (format) {
-                RecordingFormat.WAV -> R.string.format_wav
-                RecordingFormat.FLAC -> R.string.format_flac
-                RecordingFormat.MP3 -> R.string.format_mp3
+            val detail = when (format) {
+                RecordingFormat.WAV -> "PCM"
+                RecordingFormat.FLAC -> "LOSSLESS"
+                RecordingFormat.MP3 -> "320 KBPS"
             }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
+            val isSelected = selected == format
+            Surface(
                 modifier = Modifier.selectable(
-                    selected = selected == format,
+                    selected = isSelected,
                     enabled = enabled,
                     role = Role.RadioButton,
                     onClick = { onSelect(format) }
+                ).weight(1f),
+                shape = RoundedCornerShape(10.dp),
+                color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                border = BorderStroke(
+                    1.dp,
+                    if (isSelected) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
                 )
             ) {
-                RadioButton(
-                    selected = selected == format,
-                    onClick = null,
-                    enabled = enabled,
-                    colors = RadioButtonDefaults.colors(selectedColor = MaterialTheme.colorScheme.primary)
-                )
-                Text(
-                    text = stringResource(id = labelRes),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp)) {
+                    Text(
+                        text = format.name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isSelected) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = detail,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }

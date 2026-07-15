@@ -1,4 +1,4 @@
-# DeckLab for Android
+# DJM Rec for Android
 
 [![AGP](https://img.shields.io/badge/AGP-8.5.2-3DDC84?logo=android&logoColor=white)](https://developer.android.com/build)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0.20-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
@@ -8,16 +8,15 @@
 DJ toolbox for Android — record multichannel USB audio from a Pioneer DJM mixer, play samples
 through an RMX-1000-style effects simulator, and detect BPM from live audio.
 
-AAudio can only reach channels 1/2 of a UAC2 interface. The DJM-A9 puts its master mix on
-channels 9/10. This app works around that by using `libusb` to do raw isochronous capture —
-pulling all 12 channels off the wire and extracting just the stereo pair we need, with no root
-required.
+AAudio cannot select an arbitrary pair from the DJM-A9's 12-channel UAC2 input. This app uses
+root-free `libusb` isochronous capture, asks the mixer to route MIX (REC OUT) to the selected
+USB pair, then extracts that pair from the wire.
 
 ## Build
 
 ```bash
-./gradlew assembleDebug    # → DeckLab-v0.30-debug.apk
-./gradlew assembleRelease  # → DeckLab-v0.30-release.apk
+./gradlew assembleDebug    # → DJM-Rec-for-Android-v0.33-debug.apk
+./gradlew assembleRelease  # → DJM-Rec-for-Android-v0.33-release.apk
 ```
 
 Needs JDK 17, NDK 26.1, CMake 3.22.1. Emulator won't work — you need a physical device with
@@ -58,7 +57,8 @@ Without it the app still works — the MP3 option just won't start recording.
 | Layer | What |
 |---|---|
 | USB transport | `libusb` raw isochronous capture (root-free, uses Android's existing `UsbManager` permission) |
-| Channel extraction | Native C++ demuxes channels 9/10 from the 12-channel PCM stream |
+| Mixer routing | Verified DJM-A9 vendor controls route MIX (REC OUT) to the selected USB pair |
+| Channel extraction | Native C++ demuxes the selected pair from the 12-channel PCM stream |
 | Audio engine | Dual-mode: `libusb` iso path for multichannel mixers, AAudio exclusive fallback for plain stereo devices |
 | Encoding | WAV, FLAC (libFLAC 1.4.3), MP3 (LAME, optional) |
 | UI | Jetpack Compose + Material 3 — stereo VU meter, RGB waveform, format selector |
@@ -66,12 +66,12 @@ Without it the app still works — the MP3 option just won't start recording.
 There's also a `WaveformAnalyzer` (three-band IIR filter bank → red/green/blue waveform)
 rendered as a scrolling CDJ-3000-style display while recording.
 
-## Caveats
+## DJM-A9 routing
 
-The channel offset for the DJM-A9 master mix (`MASTER_MIX_CHANNEL_OFFSET = 8`, i.e. channels
-9/10) is based on the DJM-A9's published USB spec and hasn't been verified against real
-hardware yet. Likewise the vendor-control stub in `PioneerVendorControl.kt` is experimental
-and not wired into the recording path.
+The app defaults to USB channels 9/10, reads their current mixer route, temporarily selects
+`MIX (REC OUT without MIC)`, verifies the change, and restores the previous route after capture.
+The request layout and route table come from Pioneer `DJM-A9_Setup.dll` version 1.100.002.0.
+Routing is enabled only for VID `0x2B73`, PID `0x003C`; other mixers remain unchanged.
 
 ## License
 

@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "DeckLab"
+rootProject.name = "DJMRec"
 include(":app")

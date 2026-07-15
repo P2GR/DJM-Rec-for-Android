@@ -1,5 +1,7 @@
 package com.audiopro.djmrec.ui
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -7,6 +9,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FiberManualRecord
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Coffee
+import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Tune
@@ -33,6 +38,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.audiopro.djmrec.ui.theme.BackgroundDark
 import com.audiopro.djmrec.ui.theme.SurfaceDark
@@ -42,13 +48,16 @@ import kotlinx.coroutines.launch
 
 private enum class Destination(val label: String, val icon: ImageVector) {
     RECORDING("Recording", Icons.Filled.FiberManualRecord),
+    RECORDINGS("My Recordings", Icons.Filled.LibraryMusic),
     RMX_SIM("RMX-1000 Sim", Icons.Filled.Tune),
-    BPM_DETECT("BPM Detect", Icons.Filled.Speed)
+    BPM_DETECT("BPM Detect", Icons.Filled.Speed),
+    DIAGNOSTICS("Diagnostics", Icons.Filled.BugReport)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(viewModel: MainViewModel) {
+    val context = LocalContext.current
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var selectedDestination by rememberSaveable { mutableStateOf(Destination.RECORDING) }
@@ -63,11 +72,18 @@ fun MainScreen(viewModel: MainViewModel) {
             ) {
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "DeckLab",
+                    text = "DJM REC",
                     style = MaterialTheme.typography.titleLarge,
                     color = TextPrimary,
                     modifier = Modifier.padding(horizontal = 28.dp, vertical = 12.dp)
                 )
+                Text(
+                    text = "USB recording studio",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                    modifier = Modifier.padding(horizontal = 28.dp)
+                )
+                Spacer(modifier = Modifier.height(12.dp))
                 HorizontalDivider(color = TextSecondary.copy(alpha = 0.2f))
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -97,7 +113,34 @@ fun MainScreen(viewModel: MainViewModel) {
                         ),
                         modifier = Modifier.padding(horizontal = 12.dp)
                     )
+                    if (dest == Destination.RECORDINGS || dest == Destination.BPM_DETECT) {
+                        HorizontalDivider(
+                            color = TextSecondary.copy(alpha = 0.14f),
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                        )
+                    }
                 }
+                HorizontalDivider(
+                    color = TextSecondary.copy(alpha = 0.14f),
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                )
+                NavigationDrawerItem(
+                    icon = {
+                        Icon(Icons.Filled.Coffee, contentDescription = null, tint = TextSecondary)
+                    },
+                    label = { Text("Buy me a coffee", color = TextSecondary) },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        context.startActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse("https://buymeacoffee.com/p2gr"))
+                        )
+                    },
+                    colors = NavigationDrawerItemDefaults.colors(
+                        unselectedContainerColor = SurfaceDark
+                    ),
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
             }
         }
     ) {
@@ -127,8 +170,10 @@ fun MainScreen(viewModel: MainViewModel) {
             Column(modifier = Modifier.fillMaxSize().padding(padding)) {
                 when (selectedDestination) {
                     Destination.RECORDING -> RecorderScreen(viewModel = viewModel)
+                    Destination.RECORDINGS -> LibraryScreen(onBack = null)
                     Destination.RMX_SIM -> RmxSimulatorScreen()
                     Destination.BPM_DETECT -> BpmDetectScreen()
+                    Destination.DIAGNOSTICS -> DiagnosticsScreen()
                 }
             }
         }

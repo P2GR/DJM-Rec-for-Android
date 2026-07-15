@@ -28,9 +28,12 @@ Java_com_audiopro_djmrec_audio_AudioEngine_open(
 
 JNIEXPORT jint JNICALL
 Java_com_audiopro_djmrec_audio_AudioEngine_openUsbIso(
-    JNIEnv* /*env*/, jobject /*thiz*/,
+    JNIEnv* env, jobject /*thiz*/,
     jint fd, jint interfaceNumber, jint alternateSetting, jint endpointAddress, jint maxPacketSize,
     jint totalChannels, jint subframeSize, jint bitResolution, jint extractChannelOffset,
+    jint clockControlInterfaceNumber, jint clockSourceId, jboolean clockSupportsFrequencySet,
+    jint feedbackEndpointAddress, jint feedbackMaxPacketSize, jint vendorId, jint productId,
+    jbyteArray rawDescriptors,
     jint sampleRateHint) {
     djmrec::UsbIsoAudioSource::Config config;
     config.fd = fd;
@@ -42,6 +45,25 @@ Java_com_audiopro_djmrec_audio_AudioEngine_openUsbIso(
     config.subframeSize = subframeSize;
     config.bitResolution = bitResolution;
     config.extractChannelOffset = extractChannelOffset;
+    config.clockControlInterfaceNumber = clockControlInterfaceNumber;
+    config.clockSourceId = clockSourceId;
+    config.clockSupportsFrequencySet = clockSupportsFrequencySet == JNI_TRUE;
+    config.requestedSampleRate = sampleRateHint;
+    config.feedbackEndpointAddress = feedbackEndpointAddress;
+    config.feedbackMaxPacketSize = feedbackMaxPacketSize;
+    config.vendorId = vendorId;
+    config.productId = productId;
+    if (rawDescriptors) {
+        const jsize length = env->GetArrayLength(rawDescriptors);
+        const auto* bytes = env->GetByteArrayElements(rawDescriptors, nullptr);
+        if (bytes && length > 0) {
+            const auto* unsignedBytes = reinterpret_cast<const uint8_t*>(bytes);
+            config.rawDescriptors.assign(unsignedBytes, unsignedBytes + length);
+        }
+        if (bytes) {
+            env->ReleaseByteArrayElements(rawDescriptors, const_cast<jbyte*>(bytes), JNI_ABORT);
+        }
+    }
     return UsbAudioEngine::instance().openUsbIso(config, sampleRateHint);
 }
 
@@ -120,6 +142,19 @@ Java_com_audiopro_djmrec_audio_AudioEngine_getElapsedMillis(JNIEnv* /*env*/, job
 JNIEXPORT jint JNICALL
 Java_com_audiopro_djmrec_audio_AudioEngine_getXRunCount(JNIEnv* /*env*/, jobject /*thiz*/) {
     return UsbAudioEngine::instance().getXRunCount();
+}
+
+JNIEXPORT jlongArray JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_getUsbIsoTransferStats(JNIEnv* env, jobject /*thiz*/) {
+    uint64_t stats[7]{};
+    UsbAudioEngine::instance().getUsbIsoTransferStats(stats);
+    jlong values[7]{};
+    for (int index = 0; index < 7; ++index) {
+        values[index] = static_cast<jlong>(stats[index]);
+    }
+    jlongArray result = env->NewLongArray(7);
+    env->SetLongArrayRegion(result, 0, 7, values);
+    return result;
 }
 
 JNIEXPORT jfloatArray JNICALL

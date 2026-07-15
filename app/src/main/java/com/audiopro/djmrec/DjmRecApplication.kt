@@ -1,6 +1,7 @@
 package com.audiopro.djmrec
 
 import android.app.Application
+import com.audiopro.djmrec.midi.UsbMidiClockManager
 import com.audiopro.djmrec.usb.UsbAudioManager
 
 /**
@@ -13,10 +14,14 @@ class DjmRecApplication : Application() {
 
     lateinit var usbAudioManager: UsbAudioManager
         private set
+    lateinit var midiClockManager: UsbMidiClockManager
+        private set
 
     override fun onCreate() {
         super.onCreate()
         usbAudioManager = UsbAudioManager(this)
         usbAudioManager.start()
+        midiClockManager = UsbMidiClockManager(this)
+        midiClockManager.start()
     }
 }

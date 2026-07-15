@@ -120,7 +120,7 @@ int UsbAudioEngine::open(int32_t audioManagerDeviceId, int32_t sampleRateHint, i
     const size_t canonicalBytesPerFrame = bytesPerFrameFor(oboe::AudioFormat::I32, mFormat.channelCount);
     const size_t ringBufferFrames = static_cast<size_t>(mFormat.sampleRate) * 2; // 2s of headroom
     mRingBuffer = std::make_unique<RingBuffer>(ringBufferFrames * canonicalBytesPerFrame);
-    mWaveformAnalyzer = std::make_unique<WaveformAnalyzer>();
+    mWaveformAnalyzer = std::make_unique<WaveformAnalyzer>(mFormat.sampleRate);
 
     result = mStream->requestStart();
     if (result != oboe::Result::OK) {
@@ -162,17 +162,6 @@ int UsbAudioEngine::openUsbIso(const UsbIsoAudioSource::Config& isoConfig, int32
     // The extracted output is always exactly one stereo pair, regardless of how many channels
     // are actually present on the wire (isoConfig.totalChannels) -- that wire channel count is
     // only used internally by UsbIsoAudioSource for its demux math.
-    mChannelCount = 2;
-    mOboeFormat = oboe::AudioFormat::I32;
-    mFormat.sampleRate = sampleRateHint;
-    mFormat.channelCount = 2;
-    mFormat.bitsPerSample = isoConfig.bitResolution;
-
-    const size_t canonicalBytesPerFrame = bytesPerFrameFor(oboe::AudioFormat::I32, 2);
-    const size_t ringBufferFrames = static_cast<size_t>(sampleRateHint) * 2; // 2s of headroom
-    mRingBuffer = std::make_unique<RingBuffer>(ringBufferFrames * canonicalBytesPerFrame);
-    mWaveformAnalyzer = std::make_unique<WaveformAnalyzer>();
-
     mUsbIsoSource = std::make_unique<UsbIsoAudioSource>();
     const std::string error = mUsbIsoSource->start(
         isoConfig, [this](const int32_t* frames, size_t count) { onUsbIsoFrames(frames, count); });
@@ -180,17 +169,37 @@ int UsbAudioEngine::openUsbIso(const UsbIsoAudioSource::Config& isoConfig, int32
     if (!error.empty()) {
         LOGE("Failed to start USB iso capture: %s", error.c_str());
         mUsbIsoSource.reset();
-        mRingBuffer.reset();
         mSourceMode = SourceMode::None;
         return -1;
     }
 
-    mStreamOpen.store(true, std::memory_order_release);
-    LOGI("USB iso capture open: %d Hz (assumed, not negotiated), 2ch extracted from a %dch wire "
-         "format, format=I32 canonical",
-         sampleRateHint, isoConfig.totalChannels);
+    // UAC2 clock queries are optional and the DJM-A9 rejects GET_RANGE. Measure the active
+    // endpoint cadence before creating an output file so its header matches the real stream.
+    const int measuredSampleRate = mUsbIsoSource->waitForMeasuredSampleRate(/*timeoutMs=*/750);
+    if (measuredSampleRate <= 0) {
+        LOGE("USB iso capture produced no usable sample-rate measurement");
+        mUsbIsoSource->stop();
+        mUsbIsoSource.reset();
+        mSourceMode = SourceMode::None;
+        return -1;
+    }
 
-    return sampleRateHint;
+    mChannelCount = 2;
+    mOboeFormat = oboe::AudioFormat::I32;
+    mFormat.sampleRate = measuredSampleRate;
+    mFormat.channelCount = 2;
+    mFormat.bitsPerSample = isoConfig.bitResolution;
+    const size_t canonicalBytesPerFrame = bytesPerFrameFor(oboe::AudioFormat::I32, 2);
+    const size_t ringBufferFrames = static_cast<size_t>(mFormat.sampleRate) * 2;
+    mRingBuffer = std::make_unique<RingBuffer>(ringBufferFrames * canonicalBytesPerFrame);
+    mWaveformAnalyzer = std::make_unique<WaveformAnalyzer>(mFormat.sampleRate);
+
+    mStreamOpen.store(true, std::memory_order_release);
+    LOGI("USB iso capture open: %d Hz, 2ch extracted from a %dch wire "
+         "format, format=I32 canonical",
+            mFormat.sampleRate, isoConfig.totalChannels);
+
+        return mFormat.sampleRate;
 }
 
 int UsbAudioEngine::openRootAlsa(const AlsaPcmAudioSource::Config& alsaConfig) {
@@ -232,7 +241,7 @@ int UsbAudioEngine::openRootAlsa(const AlsaPcmAudioSource::Config& alsaConfig) {
     const size_t canonicalBytesPerFrame = bytesPerFrameFor(oboe::AudioFormat::I32, 2);
     const size_t ringBufferFrames = static_cast<size_t>(mFormat.sampleRate) * 2;
     mRingBuffer = std::make_unique<RingBuffer>(ringBufferFrames * canonicalBytesPerFrame);
-    mWaveformAnalyzer = std::make_unique<WaveformAnalyzer>();
+    mWaveformAnalyzer = std::make_unique<WaveformAnalyzer>(mFormat.sampleRate);
     mStreamOpen.store(true, std::memory_order_release);
 
     LOGI("Root ALSA capture open: hw:%d,%d @ %dHz, %dbit, native channels=%d, output stereo I32",
@@ -419,7 +428,7 @@ int64_t UsbAudioEngine::stopRecording() {
 
     const int64_t duration = mElapsedMillis.load(std::memory_order_relaxed);
     if (mWriter) {
-        mWriter->close();
+        if (!mWriter->close()) LOGE("Writer failed while finalizing output file");
         mWriter.reset();
     }
     mRecording.store(false, std::memory_order_release);
@@ -478,7 +487,11 @@ void UsbAudioEngine::encoderThreadLoop() {
         const size_t framesRead = bytesRead / bytesPerFrame;
 
         if (framesRead > 0 && mWriter) {
-            mWriter->writeFrames(chunk.data(), framesRead);
+            if (!mWriter->writeFrames(chunk.data(), framesRead)) {
+                LOGE("Encoder write failed after %llu frames",
+                     static_cast<unsigned long long>(framesEncoded));
+                break;
+            }
             framesEncoded += framesRead;
             mElapsedMillis.store(
                 static_cast<int64_t>(framesEncoded * 1000 / mFormat.sampleRate),
@@ -504,6 +517,21 @@ int64_t UsbAudioEngine::getElapsedMillis() const {
 
 int32_t UsbAudioEngine::getXRunCount() const {
     return mXRunCount.load(std::memory_order_relaxed);
+}
+
+void UsbAudioEngine::getUsbIsoTransferStats(uint64_t outStats[7]) const {
+    std::fill(outStats, outStats + 7, 0);
+    if (!mUsbIsoSource) {
+        return;
+    }
+    const auto stats = mUsbIsoSource->getTransferStats();
+    outStats[0] = stats.packetsCompleted;
+    outStats[1] = stats.packetsMissed;
+    outStats[2] = stats.packetsEmpty;
+    outStats[3] = stats.packetsPartial;
+    outStats[4] = stats.bytesReceived;
+    outStats[5] = stats.nonZeroBytesReceived;
+    outStats[6] = stats.resubmitFailures;
 }
 
 constexpr int kRmxSampleRate = 44100;

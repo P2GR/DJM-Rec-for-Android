@@ -38,8 +38,11 @@ fun DeviceStatusCard(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
-            .padding(16.dp),
+            .background(
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.48f),
+                RoundedCornerShape(16.dp)
+            )
+            .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         val connected = device != null && device.hasPermission
@@ -62,7 +65,7 @@ fun DeviceStatusCard(
                 val rate = if (device.negotiatedSampleRate > 0) device.negotiatedSampleRate
                 else device.supportedSampleRates.maxOrNull() ?: 0
                 Text(
-                    text = "${rate} Hz \u2022 ${device.bitResolution}-bit \u2022 ${device.channelCount}ch",
+                    text = "USB mixer connected  \u2022  ${rate} Hz  \u2022  ${device.bitResolution}-bit  \u2022  ${device.channelCount}ch",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

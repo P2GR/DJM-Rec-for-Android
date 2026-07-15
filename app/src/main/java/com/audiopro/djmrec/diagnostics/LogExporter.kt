@@ -11,6 +11,7 @@ import android.os.Build
 import android.util.Log
 import androidx.core.content.FileProvider
 import com.audiopro.djmrec.BuildConfig
+import com.audiopro.djmrec.audio.AudioEngine
 import com.audiopro.djmrec.usb.RootUsbHostController
 import java.io.BufferedReader
 import java.io.File
@@ -51,6 +52,7 @@ object LogExporter {
         appendPowerSection(context, sb)
         appendRootSection(context, sb)
         appendUsbCaptureSettingsSection(context, sb)
+        appendUsbTransferStatsSection(sb)
 
         sb.appendLine("=== logcat (this app's process only, most recent first not guaranteed) ===")
         sb.append(readOwnLogcat())
@@ -189,6 +191,21 @@ object LogExporter {
         sb.appendLine(
             "stereo pair: " + if (offset < 0) "Auto" else "USB channels ${offset + 1}-${offset + 2}"
         )
+        sb.appendLine()
+    }
+
+    private fun appendUsbTransferStatsSection(sb: StringBuilder) {
+        val stats = AudioEngine.getUsbIsoTransferStats()
+        sb.appendLine("=== Raw USB transfer stats ===")
+        if (stats.size >= 7) {
+            sb.appendLine(
+                "completed=${stats[0]} missed=${stats[1]} empty=${stats[2]} " +
+                    "partial=${stats[3]} bytes=${stats[4]} nonZeroBytes=${stats[5]} " +
+                    "resubmitFailures=${stats[6]}"
+            )
+        } else {
+            sb.appendLine("unavailable")
+        }
         sb.appendLine()
     }
 

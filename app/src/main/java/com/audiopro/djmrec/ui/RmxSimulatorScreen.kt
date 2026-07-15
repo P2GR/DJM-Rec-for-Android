@@ -1,6 +1,7 @@
 package com.audiopro.djmrec.ui
 
 import android.content.Context
+import android.content.Intent
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import androidx.compose.foundation.Canvas
@@ -29,6 +30,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -55,6 +57,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.audiopro.djmrec.audio.AudioEngine
+import com.audiopro.djmrec.DjmRecApplication
+import com.audiopro.djmrec.service.RecordingService
 import com.audiopro.djmrec.ui.theme.AccentGreen
 import com.audiopro.djmrec.ui.theme.AccentRed
 import com.audiopro.djmrec.ui.theme.BackgroundDark
@@ -96,6 +100,8 @@ private const val FX_ISOLATOR_HIGH = 10
 @Composable
 fun RmxSimulatorScreen() {
     val context = LocalContext.current
+    val midiClock by (context.applicationContext as DjmRecApplication)
+        .midiClockManager.state.collectAsState()
     var activePads by remember { mutableStateOf(listOf(false, false, false, false)) }
     var selectedPad by remember { mutableIntStateOf(0) }
     var isXpadHeld by remember { mutableStateOf(false) }
@@ -120,17 +126,34 @@ fun RmxSimulatorScreen() {
     var isoHigh by remember { mutableFloatStateOf(0.5f) }
     val scope = rememberCoroutineScope()
 
-    DisposableEffect(Unit) {
+    LaunchedEffect(Unit) {
+        context.startService(
+            Intent(context, RecordingService::class.java).setAction(RecordingService.ACTION_STOP)
+        )
+        delay(180L)
+        context.startService(
+            Intent(context, RecordingService::class.java).setAction(RecordingService.ACTION_STOP)
+        )
+        delay(320L)
         val audioMgr = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val outputs = audioMgr.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+        val usbOut = outputs.firstOrNull { it.type == AudioDeviceInfo.TYPE_USB_DEVICE }
         val spkOut = outputs.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
-        val outDeviceId = spkOut?.id ?: -1
+        val selectedOut = usbOut ?: spkOut
+        val outDeviceId = selectedOut?.id ?: -1
         val result = AudioEngine.openRmxOutput(outDeviceId, 44100, 2)
-        outputStatus = if (result > 0) "Speaker ready" else "Audio unavailable"
+        outputStatus = when {
+            result <= 0 -> "Audio unavailable"
+            usbOut != null -> "USB mixer output"
+            else -> "Speaker fallback"
+        }
         if (!samplesLoaded) {
             sourceSamples = loadRmxSamples(context)
             samplesLoaded = true
         }
+    }
+
+    DisposableEffect(Unit) {
         onDispose {
             AudioEngine.stopAllRmxSamples()
             AudioEngine.closeRmxOutput()
@@ -140,9 +163,15 @@ fun RmxSimulatorScreen() {
 
     LaunchedEffect(Unit) {
         while (true) {
-            val result = if (autoBpm) AudioEngine.getBpmResult() else FloatArray(0)
-            val detectedBpm = if (autoBpm && result.size >= 5 && result[4] > 0.5f && result[0] > 0f) result[0] else 0f
-            val detectedPhase = if (autoBpm && result.size >= 5) result[2] else 0f
+            val useMidiClock = autoBpm && midiClock.locked
+            val result = if (autoBpm && !useMidiClock) AudioEngine.getBpmResult() else FloatArray(0)
+            val detectedBpm = when {
+                useMidiClock -> midiClock.bpm
+                autoBpm && result.size >= 5 && result[4] > 0.5f && result[0] > 0f -> result[0]
+                else -> 0f
+            }
+            val detectedPhase = if (useMidiClock) midiClock.beatPhase
+                else if (autoBpm && result.size >= 5) result[2] else 0f
             val effectiveBpm = if (autoBpm && detectedBpm > 0f) detectedBpm else manualBpm
             bpm = effectiveBpm
             AudioEngine.updateRmxBeatClock(effectiveBpm, if (autoBpm) detectedPhase else 0f, autoBpm)
@@ -164,6 +193,11 @@ fun RmxSimulatorScreen() {
             val activeAudio = activePads.any { it } || autoBpm || delayMix > 0f || reverbMix > 0f || bitCrush > 0f || filterCutoff < MAX_FILTER_HZ
             delay(if (activeAudio) RMX_ACTIVE_REFRESH_MS else RMX_IDLE_REFRESH_MS)
         }
+    }
+
+    LaunchedEffect(autoBpm, midiClock.locked) {
+        if (autoBpm && !midiClock.locked) AudioEngine.startMicCapture()
+        else AudioEngine.stopMicCapture()
     }
 
     fun triggerPad(idx: Int) {
@@ -201,7 +235,6 @@ fun RmxSimulatorScreen() {
         autoBpm = enabled
         if (enabled) {
             AudioEngine.clearRmxManualBpm()
-            AudioEngine.startMicCapture()
         } else {
             AudioEngine.stopMicCapture()
             AudioEngine.setRmxManualBpm(manualBpm)
@@ -259,7 +292,11 @@ fun RmxSimulatorScreen() {
             }
 
             Text(
-                text = if (autoBpm) "AUTO mic detect" else "MANUAL ${manualBpm.toInt()} BPM | $outputStatus",
+                text = when {
+                    autoBpm && midiClock.locked -> "AUTO MIDI CLOCK | $outputStatus"
+                    autoBpm -> "AUTO AUDIO DETECT | $outputStatus"
+                    else -> "MANUAL ${manualBpm.toInt()} BPM | $outputStatus"
+                },
                 fontSize = 9.sp,
                 color = TextSecondary.copy(alpha = 0.7f),
                 maxLines = 1

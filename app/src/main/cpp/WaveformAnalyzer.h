@@ -28,9 +28,7 @@ class WaveformAnalyzer {
 public:
     static constexpr int kBinCount = 512;
     /** Samples accumulated per display bin at 48 kHz (~6.1 ms per bin). */
-    static constexpr int kFramesPerBin = 294; // 48000 / 512 ≈ 93.75; 294 gives ~163 Hz bin rate
-
-    WaveformAnalyzer();
+    explicit WaveformAnalyzer(int sampleRate = 48000);
     ~WaveformAnalyzer();
 
     WaveformAnalyzer(const WaveformAnalyzer&) = delete;
@@ -116,11 +114,10 @@ private:
 
     // Double-buffered bin arrays: one being written, one available for reading.
     // The "front" buffer (pointed to by mReadBuffer) is always consistent.
-    BinAccum mBufferA[kBinCount];
-    BinAccum mBufferB[kBinCount];
-    std::atomic<BinAccum*> mReadBuffer{nullptr};
-    BinAccum* mWriteBuffer = nullptr;
-    int mCurrentBin = 0;
+    BinAccum mCurrent;
+    std::atomic<float> mBins[kBinCount * 4];
+    std::atomic<int> mWriteIndex{0};
+    int mFramesPerBin = 294;
 
     static constexpr float kMaxAmplitude = 2147483648.0f; // 2^31 for int32 → float norm
 };

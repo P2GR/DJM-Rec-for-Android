@@ -56,7 +56,7 @@ android {
         minSdk = 29
         targetSdk = 34
         versionCode = 1
-        versionName = "0.31"
+        versionName = "0.33"
 
         // Only ship arm64-v8a: all modern DJ-capable Android hardware (USB-C host + UAC2)
         // is 64-bit ARM. Keeping a single ABI keeps the native audio path easy to validate.
@@ -93,13 +93,13 @@ android {
     }
 
     // ── APK output naming ──────────────────────────────────────────────────
-    // Produces: DeckLab-v0.30-debug.apk
-    //           DeckLab-v0.30-release.apk
+    // Produces: DJM-Rec-for-Android-v0.33-debug.apk
+    //           DJM-Rec-for-Android-v0.33-release.apk
     applicationVariants.all {
         val variant = this
         outputs.all {
             val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
-            output.outputFileName = "DeckLab-v${variant.versionName}-${variant.buildType.name}.apk"
+            output.outputFileName = "DJM-Rec-for-Android-v${variant.versionName}-${variant.buildType.name}.apk"
         }
     }
 
@@ -144,6 +144,7 @@ android {
 }
 
 dependencies {
+    testImplementation(kotlin("test"))
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     implementation("androidx.lifecycle:lifecycle-service:2.8.4")

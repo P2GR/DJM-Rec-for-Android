@@ -21,7 +21,7 @@ public:
 
 private:
     void writeHeaderPlaceholder();
-    void patchHeaderSizes();
+    bool patchHeaderSizes();
 
     FILE* mFile = nullptr;
     AudioFormatInfo mFormat;

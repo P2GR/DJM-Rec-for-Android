@@ -26,6 +26,10 @@ data class UsbAudioDeviceInfo(
     val subframeSize: Int,
     /** Sample rate(s) advertised by the device's clock source / sampling frequency descriptors. */
     val supportedSampleRates: List<Int>,
+    /** Parsed AudioControl and AudioStreaming topology, when raw descriptors were readable. */
+    val topology: UacTopology? = null,
+    /** Raw configuration descriptors retained for native session initialization. */
+    val rawDescriptors: ByteArray = byteArrayOf(),
     /** The rate AAudio actually negotiated once the exclusive stream opened. -1 until known. */
     val negotiatedSampleRate: Int = -1,
     /** AudioManager routing id used by AAudioStreamBuilder.setDeviceId(). -1 until resolved. */
@@ -45,14 +49,17 @@ data class UsbAudioDeviceInfo(
 }
 
 /** Raw result of walking a single USB Audio Streaming interface's descriptor block. */
-internal data class AudioStreamingInterfaceInfo(
+data class AudioStreamingInterfaceInfo(
     val interfaceNumber: Int,
     val alternateSetting: Int,
+    val terminalLink: Int,
     val channelCount: Int,
     val bitResolution: Int,
     val subframeSize: Int,
     val isochronousInEndpointAddress: Int?,
-    val isochronousInMaxPacketSize: Int? = null
+    val isochronousInMaxPacketSize: Int? = null,
+    val isochronousFeedbackEndpointAddress: Int? = null,
+    val isochronousFeedbackMaxPacketSize: Int? = null
 )
 
 /**
@@ -70,5 +77,13 @@ data class UsbIsoCaptureHandle(
     val maxPacketSize: Int,
     val totalChannels: Int,
     val subframeSize: Int,
-    val bitResolution: Int
+    val bitResolution: Int,
+    val rawDescriptors: ByteArray = byteArrayOf(),
+    val clockControlInterfaceNumber: Int = -1,
+    val clockSourceId: Int = -1,
+    val clockSupportsFrequencySet: Boolean = false,
+    val feedbackEndpointAddress: Int = -1,
+    val feedbackMaxPacketSize: Int = -1,
+    val vendorId: Int = -1,
+    val productId: Int = -1
 )

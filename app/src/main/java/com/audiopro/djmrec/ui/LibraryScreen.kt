@@ -1,8 +1,8 @@
 package com.audiopro.djmrec.ui
 
 import android.content.Intent
+import android.media.MediaScannerConnection
 import android.media.MediaMetadataRetriever
-import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -24,6 +24,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.AlertDialog
@@ -41,6 +42,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -97,10 +99,11 @@ private fun formatDuration(ms: Long): String {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LibraryScreen(onBack: () -> Unit) {
+fun LibraryScreen(onBack: (() -> Unit)?) {
     val context = LocalContext.current
     val dir = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "DJMRec")
-    val recordings = remember(dir) {
+    var refreshKey by remember { mutableIntStateOf(0) }
+    val recordings = remember(dir, refreshKey) {
         dir.mkdirs()
         // Migrate any recordings from the old app-private location to the new public folder.
         val oldDir = File(context.getExternalFilesDir(android.os.Environment.DIRECTORY_MUSIC), "DJMRec")
@@ -119,8 +122,7 @@ fun LibraryScreen(onBack: () -> Unit) {
             ?.map { file ->
                 val dur = try {
                     val mmr = MediaMetadataRetriever()
-                    mmr.setDataSource(context, FileProvider.getUriForFile(
-                        context, "${context.packageName}.fileprovider", file))
+                    mmr.setDataSource(file.absolutePath)
                     val durStr = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
                     mmr.release()
                     durStr?.toLongOrNull() ?: 0L
@@ -145,15 +147,22 @@ fun LibraryScreen(onBack: () -> Unit) {
     Scaffold(
         containerColor = BackgroundDark,
         topBar = {
-            TopAppBar(
-                title = { Text("Recordings", color = TextPrimary) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = TextPrimary)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = SurfaceDark)
-            )
+            if (onBack != null) {
+                TopAppBar(
+                    title = { Text("Recordings", color = TextPrimary) },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = TextPrimary)
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { refreshKey++ }) {
+                            Icon(Icons.Filled.Refresh, "Refresh recordings", tint = TextPrimary)
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = SurfaceDark)
+                )
+            }
         }
     ) { padding ->
         if (recordings.isEmpty()) {
@@ -168,6 +177,7 @@ fun LibraryScreen(onBack: () -> Unit) {
                     )
                     Spacer(Modifier.height(12.dp))
                     Text("No recordings yet", color = TextSecondary)
+                    TextButton(onClick = { refreshKey++ }) { Text("Refresh") }
                 }
             }
         } else {
@@ -175,31 +185,54 @@ fun LibraryScreen(onBack: () -> Unit) {
                 modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("${recordings.size} recordings", color = TextSecondary)
+                            Text(
+                                formatSize(recordings.sumOf { it.sizeBytes }),
+                                color = AccentGreen,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                        IconButton(onClick = { refreshKey++ }) {
+                            Icon(Icons.Filled.Refresh, "Refresh recordings", tint = TextSecondary)
+                        }
+                    }
+                }
                 items(recordings, key = { it.file.absolutePath }) { rec ->
                     RecordingCard(
                         info = rec,
                         onPlay = {
-                            val uri = FileProvider.getUriForFile(
-                                context, "${context.packageName}.fileprovider", rec.file)
-                            val intent = Intent(Intent.ACTION_VIEW).apply {
-                                setDataAndType(uri, "audio/*")
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            }
                             try {
+                                val uri = FileProvider.getUriForFile(
+                                    context, "${context.packageName}.fileprovider", rec.file)
+                                val intent = Intent(Intent.ACTION_VIEW).apply {
+                                    setDataAndType(uri, mimeType(rec.format))
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
                                 context.startActivity(intent)
-                            } catch (_: Exception) {
-                                Toast.makeText(context, "No audio player found", Toast.LENGTH_SHORT).show()
+                            } catch (error: Exception) {
+                                Toast.makeText(context, "Could not open recording: ${error.message}", Toast.LENGTH_LONG).show()
                             }
                         },
                         onShare = {
-                            val uri = FileProvider.getUriForFile(
-                                context, "${context.packageName}.fileprovider", rec.file)
-                            val intent = Intent(Intent.ACTION_SEND).apply {
-                                type = "audio/*"
-                                putExtra(Intent.EXTRA_STREAM, uri)
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            try {
+                                val uri = FileProvider.getUriForFile(
+                                    context, "${context.packageName}.fileprovider", rec.file)
+                                val intent = Intent(Intent.ACTION_SEND).apply {
+                                    type = mimeType(rec.format)
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(Intent.createChooser(intent, "Share recording"))
+                            } catch (error: Exception) {
+                                Toast.makeText(context, "Could not share recording: ${error.message}", Toast.LENGTH_LONG).show()
                             }
-                            context.startActivity(Intent.createChooser(intent, "Share recording"))
                         },
                         onDelete = { deleteTarget = rec },
                         onRename = {
@@ -221,7 +254,11 @@ fun LibraryScreen(onBack: () -> Unit) {
             text = { Text("${rec.name}.${rec.format.lowercase()} will be permanently deleted.") },
             confirmButton = {
                 TextButton(onClick = {
-                    rec.file.delete()
+                    if (!rec.file.delete()) {
+                        Toast.makeText(context, "Could not delete recording", Toast.LENGTH_SHORT).show()
+                    }
+                    MediaScannerConnection.scanFile(context, arrayOf(rec.file.absolutePath), null, null)
+                    refreshKey++
                     deleteTarget = null
                 }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
             },
@@ -255,13 +292,25 @@ fun LibraryScreen(onBack: () -> Unit) {
             confirmButton = {
                 TextButton(onClick = {
                     val newName = renameText.trim()
-                    if (newName.isNotEmpty() && newName != rec.name) {
+                    if (newName.isNotEmpty() && '/' !in newName && '\\' !in newName && newName != rec.name) {
                         val newFile = File(rec.file.parent, "$newName.${rec.format.lowercase()}")
                         if (!newFile.exists()) {
-                            rec.file.renameTo(newFile)
+                            if (rec.file.renameTo(newFile)) {
+                                MediaScannerConnection.scanFile(
+                                    context,
+                                    arrayOf(rec.file.absolutePath, newFile.absolutePath),
+                                    null,
+                                    null
+                                )
+                                refreshKey++
+                            } else {
+                                Toast.makeText(context, "Could not rename recording", Toast.LENGTH_SHORT).show()
+                            }
                         } else {
                             Toast.makeText(context, "A file with that name already exists", Toast.LENGTH_SHORT).show()
                         }
+                    } else if ('/' in newName || '\\' in newName) {
+                        Toast.makeText(context, "Name cannot contain / or \\", Toast.LENGTH_SHORT).show()
                     }
                     renameTarget = null
                 }) { Text("Save", color = AccentGreen) }
@@ -271,6 +320,13 @@ fun LibraryScreen(onBack: () -> Unit) {
             }
         )
     }
+}
+
+private fun mimeType(format: String): String = when (format.lowercase()) {
+    "wav" -> "audio/wav"
+    "flac" -> "audio/flac"
+    "mp3" -> "audio/mpeg"
+    else -> "audio/*"
 }
 
 // ---------------------------------------------------------------------------
