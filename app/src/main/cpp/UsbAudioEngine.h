@@ -9,11 +9,7 @@
 #include <oboe/Oboe.h>
 
 #include "AlsaPcmAudioSource.h"
-#include "BeatClock.h"
-#include "BpmDetector.h"
-#include "EffectChain.h"
 #include "RingBuffer.h"
-#include "SamplePlayer.h"
 #include "UsbIsoAudioSource.h"
 #include "WaveformAnalyzer.h"
 #include "writers/AudioWriter.h"
@@ -80,27 +76,8 @@ public:
     /** Copies the RGB waveform snapshot into @p outBins (kBinCount * 4 floats).
      *  Safe to call from any thread. */
     void getWaveformBins(float* outBins) const;
+    void setWaveformEnabled(bool enabled);
     static constexpr int kWaveformBinCount = WaveformAnalyzer::kBinCount;
-
-    // --- BPM detector (mic input) ---
-    int startMicCapture();
-    void stopMicCapture();
-    bool getBpmResult(float& outBpm, float& outConfidence, float& outBeatPhase, int& outLeadingBand);
-
-    // --- RMX-1000 engine ---
-    int openRmxOutput(int deviceId, int sampleRate, int channelCount);
-    void closeRmxOutput();
-    void triggerRmxSample(int soundOrdinal, float gain, float pitchRatio);
-    void triggerRmxSampleLooping(int soundOrdinal, float gain, float pitchRatio, int loopLengthSamples);
-    void updateRmxVoiceLoop(int soundOrdinal, int loopLengthSamples);
-    void updateRmxVoicePitch(int soundOrdinal, float pitchRatio);
-    void stopRmxSample(int soundOrdinal);
-    void stopAllRmxSamples();
-    void setRmxEffectParam(int effectId, float value);
-    void loadRmxSample(int soundOrdinal, const float* data, int length);
-    void updateRmxBeatClock(float bpm, float beatPhase, bool locked);
-    void setRmxManualBpm(float bpm);
-    void clearRmxManualBpm();
 
     // oboe::AudioStreamDataCallback
     oboe::DataCallbackResult onAudioReady(oboe::AudioStream* stream, void* audioData, int32_t numFrames) override;
@@ -126,10 +103,6 @@ private:
     std::unique_ptr<RingBuffer> mRingBuffer;
     std::unique_ptr<AudioWriter> mWriter;
     std::unique_ptr<WaveformAnalyzer> mWaveformAnalyzer;
-    std::unique_ptr<BpmDetector> mBpmDetector;
-    std::unique_ptr<SamplePlayer> mSamplePlayer;
-    std::unique_ptr<BeatClock> mBeatClock;
-    std::unique_ptr<EffectChain> mEffectChain;
     std::thread mEncoderThread;
 
     std::mutex mControlMutex; // guards start/stop/pause transitions (not the realtime path)
@@ -137,6 +110,7 @@ private:
     std::atomic<bool> mRecording{false};
     std::atomic<bool> mPaused{false};
     std::atomic<bool> mStopRequested{false};
+    std::atomic<bool> mWaveformEnabled{true};
 
     AudioFormatInfo mFormat;
     oboe::AudioFormat mOboeFormat = oboe::AudioFormat::I32;
@@ -158,20 +132,6 @@ private:
     std::atomic<float> mRightRmsDb{-60.0f};
     std::atomic<bool> mClipping{false};
 
-    // Mic capture for BPM detection (separate from DJM USB capture).
-    std::shared_ptr<oboe::AudioStream> mMicStream;
-    std::unique_ptr<RingBuffer> mMicRingBuffer;
-    std::thread mMicCaptureThread;
-    std::atomic<bool> mMicCaptureActive{false};
-    std::atomic<bool> mMicStopRequested{false};
-
-    // Mic callback.
-    oboe::DataCallbackResult onMicAudioReady(oboe::AudioStream* stream, void* audioData, int32_t numFrames);
-    void micCaptureThreadLoop();
-
-    // RMX output stream.
-    std::shared_ptr<oboe::AudioStream> mRmxOutputStream;
-    std::atomic<bool> mRmxOutputActive{false};
 };
 
 } // namespace djmrec

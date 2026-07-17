@@ -55,6 +55,7 @@ fun RecorderScreen(viewModel: MainViewModel) {
     val levels by viewModel.levels.collectAsState()
     val elapsedMillis by viewModel.elapsedMillis.collectAsState()
     val waveformBins by viewModel.waveformBins.collectAsState()
+    val waveformEnabled by viewModel.waveformEnabled.collectAsState()
     val selectedFormat by viewModel.selectedFormat.collectAsState()
     val djmrecPortMode by viewModel.djmrecPortMode.collectAsState()
     val otgStatus by viewModel.otgStatus.collectAsState()
@@ -98,6 +99,7 @@ fun RecorderScreen(viewModel: MainViewModel) {
             SignalSection(
                 state = recordingState,
                 bins = waveformBins,
+                showWaveform = waveformEnabled,
                 levels = levels
             )
 
@@ -142,6 +144,7 @@ fun RecorderScreen(viewModel: MainViewModel) {
 private fun SignalSection(
     state: RecordingState,
     bins: FloatArray,
+    showWaveform: Boolean,
     levels: com.audiopro.djmrec.audio.StereoLevels
 ) {
     Surface(
@@ -163,14 +166,18 @@ private fun SignalSection(
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold
                     )
-                    Text("Live waveform", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        if (showWaveform) "Live waveform" else "Input monitoring",
+                        style = MaterialTheme.typography.titleMedium
+                    )
                 }
                 StatePill(state)
             }
 
-            RgbWaveform(bins = bins)
-
-            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.16f))
+            if (showWaveform) {
+                RgbWaveform(bins = bins)
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.16f))
+            }
             Text(
                 "INPUT LEVELS",
                 style = MaterialTheme.typography.labelSmall,

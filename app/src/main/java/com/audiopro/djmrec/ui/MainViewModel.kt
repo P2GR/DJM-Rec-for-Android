@@ -1,5 +1,6 @@
 package com.audiopro.djmrec.ui
 
+import android.annotation.SuppressLint
 import android.app.Application
 import android.content.ComponentName
 import android.content.Context
@@ -42,6 +43,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val KEY_USB_CHANNEL_OFFSET = "usb_channel_offset"
         private const val KEY_FORCE_ANDROID_CAPTURE = "force_android_capture"
         private const val KEY_DJMREC_PORT_MODE = "djmrec_port_mode"
+        private const val KEY_WAVEFORM_ENABLED = "waveform_enabled"
     }
 
     private val usbAudioManager = (application as DjmRecApplication).usbAudioManager
@@ -63,6 +65,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _waveformBins = MutableStateFlow(emptyWaveform)
     val waveformBins: StateFlow<FloatArray> = _waveformBins.asStateFlow()
 
+    private val _waveformEnabled = MutableStateFlow(
+        prefs.getBoolean(KEY_WAVEFORM_ENABLED, true)
+    )
+    val waveformEnabled: StateFlow<Boolean> = _waveformEnabled.asStateFlow()
+
     private val _selectedFormat = MutableStateFlow(RecordingFormat.WAV)
     val selectedFormat: StateFlow<RecordingFormat> = _selectedFormat.asStateFlow()
     val availableFormats: List<RecordingFormat> = RecordingFormat.entries.filter {
@@ -83,6 +90,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _djmrecPortMode = MutableStateFlow(false)
     val djmrecPortMode: StateFlow<Boolean> = _djmrecPortMode.asStateFlow()
 
+    @SuppressLint("StaticFieldLeak")
     private var boundService: RecordingService? = null
     private var isBound = false
 
@@ -91,6 +99,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val service = (binder as RecordingService.LocalBinder).getService()
             boundService = service
             isBound = true
+            service.setWaveformEnabled(_waveformEnabled.value)
             viewModelScope.launch { service.state.collect { _recordingState.value = it } }
             viewModelScope.launch { service.levels.collect { _levels.value = it } }
             viewModelScope.launch { service.elapsedMillis.collect { _elapsedMillis.value = it } }
@@ -145,6 +154,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             format in availableFormats) {
             _selectedFormat.value = format
         }
+    }
+
+    fun setWaveformEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_WAVEFORM_ENABLED, enabled).apply()
+        _waveformEnabled.value = enabled
+        if (!enabled) _waveformBins.value = emptyWaveform
+        boundService?.setWaveformEnabled(enabled)
     }
 
     fun rescanUsbDevices() {
@@ -234,6 +250,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun startRecording() {
         val context = getApplication<Application>()
+
+        if (_recordingState.value is RecordingState.Preparing) {
+            context.startService(
+                Intent(context, RecordingService::class.java)
+                    .setAction(RecordingService.ACTION_START)
+                    .putExtra(RecordingService.EXTRA_FORMAT, _selectedFormat.value.nativeValue)
+            )
+            return
+        }
 
         // If already monitoring, begin encoding to file.
         if (_recordingState.value is RecordingState.Monitoring) {
@@ -446,6 +471,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             getApplication<Application>().unbindService(connection)
             isBound = false
         }
+        boundService = null
         super.onCleared()
     }
 }

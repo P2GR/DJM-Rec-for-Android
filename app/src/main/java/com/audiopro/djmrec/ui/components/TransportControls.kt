@@ -22,7 +22,7 @@ import com.audiopro.djmrec.ui.theme.AccentRed
 
 /**
  * Transport row. Only ever shows the actions valid for the current [RecordingState]:
- * Idle -> Record; Recording -> Pause + Stop; Paused -> Resume + Stop.
+ * Idle/Preparing/Monitoring -> Record; Recording -> Pause + Stop; Paused -> Resume + Stop.
  */
 @Composable
 fun TransportControls(
@@ -38,17 +38,14 @@ fun TransportControls(
         horizontalArrangement = Arrangement.spacedBy(24.dp)
     ) {
         when (state) {
-            is RecordingState.Idle, is RecordingState.Error, is RecordingState.Monitoring -> {
+            is RecordingState.Idle, is RecordingState.Error, is RecordingState.Monitoring,
+            is RecordingState.Preparing -> {
                 TransportButton(
                     icon = Icons.Filled.FiberManualRecord,
                     contentDescription = "Record",
                     containerColor = AccentRed,
                     onClick = onRecord
                 )
-            }
-
-            is RecordingState.Preparing -> {
-                // No-op controls while the exclusive stream is opening; buttons intentionally omitted.
             }
 
             is RecordingState.Recording -> {

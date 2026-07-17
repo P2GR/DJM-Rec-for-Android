@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!-- arm64-v8a only: USB host hardware is exclusively 64-bit ARM. ChromeOS x86
+         emulation is not a target. -->
+    <issue id="ChromeOsAbiSupport" severity="ignore" />
+
+    <!-- Strings referenced dynamically via Kotlin code; lint cannot track usage. -->
+    <issue id="UnusedResources" severity="ignore" />
+
+    <!-- Launcher icon shape is intentional (full-bleed design). -->
+    <issue id="IconLauncherShape" severity="ignore" />
+</lint>

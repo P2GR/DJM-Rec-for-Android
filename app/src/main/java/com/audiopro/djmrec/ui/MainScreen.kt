@@ -13,9 +13,10 @@ import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Coffee
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -27,12 +28,16 @@ import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -44,13 +49,15 @@ import com.audiopro.djmrec.ui.theme.BackgroundDark
 import com.audiopro.djmrec.ui.theme.SurfaceDark
 import com.audiopro.djmrec.ui.theme.TextPrimary
 import com.audiopro.djmrec.ui.theme.TextSecondary
+import com.audiopro.djmrec.audio.RecordingState
+import com.audiopro.djmrec.update.AppUpdate
+import com.audiopro.djmrec.update.UpdateChecker
 import kotlinx.coroutines.launch
 
 private enum class Destination(val label: String, val icon: ImageVector) {
     RECORDING("Recording", Icons.Filled.FiberManualRecord),
     RECORDINGS("My Recordings", Icons.Filled.LibraryMusic),
-    RMX_SIM("RMX-1000 Sim", Icons.Filled.Tune),
-    BPM_DETECT("BPM Detect", Icons.Filled.Speed),
+    SETTINGS("Settings", Icons.Filled.Settings),
     DIAGNOSTICS("Diagnostics", Icons.Filled.BugReport)
 }
 
@@ -58,14 +65,45 @@ private enum class Destination(val label: String, val icon: ImageVector) {
 @Composable
 fun MainScreen(viewModel: MainViewModel) {
     val context = LocalContext.current
+    val recordingState by viewModel.recordingState.collectAsState()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var selectedDestination by rememberSaveable { mutableStateOf(Destination.RECORDING) }
+    var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }
 
-    val drawerLocked = selectedDestination == Destination.RMX_SIM
+    LaunchedEffect(Unit) {
+        availableUpdate = UpdateChecker.check(context.applicationContext)
+    }
+
+    val mayPromptForUpdate = recordingState !is RecordingState.Recording &&
+        recordingState !is RecordingState.Paused &&
+        recordingState !is RecordingState.Preparing
+    if (availableUpdate != null && mayPromptForUpdate) {
+        val update = availableUpdate!!
+        AlertDialog(
+            onDismissRequest = {
+                UpdateChecker.defer(context, update.tag)
+                availableUpdate = null
+            },
+            title = { Text("DJM REC ${update.version} available") },
+            text = { Text("A newer release is ready on GitHub. Recording will never be interrupted for an update.") },
+            confirmButton = {
+                Button(onClick = {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(update.releaseUrl)))
+                    availableUpdate = null
+                }) { Text("View update") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    UpdateChecker.defer(context, update.tag)
+                    availableUpdate = null
+                }) { Text("Later") }
+            }
+        )
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = !drawerLocked,
         drawerContent = {
             ModalDrawerSheet(
                 drawerContainerColor = SurfaceDark
@@ -113,7 +151,7 @@ fun MainScreen(viewModel: MainViewModel) {
                         ),
                         modifier = Modifier.padding(horizontal = 12.dp)
                     )
-                    if (dest == Destination.RECORDINGS || dest == Destination.BPM_DETECT) {
+                    if (dest == Destination.RECORDINGS) {
                         HorizontalDivider(
                             color = TextSecondary.copy(alpha = 0.14f),
                             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
@@ -171,8 +209,7 @@ fun MainScreen(viewModel: MainViewModel) {
                 when (selectedDestination) {
                     Destination.RECORDING -> RecorderScreen(viewModel = viewModel)
                     Destination.RECORDINGS -> LibraryScreen(onBack = null)
-                    Destination.RMX_SIM -> RmxSimulatorScreen()
-                    Destination.BPM_DETECT -> BpmDetectScreen()
+                    Destination.SETTINGS -> SettingsScreen(viewModel = viewModel)
                     Destination.DIAGNOSTICS -> DiagnosticsScreen()
                 }
             }

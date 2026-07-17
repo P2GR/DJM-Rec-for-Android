@@ -126,12 +126,17 @@ class RecordingService : LifecycleService() {
     private lateinit var monitorHandler: Handler
 
     private var currentFormat: RecordingFormat = RecordingFormat.WAV
+    private var currentBitDepth: Int = 24
+    private var pendingRecordingFormat: RecordingFormat? = null
     private var currentOutputFile: File? = null
     private var deviceLabel: String = "USB Mixer"
     /** True when the in-progress session opened via [startUsbIsoSession] rather than [startSession]. */
     private var isUsbIsoSession = false
     /** True when the audio stream is open for monitoring but no file is being written. */
     private var isMonitoringOnly = false
+    @Volatile
+    private var waveformEnabled = true
+    private var waveformPollTick = 0
 
     private val meterRunnable = object : Runnable {
         override fun run() {
@@ -144,7 +149,11 @@ class RecordingService : LifecycleService() {
                     right = ChannelLevel(peakDb = raw[2], rmsDb = raw[3], isClipping = clipping)
                 )
                 _elapsedMillis.value = AudioEngine.getElapsedMillis()
-                _waveformBins.value = AudioEngine.getWaveformBins()
+                // The waveform is visual context, not a meter. Half-rate polling avoids copying
+                // 2,048 atomic floats every meter tick and materially reduces display/battery work.
+                if (waveformEnabled && waveformPollTick++ % 2 == 0) {
+                    _waveformBins.value = AudioEngine.getWaveformBins()
+                }
                 monitorHandler.postDelayed(this, METER_UPDATE_INTERVAL_MS)
             }
         }
@@ -172,14 +181,15 @@ class RecordingService : LifecycleService() {
         return binder
     }
 
+    fun setWaveformEnabled(enabled: Boolean) {
+        waveformEnabled = enabled
+        waveformPollTick = 0
+        AudioEngine.setWaveformEnabled(enabled)
+        if (!enabled) _waveformBins.value = emptyWaveform
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
-        if ((intent?.action == ACTION_START || intent?.action == ACTION_MONITOR) &&
-            (_state.value is RecordingState.Idle || _state.value is RecordingState.Error)) {
-            _state.value = RecordingState.Preparing
-            // Android requires foreground promotion before native USB open/rate probing can block.
-            startForegroundNotification()
-        }
         when (intent?.action) {
             ACTION_MONITOR -> {
                 if (_state.value is RecordingState.Monitoring ||
@@ -188,6 +198,10 @@ class RecordingService : LifecycleService() {
                     _state.value is RecordingState.Preparing) {
                     return START_NOT_STICKY
                 }
+                pendingRecordingFormat = null
+                _state.value = RecordingState.Preparing
+                // Promote before native USB open/rate probing can block.
+                startForegroundNotification()
                 val sampleRate = intent.getIntExtra(EXTRA_SAMPLE_RATE, 48000)
                 val bitDepth = intent.getIntExtra(EXTRA_BIT_DEPTH, 24)
                 val captureMode = intent.getIntExtra(EXTRA_CAPTURE_MODE, CAPTURE_MODE_AAUDIO)
@@ -237,6 +251,18 @@ class RecordingService : LifecycleService() {
                     beginRecordingNow()
                     return START_NOT_STICKY
                 }
+                // A record press while automatic monitoring is opening is queued. Opening a
+                // second UsbDeviceConnection here would invalidate the first raw USB stream.
+                if (_state.value is RecordingState.Preparing) {
+                    pendingRecordingFormat = recordingFormatFrom(intent)
+                    return START_NOT_STICKY
+                }
+                if (_state.value is RecordingState.Recording ||
+                    _state.value is RecordingState.Paused) {
+                    return START_NOT_STICKY
+                }
+                _state.value = RecordingState.Preparing
+                startForegroundNotification()
                 // Otherwise, open stream + encode immediately (full recording from idle).
                 val sampleRate = intent.getIntExtra(EXTRA_SAMPLE_RATE, 48000)
                 val bitDepth = intent.getIntExtra(EXTRA_BIT_DEPTH, 24)
@@ -311,6 +337,7 @@ class RecordingService : LifecycleService() {
         _state.value = RecordingState.Preparing
         isUsbIsoSession = false
         isMonitoringOnly = monitorOnly
+        currentBitDepth = bitDepth
 
         val negotiatedRate = AudioEngine.open(audioManagerDeviceId, sampleRateHint, channelCount, bitDepth)
         if (negotiatedRate <= 0) {
@@ -351,6 +378,7 @@ class RecordingService : LifecycleService() {
         _state.value = RecordingState.Preparing
         isUsbIsoSession = true
         isMonitoringOnly = monitorOnly
+        currentBitDepth = bitDepth
 
         if (fd < 0 || interfaceNumber < 0 || endpointAddress < 0 || maxPacketSize <= 0) {
             failPreparation("Invalid USB capture parameters")
@@ -392,6 +420,7 @@ class RecordingService : LifecycleService() {
         _state.value = RecordingState.Preparing
         isUsbIsoSession = false
         isMonitoringOnly = monitorOnly
+        currentBitDepth = bitDepth
 
         val negotiatedRate = AudioEngine.openRootAlsa(
             card, device, sampleRateHint, totalChannels, bitDepth, channelOffset
@@ -412,11 +441,18 @@ class RecordingService : LifecycleService() {
     fun beginRecordingNow() {
         if (_state.value !is RecordingState.Monitoring) return
         isMonitoringOnly = false
-        beginEncodingOrFail(24, currentFormat)
+        beginEncodingOrFail(currentBitDepth, currentFormat)
     }
 
     /** Shared setup after stream open for monitoring: starts metering without file output. */
     private fun beginMonitoring() {
+        val queuedFormat = pendingRecordingFormat
+        if (queuedFormat != null) {
+            pendingRecordingFormat = null
+            isMonitoringOnly = false
+            beginEncodingOrFail(currentBitDepth, queuedFormat)
+            return
+        }
         acquireWakeLock()
         startForegroundNotification()
         monitorHandler.post(meterRunnable)
@@ -505,6 +541,7 @@ class RecordingService : LifecycleService() {
     }
 
     private fun failPreparation(message: String) {
+        pendingRecordingFormat = null
         _state.value = RecordingState.Error(message)
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
     }
@@ -524,6 +561,7 @@ class RecordingService : LifecycleService() {
     }
 
     fun stopSession() {
+        pendingRecordingFormat = null
         if (_state.value is RecordingState.Preparing || _state.value is RecordingState.Error) {
             AudioEngine.close()
             releaseIsoConnectionIfNeeded()

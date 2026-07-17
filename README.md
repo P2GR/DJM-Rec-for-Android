@@ -5,8 +5,7 @@
 [![NDK](https://img.shields.io/badge/NDK-26.1-blue?logo=android&logoColor=white)](https://developer.android.com/ndk)
 [![Min SDK](https://img.shields.io/badge/minSdk-29-32DE84?logo=android&logoColor=white)]()
 
-DJ toolbox for Android — record multichannel USB audio from a Pioneer DJM mixer, play samples
-through an RMX-1000-style effects simulator, and detect BPM from live audio.
+Dedicated Android recorder for capturing DJ sets from a Pioneer DJM mixer's USB audio output.
 
 AAudio cannot select an arbitrary pair from the DJM-A9's 12-channel UAC2 input. This app uses
 root-free `libusb` isochronous capture, asks the mixer to route MIX (REC OUT) to the selected
@@ -15,30 +14,65 @@ USB pair, then extracts that pair from the wire.
 ## Build
 
 ```bash
-./gradlew assembleDebug    # → DJM-Rec-for-Android-v0.33-debug.apk
-./gradlew assembleRelease  # → DJM-Rec-for-Android-v0.33-release.apk
+./gradlew assembleDebug
+./gradlew assembleRelease
+./gradlew assembleLocal      # installable local test APK, signed with ~/.android/debug.keystore
 ```
 
 Needs JDK 17, NDK 26.1, CMake 3.22.1. Emulator won't work — you need a physical device with
 USB host and a UAC2 mixer plugged in.
 
-Release builds sign with `~/.android/debug.keystore` by default. Drop a `keystore.properties`
-in the project root to use a real key (the file is gitignored).
+Release builds are unsigned unless `keystore.properties` is present. They never fall back to a
+debug signing key. Use `assembleLocal` for phone testing; never publish its debug-signed APK.
 
 ## Features
 
 | Module | Description |
 |---|---|
 | USB Recording | Capture multichannel UAC2 audio from Pioneer DJM mixers to WAV/FLAC/MP3 |
-| RMX Simulator | Play one-shot samples through a full RMX-1000-style effects chain with beat-synced looping, key shift, and scene/release FX |
-| BPM Detect | Tap tempo, manual BPM, or auto-detect BPM from the built-in mic |
+| Live monitoring | Stereo input meters and an optional CDJ-style RGB waveform |
+| Recording library | Browse and manage saved sets from the app |
 
 ## Releases
 
-Every push to `main` kicks off the [workflow](.github/workflows/release.yml), which builds
-debug and release APKs and attaches them to a GitHub Release tagged from `versionName` in
-`build.gradle.kts` (currently `v0.2`). Same version on multiple pushes just updates the
-existing release's assets. Bump `versionName` to cut a new one.
+`version.properties` is the single version source. Bump it on Windows with:
+
+```powershell
+.\scripts\bump-version.ps1 -Part patch
+# Or: .\scripts\bump-version.ps1 -Version 1.0.0
+```
+
+Pushes and pull requests run CI. A tag matching `VERSION_NAME` publishes a signed APK and
+SHA-256 checksum:
+
+```powershell
+git add version.properties
+git commit -m "chore: release v0.34.0"
+git tag v0.34.0
+git push origin main v0.34.0
+```
+
+Configure these GitHub Actions secrets before tagging a release:
+
+- `ANDROID_KEYSTORE_BASE64`: base64-encoded release `.jks`
+- `ANDROID_STORE_PASSWORD`
+- `ANDROID_KEY_ALIAS`
+- `ANDROID_KEY_PASSWORD`
+
+Create the release key once, then keep multiple secure backups. Losing this key prevents future
+versions from updating existing installations:
+
+```powershell
+keytool -genkeypair -v -keystore decklab-release.jks -alias decklab -keyalg RSA -keysize 4096 -validity 10000
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("decklab-release.jks")) | Set-Clipboard
+```
+
+Paste the clipboard value into `ANDROID_KEYSTORE_BASE64`; add the remaining values in GitHub
+under **Settings > Secrets and variables > Actions**. The workflow verifies the APK signature
+before publishing it.
+
+The installed app checks `P2GR/DJM-Rec-for-Android` GitHub Releases for a newer version. Update prompts
+are deferred while a recording is being prepared, recorded, or paused.
 
 ## MP3 support
 

@@ -126,62 +126,6 @@ object AudioEngine {
      */
     external fun getWaveformBins(): FloatArray
 
-    // --- BPM detector (mic input) ---
-
-    /** Starts microphone capture for BPM detection. Returns sample rate on success, -1 on failure. */
-    external fun startMicCapture(): Int
-
-    /** Stops microphone capture. Safe to call even if not active. */
-    external fun stopMicCapture()
-
-    /**
-     * Returns [bpm, confidence, beatPhase, leadingBand, locked] where:
-     *   bpm: detected BPM (0 if not yet detected)
-     *   confidence: [0, 1] how reliable the detection is
-     *   beatPhase: [0, 1) position within the current beat
-     *   leadingBand: 0=low, 1=mid, 2=high
-     *   locked: 1.0 if detection has stabilised, 0.0 if still listening
-     */
-    external fun getBpmResult(): FloatArray
-
-    // --- RMX-1000 engine ---
-
-    /** Open an AAudio output stream for RMX effects playback. Returns sample rate on success, -1 on failure. */
-    external fun openRmxOutput(deviceId: Int, sampleRate: Int, channelCount: Int): Int
-
-    /** Close the RMX output stream. */
-    external fun closeRmxOutput()
-
-    /** Trigger a one-shot sample without looping. */
-    external fun triggerRmxSample(soundOrdinal: Int, gain: Float, pitchRatio: Float)
-
-    /** Trigger a looping sample that wraps at loopLengthSamples frames. */
-    external fun triggerRmxSampleLooping(soundOrdinal: Int, gain: Float, pitchRatio: Float, loopLengthSamples: Int)
-
-    /** Update the loop length on an already-playing sample voice. */
-    external fun updateRmxVoiceLoop(soundOrdinal: Int, loopLengthSamples: Int)
-
-    /** Update pitch ratio on an already-playing sample voice. */
-    external fun updateRmxVoicePitch(soundOrdinal: Int, pitchRatio: Float)
-
-    /** Stop a specific sample sound. */
-    external fun stopRmxSample(soundOrdinal: Int)
-
-    /** Stop all playing samples immediately. */
-    external fun stopAllRmxSamples()
-
-    /** Set an effect parameter. effectId: 0=bitcrush, 1=filterCutoff, 2=filterType, 3=delayMix, 4=delayTime, 5=delayFb, 6=reverbSize, 7=reverbMix */
-    external fun setRmxEffectParam(effectId: Int, value: Float)
-
-    /** Load a WAV sample into the player. data is mono float at 44100 Hz. */
-    external fun loadRmxSample(soundOrdinal: Int, data: FloatArray)
-
-    /** Feed BPM info into the RMX beat clock. */
-    external fun updateRmxBeatClock(bpm: Float, beatPhase: Float, locked: Boolean)
-
-    /** Set manual BPM override for RMX beat clock. */
-    external fun setRmxManualBpm(bpm: Float)
-
-    /** Clear manual BPM and go back to auto-detection. */
-    external fun clearRmxManualBpm()
+    /** Enables native frequency analysis for the optional live waveform. */
+    external fun setWaveformEnabled(enabled: Boolean)
 }

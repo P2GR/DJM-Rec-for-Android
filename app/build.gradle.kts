@@ -1,4 +1,5 @@
 import java.io.FileInputStream
+import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -7,33 +8,16 @@ plugins {
 }
 
 // ── Keystore helpers (top-level so they can be used by signingConfigs) ─────
-// Reads key=value pairs from keystore.properties, falling back to the debug
-// keystore bundled with the Android SDK.
-fun loadKeystoreProperties(): Map<String, String> {
-    val propsFile = rootProject.file("keystore.properties")
-    if (!propsFile.exists()) return emptyMap()
-    val result = mutableMapOf<String, String>()
-    propsFile.readLines().forEach { line ->
-        val trimmed = line.trim()
-        if (trimmed.isEmpty() || trimmed.startsWith("#")) return@forEach
-        val eq = trimmed.indexOf('=')
-        if (eq < 1) return@forEach
-        result[trimmed.substring(0, eq).trim()] = trimmed.substring(eq + 1).trim()
-    }
-    return result
+// Release signing is configured only when the gitignored keystore.properties exists.
+fun loadProperties(path: String): Properties = Properties().apply {
+    val source = rootProject.file(path)
+    require(source.exists()) { "Missing $path" }
+    FileInputStream(source).use(::load)
 }
 
-fun getStoreFile(): java.io.File {
-    val props = loadKeystoreProperties()
-    val path = props["storeFile"] ?: return file(
-        System.getProperty("user.home") + "/.android/debug.keystore"
-    )
-    return file(path)
-}
-
-fun getStorePassword()  = loadKeystoreProperties()["storePassword"] ?: "android"
-fun getKeyAlias()       = loadKeystoreProperties()["keyAlias"]       ?: "androiddebugkey"
-fun getKeyPassword()    = loadKeystoreProperties()["keyPassword"]    ?: "android"
+val appVersion = loadProperties("version.properties")
+val keystoreFile = rootProject.file("keystore.properties")
+val keystore = if (keystoreFile.exists()) loadProperties("keystore.properties") else null
 
 android {
     namespace = "com.audiopro.djmrec"
@@ -42,12 +26,12 @@ android {
     // NDK — avoids "works locally, fails/behaves differently in CI" native-build drift.
     ndkVersion = "26.1.10909125"
 
-    signingConfigs {
-        create("release") {
-            storeFile = getStoreFile()
-            storePassword = getStorePassword()
-            keyAlias = getKeyAlias()
-            keyPassword = getKeyPassword()
+    val releaseSigning = keystore?.let { properties ->
+        signingConfigs.create("release") {
+            storeFile = rootProject.file(properties.getProperty("storeFile"))
+            storePassword = properties.getProperty("storePassword")
+            keyAlias = properties.getProperty("keyAlias")
+            keyPassword = properties.getProperty("keyPassword")
         }
     }
 
@@ -55,8 +39,8 @@ android {
         applicationId = "com.audiopro.djmrec"
         minSdk = 29
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.33"
+        versionCode = appVersion.getProperty("VERSION_CODE").toInt()
+        versionName = appVersion.getProperty("VERSION_NAME")
 
         // Only ship arm64-v8a: all modern DJ-capable Android hardware (USB-C host + UAC2)
         // is 64-bit ARM. Keeping a single ABI keeps the native audio path easy to validate.
@@ -83,18 +67,22 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = releaseSigning
         }
         debug {
             isDebuggable = true
             // So debug and release can be installed side-by-side
             applicationIdSuffix = ".debug"
         }
+        create("local") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+        }
     }
 
     // ── APK output naming ──────────────────────────────────────────────────
-    // Produces: DJM-Rec-for-Android-v0.33-debug.apk
-    //           DJM-Rec-for-Android-v0.33-release.apk
+    // Produces versioned APK names from version.properties.
     applicationVariants.all {
         val variant = this
         outputs.all {
@@ -122,16 +110,6 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
-    }
-
-    sourceSets {
-        getByName("main") {
-            assets.srcDirs("src/main/assets")
-        }
-    }
-
-    androidResources {
-        noCompress += "wav"
     }
 
     packaging {

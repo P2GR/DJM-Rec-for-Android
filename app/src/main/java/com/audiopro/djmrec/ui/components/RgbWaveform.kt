@@ -9,22 +9,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.unit.dp
-import com.audiopro.djmrec.ui.theme.WaveformHigh
-import com.audiopro.djmrec.ui.theme.WaveformLow
-import com.audiopro.djmrec.ui.theme.WaveformMid
 import kotlin.math.sqrt
 
 private const val BIN_COUNT = 512
 private const val FLOATS_PER_BIN = 4
-private const val DISPLAY_POINTS = 256
+private const val DISPLAY_COLUMNS = 128
 
-/** CDJ-style rolling RGB waveform with all three frequency envelopes overlaid. */
+/** Bright CDJ-style waveform: warm lows, green mids, blue highs, and a white transient core. */
 @Composable
 fun RgbWaveform(bins: FloatArray, modifier: Modifier = Modifier) {
     Canvas(
@@ -32,94 +26,76 @@ fun RgbWaveform(bins: FloatArray, modifier: Modifier = Modifier) {
             .fillMaxWidth()
             .height(168.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(
-                Brush.verticalGradient(
-                    listOf(Color(0xFF090B11), Color(0xFF111620), Color(0xFF090B11))
-                )
-            )
+            .background(Color.Black)
     ) {
-        drawWaveformGrid()
-
-        val center = size.height / 2f
-        val colors = arrayOf(WaveformLow, WaveformMid, WaveformHigh)
-
+        val centerY = size.height / 2f
         drawLine(
-            color = Color.White.copy(alpha = 0.18f),
-            start = Offset(0f, center),
-            end = Offset(size.width, center),
+            color = Color.White.copy(alpha = 0.24f),
+            start = Offset(0f, centerY),
+            end = Offset(size.width, centerY),
             strokeWidth = 1.dp.toPx()
         )
 
         if (bins.size < BIN_COUNT * FLOATS_PER_BIN) return@Canvas
 
-        drawFrequencyLane(bins, bandOffset = 1, centerY = center, color = colors[0], laneHeight = size.height)
-        drawFrequencyLane(bins, bandOffset = 2, centerY = center, color = colors[1], laneHeight = size.height)
-        drawFrequencyLane(bins, bandOffset = 3, centerY = center, color = colors[2], laneHeight = size.height)
-    }
-}
+        val columnWidth = size.width / DISPLAY_COLUMNS
+        var smoothedExtent = 0f
+        var smoothedRed = 0f
+        var smoothedGreen = 0f
+        var smoothedBlue = 0f
 
-private fun DrawScope.drawWaveformGrid() {
-    repeat(9) { index ->
-        val x = size.width * index / 8f
-        drawLine(
-            color = Color.White.copy(alpha = if (index == 4) 0.10f else 0.045f),
-            start = Offset(x, 0f),
-            end = Offset(x, size.height),
-            strokeWidth = 1f
-        )
-    }
-}
+        for (column in 0 until DISPLAY_COLUMNS) {
+            val startBin = column * BIN_COUNT / DISPLAY_COLUMNS
+            val endBin = (column + 1) * BIN_COUNT / DISPLAY_COLUMNS
+            var peak = 0f
+            var low = 0f
+            var mid = 0f
+            var high = 0f
+            for (bin in startBin until endBin) {
+                val base = bin * FLOATS_PER_BIN
+                peak = maxOf(peak, bins[base].coerceIn(0f, 1f))
+                low += bins[base + 1].coerceAtLeast(0f)
+                mid += bins[base + 2].coerceAtLeast(0f)
+                high += bins[base + 3].coerceAtLeast(0f)
+            }
 
-private fun DrawScope.drawFrequencyLane(
-    bins: FloatArray,
-    bandOffset: Int,
-    centerY: Float,
-    color: Color,
-    laneHeight: Float
-) {
-    var maxEnergy = 0.000001f
-    for (index in 0 until BIN_COUNT) {
-        maxEnergy = maxOf(maxEnergy, bins[index * FLOATS_PER_BIN + bandOffset])
-    }
+            val energy = (low + mid + high).coerceAtLeast(0.000001f)
+            val lowShare = low / energy
+            val midShare = mid / energy
+            val highShare = high / energy
+            val rawRed = lowShare * 1.55f + midShare * 0.35f
+            val rawGreen = lowShare * 0.65f + midShare * 1.35f
+            val rawBlue = midShare * 0.15f + highShare * 1.85f
+            val channelMax = maxOf(rawRed, rawGreen, rawBlue, 0.000001f)
+            val brightness = (0.76f + sqrt(peak) * 0.24f).coerceIn(0f, 1f)
+            val red = (rawRed / channelMax * brightness).coerceIn(0f, 1f)
+            val green = (rawGreen / channelMax * brightness).coerceIn(0f, 1f)
+            val blue = (rawBlue / channelMax * brightness).coerceIn(0f, 1f)
+            val extent = size.height * 0.46f * sqrt(peak)
 
-    val extents = FloatArray(DISPLAY_POINTS)
-    val radius = 3
-    for (point in 0 until DISPLAY_POINTS) {
-        val source = point * (BIN_COUNT - 1) / (DISPLAY_POINTS - 1)
-        var bandSum = 0f
-        var ampSum = 0f
-        var samples = 0
-        for (offset in -radius..radius) {
-            val bin = (source + offset).coerceIn(0, BIN_COUNT - 1)
-            val base = bin * FLOATS_PER_BIN
-            bandSum += bins[base + bandOffset].coerceAtLeast(0f)
-            ampSum += bins[base].coerceIn(0f, 1f)
-            samples++
+            // A small one-pole spatial smoother removes isolated USB-bin spikes without lag.
+            smoothedExtent += (extent - smoothedExtent) * 0.58f
+            smoothedRed += (red - smoothedRed) * 0.58f
+            smoothedGreen += (green - smoothedGreen) * 0.58f
+            smoothedBlue += (blue - smoothedBlue) * 0.58f
+
+            val x = (column + 0.5f) * columnWidth
+            drawLine(
+                color = Color(smoothedRed, smoothedGreen, smoothedBlue, alpha = 1f),
+                start = Offset(x, centerY - smoothedExtent),
+                end = Offset(x, centerY + smoothedExtent),
+                strokeWidth = maxOf(1.5.dp.toPx(), columnWidth * 0.82f),
+                cap = StrokeCap.Round
+            )
+
+            val coreExtent = smoothedExtent * (0.14f + sqrt(peak) * 0.24f)
+            drawLine(
+                color = Color(0xFFFFF7E6),
+                start = Offset(x, centerY - coreExtent),
+                end = Offset(x, centerY + coreExtent),
+                strokeWidth = maxOf(1.25.dp.toPx(), columnWidth * 0.58f),
+                cap = StrokeCap.Round
+            )
         }
-        val band = bandSum / samples
-        val amplitudeGate = (sqrt(ampSum / samples) * 3.2f).coerceIn(0f, 1f)
-        val normalized = sqrt((band / maxEnergy).coerceIn(0f, 1f))
-        extents[point] = laneHeight * 0.46f * normalized * amplitudeGate
     }
-
-    val path = Path()
-    for (point in 0 until DISPLAY_POINTS) {
-        val x = size.width * point / (DISPLAY_POINTS - 1f)
-        val y = centerY - extents[point]
-        if (point == 0) path.moveTo(x, y) else path.lineTo(x, y)
-    }
-    for (point in DISPLAY_POINTS - 1 downTo 0) {
-        val x = size.width * point / (DISPLAY_POINTS - 1f)
-        path.lineTo(x, centerY + extents[point])
-    }
-    path.close()
-
-    drawPath(path, color.copy(alpha = 0.18f), style = Stroke(width = 8.dp.toPx()))
-    drawPath(
-        path,
-        brush = Brush.horizontalGradient(
-            listOf(color.copy(alpha = 0.24f), color.copy(alpha = 0.72f), color.copy(alpha = 0.38f))
-        )
-    )
-    drawPath(path, color.copy(alpha = 0.95f), style = Stroke(width = 1.2.dp.toPx()))
 }

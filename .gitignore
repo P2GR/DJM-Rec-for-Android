@@ -88,6 +88,12 @@ Thumbs.db
 # =============================================================================
 # Third-party source — intentionally NOT vendored
 # =============================================================================
+
+# Pioneer DJM-A9 Windows driver — proprietary, not part of this Android app.
+# These files were used for reverse-engineering the USB control protocol only.
+# Do not commit them to the open-source repository.
+windows_driver/
+app/src/main/cpp/third_party/lame/
 # LAME (LGPL) must be added manually by the integrator.
 # See README.md for instructions.
 app/src/main/cpp/third_party/lame/

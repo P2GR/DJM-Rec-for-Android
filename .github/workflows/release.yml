@@ -1,29 +1,32 @@
-name: Build & Release
+name: Release Android app
 
-# Every push to main builds the app and publishes debug + release APKs as assets on
-# a GitHub Release tagged from versionName in app/build.gradle.kts (currently v0.1). Pushing
-# again with the same versionName updates that release's assets in place; bumping
-# versionName cuts a new release automatically — no manual tagging needed. Can also be run
-# manually from the Actions tab (optionally overriding the version).
 on:
   push:
-    branches:
-      - main
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Optional version override (e.g. 0.2). Leave blank to use versionName from app/build.gradle.kts"
-        required: false
+    tags:
+      - "v*"
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  build-and-release:
+  release:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Check out source
         uses: actions/checkout@v4
+
+      - name: Validate release tag
+        shell: bash
+        run: |
+          VERSION=$(grep '^VERSION_NAME=' version.properties | cut -d= -f2)
+          test "${GITHUB_REF_NAME}" = "v${VERSION}" || {
+            echo "Tag ${GITHUB_REF_NAME} does not match version.properties (v${VERSION})."
+            exit 1
+          }
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -33,56 +36,47 @@ jobs:
           cache: gradle
 
       - name: Set up Android SDK
-        # GitHub-hosted runners preinstall an Android SDK, but `sdkmanager` isn't reliably
-        # on PATH — this action locates cmdline-tools, accepts SDK licenses, and puts
-        # `sdkmanager`/`adb` on PATH so the step below works.
         uses: android-actions/setup-android@v4
 
-      - name: Install pinned NDK & CMake
-        # Versions must match app/build.gradle.kts (ndkVersion) and the externalNativeBuild
-        # cmake { version = ... } block, so CI builds native code identically to local dev.
+      - name: Install native toolchain
         run: sdkmanager --install "ndk;26.1.10909125" "cmake;3.22.1"
 
-      - name: Generate debug keystore (release signing fallback)
-        # signingConfigs.release in app/build.gradle.kts falls back to
-        # ~/.android/debug.keystore when no keystore.properties is present (it never is in
-        # CI — it's gitignored). This keeps `assembleRelease` working out of the box; the
-        # resulting "release" APK is debug-signed. Add real signing secrets + a step that
-        # writes keystore.properties here if you need a Play-Store-ready release build.
+      - name: Configure release signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        shell: bash
         run: |
-          mkdir -p "$HOME/.android"
-          keytool -genkeypair -v -keystore "$HOME/.android/debug.keystore" \
-            -storepass android -alias androiddebugkey -keypass android \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -dname "CN=Android Debug,O=Android,C=US"
+          test -n "$KEYSTORE_BASE64" && test -n "$STORE_PASSWORD" && \
+            test -n "$KEY_ALIAS" && test -n "$KEY_PASSWORD" || {
+              echo "Android signing secrets are not configured. See README.md."
+              exit 1
+            }
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+          cat > keystore.properties <<EOF
+          storeFile=$RUNNER_TEMP/release.jks
+          storePassword=$STORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
 
-      - name: Resolve release version
-        id: version
+      - name: Verify and build
+        run: ./gradlew lintDebug testDebugUnitTest assembleRelease --console=plain
+
+      - name: Create checksum
+        shell: bash
         run: |
-          V="${{ github.event.inputs.version }}"
-          if [ -z "$V" ]; then
-            V=$(grep -m1 'versionName = "' app/build.gradle.kts | sed -E 's/.*versionName = "([^"]+)".*/\1/')
-          fi
-          [[ "$V" == v* ]] || V="v$V"
-          echo "tag=$V" >> "$GITHUB_OUTPUT"
+          APK=$(find app/build/outputs/apk/release -name '*-release.apk' -print -quit)
+          test -n "$APK"
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
+          test -n "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          sha256sum "$APK" > "${APK}.sha256"
+          echo "APK=$APK" >> "$GITHUB_ENV"
 
-      - name: Build debug & release APKs
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug assembleRelease --console=plain
-
-      - name: Locate built APKs
-        id: apks
-        run: |
-          echo "debug=$(find app/build/outputs/apk/debug -name '*.apk' -print -quit)" >> "$GITHUB_OUTPUT"
-          echo "release=$(find app/build/outputs/apk/release -name '*.apk' -print -quit)" >> "$GITHUB_OUTPUT"
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: ${{ steps.version.outputs.tag }}
-          generate_release_notes: true
-          files: |
-            ${{ steps.apks.outputs.release }}
-            ${{ steps.apks.outputs.debug }}
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" "$APK" "$APK.sha256" --verify-tag --generate-notes --title "$GITHUB_REF_NAME"
