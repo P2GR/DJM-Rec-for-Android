@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.34.1 (2026-07-17)
+
+- Restore Gradle wrapper execution on Linux CI runners
+- Configure stable release signing for installable GitHub APKs
+
 ## v0.34.0 (2026-07-17)
 
 - USB isochronous capture via libusb (root-free FD handoff)
