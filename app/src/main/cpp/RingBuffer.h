@@ -12,7 +12,7 @@ namespace djmrec {
  *
  * Producer: the AAudio real-time data callback (writes interleaved PCM frames, must never
  *           block, never allocate, never take a mutex).
- * Consumer: the encoder thread (reads frames at its own pace and feeds WAV/FLAC/MP3 writers).
+ * Consumer: the encoder thread (reads frames at its own pace and feeds WAV/FLAC writers).
  *
  * Capacity is rounded up to the next power of two so index wrapping is a cheap bitmask.
  * Byte-oriented: callers decide the "frame" size (channels * bytesPerSample) themselves,

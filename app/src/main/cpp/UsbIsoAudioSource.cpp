@@ -71,13 +71,7 @@ constexpr uint16_t kUac2ClockFrequencyControl = 0x0100;
 constexpr uint8_t kUac1RequestSetCurrent = 0x01;
 constexpr uint16_t kUac1EndpointSamplingFrequencyControl = 0x0100;
 
-constexpr int kDjmA9VendorId = 0x2B73;
-constexpr int kDjmA9ProductId = 0x003C;
-constexpr uint16_t kDjmA9RouteIndex = 0x8002;
-constexpr int kDjmA9PlaybackInterface = 1;
-constexpr int kDjmA9PlaybackAlternateSetting = 1;
-constexpr int kDjmA9PlaybackChannels = 10;
-constexpr int kDjmA9PlaybackSubframeBytes = 3;
+constexpr uint16_t kPioneerRouteIndex = 0x8002;
 
 struct IsoEndpointInfo {
     int address = -1;
@@ -121,66 +115,58 @@ IsoEndpointInfo findIsoOutEndpoint(
     return {};
 }
 
-// Exact route values from Pioneer DJM-A9_Setup.dll 1.100.002.0.
-constexpr uint16_t kDjmA9RouteValues[5][13] = {
-    {0x010A, 0x0131, 0x0132, 0x0133, 0x0134, 0x0111, 0x0112,
-     0x0113, 0x0114, 0x0107, 0x0108, 0x0109, 0x010E},
-    {0x0203, 0x0201, 0x0202, 0x0205, 0x0206, 0x0207, 0x0208,
-     0x0209, 0x020A, 0x020E, 0, 0, 0},
-    {0x0303, 0x0301, 0x0302, 0x0305, 0x0306, 0x0307, 0x0308,
-     0x0309, 0x030A, 0x030E, 0, 0, 0},
-    {0x0403, 0x0401, 0x0402, 0x0405, 0x0406, 0x0407, 0x0408,
-     0x0409, 0x040A, 0x040E, 0, 0, 0},
-    {0x0503, 0x0501, 0x0502, 0x0505, 0x0506, 0x0507, 0x0508,
-     0x0509, 0x050A, 0x050E, 0, 0, 0},
-};
-
-bool readDjmA9RouteSource(libusb_device_handle* handle, int output, int& source) {
-    uint8_t response[2]{};
+bool readPioneerRouteSource(
+    libusb_device_handle* handle,
+    const PioneerMixerProfile& profile,
+    int output,
+    int& source
+) {
+    if (output < 0 || output >= profile.outputCount) return false;
+    uint8_t response[5]{};
+    const bool allOutputs = profile.routeReadMode == PioneerRouteReadMode::AllOutputs;
+    const uint16_t value = profile.routeReadMode == PioneerRouteReadMode::SingleOutputOneBased
+        ? static_cast<uint16_t>(output + 1)
+        : static_cast<uint16_t>(allOutputs ? 0 : output);
+    const uint16_t length = static_cast<uint16_t>(allOutputs ? profile.outputCount : 2);
     const int rc = libusb_control_transfer(
         handle, LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
-        0x00, static_cast<uint16_t>(output), kDjmA9RouteIndex,
-        response, sizeof(response), 1000);
-    if (rc != static_cast<int>(sizeof(response)) || response[0] != output) {
-        LOGW("DJM-A9 route GET output %d failed: %s", output + 1,
+        0x00, value, kPioneerRouteIndex, response, length, 1000);
+    const int expectedOutput = profile.routeReadMode == PioneerRouteReadMode::SingleOutputOneBased
+        ? output + 1
+        : output;
+    if (rc != length || (!allOutputs && response[0] != expectedOutput)) {
+        LOGW("%s route GET output %d failed: %s", profile.name, output + 1,
              rc < 0 ? libusb_error_name(rc) : "invalid response");
         return false;
     }
-    // Firmware returns its source code (low byte of the SET value), not the
-    // zero-based UI index used to address kDjmA9RouteValues.
-    source = response[1];
+    source = allOutputs ? response[output] : response[1];
     return true;
 }
 
-bool writeDjmA9RouteValue(libusb_device_handle* handle, int output, uint16_t value) {
-    if (output < 0 || output >= 5 || (value >> 8) != output + 1) return false;
-    if (value == 0) return false;
+bool writePioneerRouteSource(
+    libusb_device_handle* handle,
+    const PioneerMixerProfile& profile,
+    int output,
+    int source
+) {
+    if (output < 0 || output >= profile.outputCount || source < 0 || source > 0xFF) return false;
+    const auto value = static_cast<uint16_t>(((output + 1) << 8) | source);
     const int rc = libusb_control_transfer(
         handle, LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
-        0x03, value, kDjmA9RouteIndex, nullptr, 0, 1000);
+        0x03, value, kPioneerRouteIndex, nullptr, 0, 1000);
     if (rc != 0) {
-        LOGW("DJM-A9 route SET output %d value 0x%04x failed: %s",
+        LOGW("%s route SET output %d value 0x%04x failed: %s", profile.name,
              output + 1, value, rc < 0 ? libusb_error_name(rc) : "unexpected response");
         return false;
     }
     return true;
 }
 
-bool writeDjmA9Route(libusb_device_handle* handle, int output, int route) {
-    if (output < 0 || output >= 5 || route < 0 || route >= 13) return false;
-    return writeDjmA9RouteValue(handle, output, kDjmA9RouteValues[output][route]);
-}
-
-bool writeDjmA9RouteSource(libusb_device_handle* handle, int output, int source) {
-    if (source < 0 || source > 0xFF) return false;
-    const auto value = static_cast<uint16_t>(((output + 1) << 8) | source);
-    return writeDjmA9RouteValue(handle, output, value);
-}
-
-bool setDjmA9CaptureSampleRate(
+bool setPioneerCaptureSampleRate(
     libusb_device_handle* handle,
     int endpointAddress,
-    int sampleRate
+    int sampleRate,
+    const char* profileName
 ) {
     uint8_t value[3] = {
         static_cast<uint8_t>(sampleRate & 0xFF),
@@ -197,17 +183,21 @@ bool setDjmA9CaptureSampleRate(
         sizeof(value),
         1000);
     if (rc != static_cast<int>(sizeof(value))) {
-        LOGW("DJM-A9 endpoint 0x%02x SET_CUR sampling frequency %d Hz unsupported: %s",
-             endpointAddress, sampleRate,
+        LOGW("%s endpoint 0x%02x SET_CUR sampling frequency %d Hz unsupported: %s",
+             profileName, endpointAddress, sampleRate,
              rc < 0 ? libusb_error_name(rc) : "short response");
         return false;
     }
-    LOGI("DJM-A9 endpoint 0x%02x initialized at %d Hz using Pioneer driver sequence",
-         endpointAddress, sampleRate);
+    LOGI("%s endpoint 0x%02x initialized at %d Hz using Pioneer driver sequence",
+         profileName, endpointAddress, sampleRate);
     return true;
 }
 
-int readDjmA9EndpointSampleRate(libusb_device_handle* handle, int endpointAddress) {
+int readPioneerEndpointSampleRate(
+    libusb_device_handle* handle,
+    int endpointAddress,
+    const char* profileName
+) {
     uint8_t value[3]{};
     const int rc = libusb_control_transfer(
         handle,
@@ -219,8 +209,8 @@ int readDjmA9EndpointSampleRate(libusb_device_handle* handle, int endpointAddres
         sizeof(value),
         1000);
     if (rc != static_cast<int>(sizeof(value))) {
-        LOGW("DJM-A9 endpoint 0x%02x GET_CUR sampling frequency unsupported: %s",
-             endpointAddress, rc < 0 ? libusb_error_name(rc) : "short response");
+        LOGW("%s endpoint 0x%02x GET_CUR sampling frequency unsupported: %s",
+             profileName, endpointAddress, rc < 0 ? libusb_error_name(rc) : "short response");
         return 0;
     }
     return value[0] | (value[1] << 8) | (value[2] << 16);
@@ -309,7 +299,8 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
     mClaimedPlaybackInterface = -1;
     mPlaybackTransfers.clear();
     mPlaybackFrameRemainder = 0;
-    mDjmA9FallbackStage = 0;
+    mMixerProfile = findPioneerMixerProfile(config.vendorId, config.productId);
+    mPioneerFallbackStage = 0;
     mResolvedChannelOffset = config.extractChannelOffset;
     mFramesSincePeakLog = 0;
     mBytesSincePeakLog = 0;
@@ -355,33 +346,37 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
     // holding the interface anyway).
     libusb_set_auto_detach_kernel_driver(mHandle, 1);
 
-    configureDjmA9RecordingRoute();
+    if (mMixerProfile) {
+        LOGI("Matched Pioneer mixer profile %s for %04x:%04x", mMixerProfile->name,
+             config.vendorId, config.productId);
+    }
+    configurePioneerRecordingRoute();
 
-    if (config.vendorId == kDjmA9VendorId && config.productId == kDjmA9ProductId) {
-        rc = libusb_claim_interface(mHandle, kDjmA9PlaybackInterface);
+    if (mMixerProfile && mMixerProfile->requiresPlaybackTraffic) {
+        rc = libusb_claim_interface(mHandle, mMixerProfile->playbackInterface);
         if (rc != LIBUSB_SUCCESS) {
-            restoreDjmA9RecordingRoute();
+            restorePioneerRecordingRoute();
             libusb_close(mHandle);
             libusb_exit(mContext);
             mHandle = nullptr;
             mContext = nullptr;
-            return libusbErrorString("DJM-A9 playback interface claim", rc);
+            return libusbErrorString("Pioneer playback interface claim", rc);
         }
-        mClaimedPlaybackInterface = kDjmA9PlaybackInterface;
+        mClaimedPlaybackInterface = mMixerProfile->playbackInterface;
         rc = libusb_set_interface_alt_setting(
-            mHandle, kDjmA9PlaybackInterface, kDjmA9PlaybackAlternateSetting);
+            mHandle, mMixerProfile->playbackInterface, mMixerProfile->playbackAlternateSetting);
         if (rc != LIBUSB_SUCCESS) {
-            restoreDjmA9RecordingRoute();
+            restorePioneerRecordingRoute();
             libusb_release_interface(mHandle, mClaimedPlaybackInterface);
             mClaimedPlaybackInterface = -1;
             libusb_close(mHandle);
             libusb_exit(mContext);
             mHandle = nullptr;
             mContext = nullptr;
-            return libusbErrorString("DJM-A9 playback alt setting", rc);
+            return libusbErrorString("Pioneer playback alt setting", rc);
         }
-        LOGI("DJM-A9 duplex session activated playback interface %d alt %d",
-             kDjmA9PlaybackInterface, kDjmA9PlaybackAlternateSetting);
+        LOGI("%s duplex session activated playback interface %d alt %d", mMixerProfile->name,
+             mMixerProfile->playbackInterface, mMixerProfile->playbackAlternateSetting);
     }
 
     if (config.clockControlInterfaceNumber >= 0 && config.clockSourceId >= 0) {
@@ -409,7 +404,7 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
 
     rc = libusb_claim_interface(mHandle, config.interfaceNumber);
     if (rc != LIBUSB_SUCCESS) {
-        restoreDjmA9RecordingRoute();
+        restorePioneerRecordingRoute();
         if (mClaimedPlaybackInterface >= 0) {
             libusb_set_interface_alt_setting(mHandle, mClaimedPlaybackInterface, 0);
             libusb_release_interface(mHandle, mClaimedPlaybackInterface);
@@ -431,7 +426,7 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
     // endpoint) until told otherwise.
     rc = libusb_set_interface_alt_setting(mHandle, config.interfaceNumber, config.alternateSetting);
     if (rc != LIBUSB_SUCCESS) {
-        restoreDjmA9RecordingRoute();
+        restorePioneerRecordingRoute();
         libusb_release_interface(mHandle, config.interfaceNumber);
         if (mClaimedPlaybackInterface >= 0) {
             libusb_set_interface_alt_setting(mHandle, mClaimedPlaybackInterface, 0);
@@ -449,17 +444,19 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
         return libusbErrorString("libusb_set_interface_alt_setting", rc);
     }
 
-    if (config.vendorId == kDjmA9VendorId && config.productId == kDjmA9ProductId) {
-        const int endpointRate = readDjmA9EndpointSampleRate(mHandle, config.endpointAddress);
+    if (mMixerProfile && mMixerProfile->usesEndpointSampleRate) {
+        const int endpointRate = readPioneerEndpointSampleRate(
+            mHandle, config.endpointAddress, mMixerProfile->name);
         if (endpointRate > 0) {
             mOpenedSampleRate.store(endpointRate, std::memory_order_release);
-            LOGI("DJM-A9 capture endpoint reports active rate %d Hz", endpointRate);
+            LOGI("%s capture endpoint reports active rate %d Hz", mMixerProfile->name, endpointRate);
         } else {
-            // This request is conditional in the Pioneer driver and stalls on some firmware.
-            setDjmA9CaptureSampleRate(mHandle, config.endpointAddress, config.requestedSampleRate);
+            setPioneerCaptureSampleRate(
+                mHandle, config.endpointAddress, config.requestedSampleRate, mMixerProfile->name);
         }
-        if (!startDjmA9PlaybackSilence(mOpenedSampleRate.load(std::memory_order_acquire))) {
-            LOGW("DJM-A9 fallback strategy could not start playback traffic; continuing capture-only");
+        if (mMixerProfile->requiresPlaybackTraffic &&
+            !startPioneerPlaybackSilence(mOpenedSampleRate.load(std::memory_order_acquire))) {
+            LOGW("%s could not start playback traffic; continuing capture-only", mMixerProfile->name);
         }
     }
 
@@ -515,18 +512,20 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
     for (auto* transfer : mPlaybackTransfers) {
         if (!submitPlaybackTransfer(transfer)) {
             stop();
-            return "DJM-A9 playback transfer submission failed";
+            return "Pioneer playback transfer submission failed";
         }
     }
 
     return {};
 }
 
-bool UsbIsoAudioSource::startDjmA9PlaybackSilence(int sampleRate) {
+bool UsbIsoAudioSource::startPioneerPlaybackSilence(int sampleRate) {
+    if (!mMixerProfile || !mMixerProfile->requiresPlaybackTraffic) return false;
     const IsoEndpointInfo endpoint = findIsoOutEndpoint(
-        mConfig.rawDescriptors, kDjmA9PlaybackInterface, kDjmA9PlaybackAlternateSetting);
+        mConfig.rawDescriptors, mMixerProfile->playbackInterface,
+        mMixerProfile->playbackAlternateSetting);
     if (endpoint.address < 0 || endpoint.maxPacketSize <= 0 || sampleRate <= 0) {
-        LOGW("DJM-A9 playback OUT endpoint unavailable in raw descriptors");
+        LOGW("%s playback OUT endpoint unavailable in raw descriptors", mMixerProfile->name);
         return false;
     }
 
@@ -535,7 +534,8 @@ bool UsbIsoAudioSource::startDjmA9PlaybackSilence(int sampleRate) {
         (speed == LIBUSB_SPEED_HIGH || speed == LIBUSB_SPEED_SUPER) ? 8000 : 1000;
     const int intervalShift = std::clamp(endpoint.interval - 1, 0, 10);
     mPlaybackPacketsPerSecond = std::max(1, basePacketsPerSecond >> intervalShift);
-    mPlaybackFrameBytes = kDjmA9PlaybackChannels * kDjmA9PlaybackSubframeBytes;
+    mPlaybackFrameBytes =
+        mMixerProfile->playbackChannels * mMixerProfile->playbackSubframeBytes;
     mPlaybackMaxPacketSize = endpoint.maxPacketSize;
     mPlaybackFrameRemainder = 0;
 
@@ -550,10 +550,10 @@ bool UsbIsoAudioSource::startDjmA9PlaybackSilence(int sampleRate) {
             kPacketsPerTransfer, &UsbIsoAudioSource::onPlaybackTransferComplete, this, 1000);
         mPlaybackTransfers.push_back(transfer);
     }
-    mDjmA9FallbackStage = 1;
-    LOGI("DJM-A9 fallback strategy 1: streaming silence to endpoint 0x%02x at %d Hz "
+    mPioneerFallbackStage = 1;
+    LOGI("%s fallback strategy 1: streaming silence to endpoint 0x%02x at %d Hz "
          "(%dch packed 24-bit, %d packets/sec, maxPacket=%d)",
-         endpoint.address, sampleRate, kDjmA9PlaybackChannels,
+         mMixerProfile->name, endpoint.address, sampleRate, mMixerProfile->playbackChannels,
          mPlaybackPacketsPerSecond, mPlaybackMaxPacketSize);
     return true;
 }
@@ -567,7 +567,7 @@ bool UsbIsoAudioSource::submitPlaybackTransfer(libusb_transfer* transfer) {
         mPlaybackFrameRemainder %= static_cast<uint64_t>(mPlaybackPacketsPerSecond);
         const int packetLength = frames * mPlaybackFrameBytes;
         if (packetLength <= 0 || packetLength > mPlaybackMaxPacketSize) {
-            LOGE("DJM-A9 playback packet %d exceeds endpoint capacity %d", packetLength,
+            LOGE("Pioneer playback packet %d exceeds endpoint capacity %d", packetLength,
                  mPlaybackMaxPacketSize);
             return false;
         }
@@ -579,7 +579,7 @@ bool UsbIsoAudioSource::submitPlaybackTransfer(libusb_transfer* transfer) {
     const int rc = libusb_submit_transfer(transfer);
     if (rc != LIBUSB_SUCCESS) {
         mOutstandingTransfers.fetch_sub(1, std::memory_order_relaxed);
-        LOGE("DJM-A9 playback submit failed: %s", libusb_error_name(rc));
+        LOGE("Pioneer playback submit failed: %s", libusb_error_name(rc));
         return false;
     }
     return true;
@@ -631,7 +631,7 @@ void UsbIsoAudioSource::handlePlaybackTransfer(libusb_transfer* transfer) {
     if (!mRunning.load(std::memory_order_acquire)) return;
 
     if (transfer->status != LIBUSB_TRANSFER_COMPLETED) {
-        LOGW("DJM-A9 playback transfer completed with status %d", transfer->status);
+        LOGW("Pioneer playback transfer completed with status %d", transfer->status);
     }
     if (!submitPlaybackTransfer(transfer)) {
         mResubmitFailures.fetch_add(1, std::memory_order_relaxed);
@@ -688,74 +688,156 @@ UsbIsoAudioSource::TransferStatsSnapshot UsbIsoAudioSource::getTransferStats() c
     };
 }
 
-void UsbIsoAudioSource::configureDjmA9RecordingRoute() {
-    mDjmA9OriginalSources.fill(-1);
-    mDjmA9AppliedSources.fill(-1);
-    mDjmA9RoutesChanged.fill(false);
-    if (!mHandle || mConfig.vendorId != kDjmA9VendorId || mConfig.productId != kDjmA9ProductId) return;
-
-    const int output = mConfig.extractChannelOffset >= 0
-        ? std::clamp(mConfig.extractChannelOffset / 2, 0, 4)
-        : 4;
-    routeDjmA9OutputToMix(output);
-}
-
-void UsbIsoAudioSource::routeDjmA9OutputToMix(int output) {
-    if (!mHandle || output < 0 || output >= 5) return;
-    int currentSource = -1;
-    const bool readCurrent = readDjmA9RouteSource(mHandle, output, currentSource);
-    const int mixWithMicRoute = output == 0 ? 11 : 7;
-    const int mixWithoutMicRoute = output == 0 ? 0 : 8;
-    const int mixWithMicSource = kDjmA9RouteValues[output][mixWithMicRoute] & 0xFF;
-    const int mixWithoutMicSource = kDjmA9RouteValues[output][mixWithoutMicRoute] & 0xFF;
-    if (readCurrent &&
-        (currentSource == mixWithMicSource || currentSource == mixWithoutMicSource)) {
-        mDjmA9AppliedSources[output] = currentSource;
-        LOGI("DJM-A9 USB output %d already routed to MIX (source 0x%02x)",
-             output + 1, currentSource);
-        return;
+std::string UsbIsoAudioSource::diagnosticSummary() const {
+    const auto stats = getTransferStats();
+    std::array<int, 5> original{};
+    std::array<int, 5> applied{};
+    std::array<bool, 5> changed{};
+    {
+        std::lock_guard<std::mutex> lock(mDiagnosticMutex);
+        original = mPioneerOriginalSources;
+        applied = mPioneerAppliedSources;
+        changed = mPioneerRoutesChanged;
     }
 
-    if (!writeDjmA9Route(mHandle, output, mixWithoutMicRoute)) return;
-    int verifiedSource = -1;
-    if (!readDjmA9RouteSource(mHandle, output, verifiedSource) ||
-        verifiedSource != mixWithoutMicSource) {
-        LOGW("DJM-A9 USB output %d MIX source did not verify: expected=0x%02x actual=0x%02x",
-             output + 1, mixWithoutMicSource, verifiedSource);
-        if (readCurrent) {
-            writeDjmA9RouteSource(mHandle, output, currentSource);
+    std::ostringstream out;
+    out << "running=" << (isRunning() ? "true" : "false") << '\n'
+        << "profile=" << (mMixerProfile ? mMixerProfile->name : "none") << '\n'
+        << "usb_id=" << std::hex << mConfig.vendorId << ':' << mConfig.productId << std::dec << '\n'
+        << "capture=if" << mConfig.interfaceNumber << "/alt" << mConfig.alternateSetting
+        << " ep=0x" << std::hex << mConfig.endpointAddress << std::dec
+        << " max_packet=" << mConfig.maxPacketSize << '\n'
+        << "wire=" << mConfig.totalChannels << "ch/" << mConfig.bitResolution
+        << "bit/subframe" << mConfig.subframeSize << '\n'
+        << "sample_rate=requested:" << mConfig.requestedSampleRate
+        << " opened:" << openedSampleRate() << '\n'
+        << "channel_offset=requested:" << mConfig.extractChannelOffset
+        << " resolved:" << mResolvedChannelOffset.load(std::memory_order_relaxed) << '\n'
+        << "clock=control_if:" << mConfig.clockControlInterfaceNumber
+        << " source:" << mConfig.clockSourceId
+        << " settable:" << (mConfig.clockSupportsFrequencySet ? "true" : "false") << '\n'
+        << "feedback=ep:" << mConfig.feedbackEndpointAddress
+        << " max_packet:" << mConfig.feedbackMaxPacketSize << '\n'
+        << "playback_keepalive=required:"
+        << (mMixerProfile && mMixerProfile->requiresPlaybackTraffic ? "true" : "false")
+        << " claimed_if:" << mClaimedPlaybackInterface
+        << " transfers:" << mPlaybackTransfers.size() << '\n'
+        << "route_fallback_stage=" << mPioneerFallbackStage.load(std::memory_order_relaxed) << '\n';
+
+    if (mMixerProfile) {
+        for (int output = 0; output < mMixerProfile->outputCount; ++output) {
+            out << "route_output_" << (output + 1)
+                << "=original:" << original[output]
+                << " applied:" << applied[output]
+                << " changed:" << (changed[output] ? "true" : "false") << '\n';
         }
+    }
+    out << "transfers=completed:" << stats.packetsCompleted
+        << " missed:" << stats.packetsMissed
+        << " empty:" << stats.packetsEmpty
+        << " partial:" << stats.packetsPartial
+        << " bytes:" << stats.bytesReceived
+        << " nonzero_bytes:" << stats.nonZeroBytesReceived
+        << " resubmit_failures:" << stats.resubmitFailures;
+    return out.str();
+}
+
+void UsbIsoAudioSource::configurePioneerRecordingRoute() {
+    {
+        std::lock_guard<std::mutex> lock(mDiagnosticMutex);
+        mPioneerOriginalSources.fill(-1);
+        mPioneerAppliedSources.fill(-1);
+        mPioneerRoutesChanged.fill(false);
+    }
+    if (!mHandle || !mMixerProfile) return;
+
+    int output = mMixerProfile->defaultOutput;
+    if (mConfig.extractChannelOffset >= 0) {
+        const int requestedOutput = mConfig.extractChannelOffset / 2;
+        if (requestedOutput < mMixerProfile->outputCount) {
+            output = requestedOutput;
+        } else {
+            mResolvedChannelOffset.store(mMixerProfile->defaultOutput * 2, std::memory_order_relaxed);
+            const int resolvedOffset = mResolvedChannelOffset.load(std::memory_order_relaxed);
+            LOGW("%s does not expose configurable USB output %d; using output %d/channels %d-%d",
+                 mMixerProfile->name, requestedOutput + 1, mMixerProfile->defaultOutput + 1,
+                 resolvedOffset + 1, resolvedOffset + 2);
+        }
+    }
+    routePioneerOutputToMix(output);
+    mPioneerFallbackStage = 1;
+}
+
+void UsbIsoAudioSource::routePioneerOutputToMix(int output) {
+    if (!mHandle || !mMixerProfile || output < 0 || output >= mMixerProfile->outputCount) return;
+    int currentSource = -1;
+    const bool readCurrent =
+        readPioneerRouteSource(mHandle, *mMixerProfile, output, currentSource);
+    if (!readCurrent) {
+        LOGW("%s USB output %d route is unreadable; refusing an unrestorable change",
+             mMixerProfile->name, output + 1);
         return;
     }
-    mDjmA9OriginalSources[output] = readCurrent ? currentSource : -1;
-    mDjmA9AppliedSources[output] = mixWithoutMicSource;
-    mDjmA9RoutesChanged[output] = readCurrent;
-    LOGI("DJM-A9 USB output %d routed to MIX (REC OUT without MIC), source=0x%02x previous=0x%02x",
-         output + 1, mixWithoutMicSource, currentSource);
+    const int mixWithMicSource = mMixerProfile->mixWithMicSources[output];
+    const int mixWithoutMicSource = mMixerProfile->mixWithoutMicSources[output];
+    if (mixWithoutMicSource < 0) return;
+    if (currentSource == mixWithMicSource || currentSource == mixWithoutMicSource) {
+        std::lock_guard<std::mutex> lock(mDiagnosticMutex);
+        mPioneerAppliedSources[output] = currentSource;
+        LOGI("%s USB output %d already routed to MIX (source 0x%02x)",
+             mMixerProfile->name, output + 1, currentSource);
+        return;
+    }
+
+    if (!writePioneerRouteSource(
+            mHandle, *mMixerProfile, output, mixWithoutMicSource)) return;
+    int verifiedSource = -1;
+    if (!readPioneerRouteSource(mHandle, *mMixerProfile, output, verifiedSource) ||
+        verifiedSource != mixWithoutMicSource) {
+        LOGW("%s USB output %d MIX source did not verify: expected=0x%02x actual=0x%02x",
+             mMixerProfile->name, output + 1, mixWithoutMicSource, verifiedSource);
+        writePioneerRouteSource(mHandle, *mMixerProfile, output, currentSource);
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lock(mDiagnosticMutex);
+        mPioneerOriginalSources[output] = currentSource;
+        mPioneerAppliedSources[output] = mixWithoutMicSource;
+        mPioneerRoutesChanged[output] = true;
+    }
+    LOGI("%s USB output %d routed to MIX/REC OUT, source=0x%02x previous=0x%02x",
+         mMixerProfile->name, output + 1, mixWithoutMicSource, currentSource);
 }
 
-void UsbIsoAudioSource::routeAllDjmA9OutputsToMix() {
-    LOGI("DJM-A9 fallback strategy: route MIX to all five configurable USB output pairs");
-    for (int output = 0; output < 5; ++output) {
-        routeDjmA9OutputToMix(output);
+void UsbIsoAudioSource::routeAllPioneerOutputsToMix() {
+    if (!mMixerProfile) return;
+    LOGI("%s fallback: route MIX to all %d configurable USB output pairs",
+         mMixerProfile->name, mMixerProfile->outputCount);
+    for (int output = 0; output < mMixerProfile->outputCount; ++output) {
+        routePioneerOutputToMix(output);
     }
 }
 
-void UsbIsoAudioSource::restoreDjmA9RecordingRoute() {
-    if (!mHandle) return;
-    for (int output = 0; output < 5; ++output) {
-        if (!mDjmA9RoutesChanged[output] || mDjmA9OriginalSources[output] < 0) continue;
+void UsbIsoAudioSource::restorePioneerRecordingRoute() {
+    if (!mHandle || !mMixerProfile) return;
+    for (int output = 0; output < mMixerProfile->outputCount; ++output) {
+        if (!mPioneerRoutesChanged[output] || mPioneerOriginalSources[output] < 0) continue;
         int currentSource = -1;
-        if (!readDjmA9RouteSource(mHandle, output, currentSource) ||
-            currentSource != mDjmA9AppliedSources[output]) {
-            LOGW("DJM-A9 USB output %d changed externally; not restoring previous route", output + 1);
+        if (!readPioneerRouteSource(mHandle, *mMixerProfile, output, currentSource) ||
+            currentSource != mPioneerAppliedSources[output]) {
+            LOGW("%s USB output %d changed externally; not restoring previous route",
+                 mMixerProfile->name, output + 1);
             continue;
         }
-        if (writeDjmA9RouteSource(mHandle, output, mDjmA9OriginalSources[output])) {
-            LOGI("DJM-A9 USB output %d restored to source 0x%02x",
-                 output + 1, mDjmA9OriginalSources[output]);
+        if (writePioneerRouteSource(
+                mHandle, *mMixerProfile, output, mPioneerOriginalSources[output])) {
+            LOGI("%s USB output %d restored to source 0x%02x", mMixerProfile->name,
+                 output + 1, mPioneerOriginalSources[output]);
         }
-        mDjmA9RoutesChanged[output] = false;
+        {
+            std::lock_guard<std::mutex> lock(mDiagnosticMutex);
+            mPioneerRoutesChanged[output] = false;
+        }
     }
 }
 
@@ -861,15 +943,17 @@ void UsbIsoAudioSource::demuxAndEmit(const uint8_t* data, size_t length) {
             }
 
             constexpr uint32_t kAudibleThreshold = 1u << 20;
-            if (bestMagnitude >= kAudibleThreshold && bestOffset != mResolvedChannelOffset) {
-                mResolvedChannelOffset = bestOffset;
+            const int currentOffset = mResolvedChannelOffset.load(std::memory_order_relaxed);
+            if (bestMagnitude >= kAudibleThreshold && bestOffset != currentOffset) {
+                mResolvedChannelOffset.store(bestOffset, std::memory_order_relaxed);
                 LOGI("Auto-selected USB channels %d-%d for active audio", bestOffset + 1, bestOffset + 2);
-            } else if (mResolvedChannelOffset < 0) {
-                mResolvedChannelOffset = bestOffset;
+            } else if (currentOffset < 0) {
+                mResolvedChannelOffset.store(bestOffset, std::memory_order_relaxed);
             }
         }
 
-        const int selectedOffset = std::max(0, mResolvedChannelOffset);
+        const int selectedOffset = std::max(
+            0, mResolvedChannelOffset.load(std::memory_order_relaxed));
         const int offsetBytes = selectedOffset * subframe;
 
         for (size_t f = 0; f < completeFrames; ++f) {
@@ -891,19 +975,20 @@ void UsbIsoAudioSource::demuxAndEmit(const uint8_t* data, size_t length) {
                  static_cast<unsigned long long>(mNonZeroBytesSincePeakLog),
                  static_cast<unsigned long long>(mBytesSincePeakLog),
                  peakSummary(mPairPeaks).c_str(), selectedOffset + 1, selectedOffset + 2);
-            if (mConfig.vendorId == kDjmA9VendorId && mConfig.productId == kDjmA9ProductId) {
+            if (mMixerProfile) {
+                const int fallbackStage = mPioneerFallbackStage.load(std::memory_order_relaxed);
                 if (mNonZeroBytesReceived.load(std::memory_order_relaxed) > 0 &&
-                    mDjmA9FallbackStage > 0 && mDjmA9FallbackStage < 3) {
-                    LOGI("DJM-A9 fallback strategy %d succeeded: capture payload is non-zero",
-                         mDjmA9FallbackStage);
-                    mDjmA9FallbackStage = 3;
-                } else if (mNonZeroBytesSincePeakLog == 0 && mDjmA9FallbackStage == 1) {
-                    mDjmA9FallbackStage = 2;
-                    routeAllDjmA9OutputsToMix();
-                } else if (mNonZeroBytesSincePeakLog == 0 && mDjmA9FallbackStage == 2) {
-                    LOGW("DJM-A9 fallback strategies exhausted: duplex playback and all MIX routes "
-                         "still produce an all-zero capture payload");
-                    mDjmA9FallbackStage = 4;
+                    fallbackStage > 0 && fallbackStage < 3) {
+                    LOGI("%s fallback strategy %d succeeded: capture payload is non-zero",
+                         mMixerProfile->name, fallbackStage);
+                    mPioneerFallbackStage.store(3, std::memory_order_relaxed);
+                } else if (mNonZeroBytesSincePeakLog == 0 && fallbackStage == 1) {
+                    mPioneerFallbackStage.store(2, std::memory_order_relaxed);
+                    routeAllPioneerOutputsToMix();
+                } else if (mNonZeroBytesSincePeakLog == 0 && fallbackStage == 2) {
+                    LOGW("%s fallback strategies exhausted: all MIX routes still produce an "
+                         "all-zero capture payload", mMixerProfile->name);
+                    mPioneerFallbackStage.store(4, std::memory_order_relaxed);
                 }
             }
             std::fill(mPairPeaks.begin(), mPairPeaks.end(), 0);
@@ -947,7 +1032,7 @@ void UsbIsoAudioSource::stop() {
     mPlaybackTransfers.clear();
 
     if (mHandle) {
-        restoreDjmA9RecordingRoute();
+        restorePioneerRecordingRoute();
         libusb_set_interface_alt_setting(mHandle, mConfig.interfaceNumber, 0);
         libusb_release_interface(mHandle, mConfig.interfaceNumber);
         if (mClaimedPlaybackInterface >= 0) {

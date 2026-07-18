@@ -72,9 +72,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _selectedFormat = MutableStateFlow(RecordingFormat.WAV)
     val selectedFormat: StateFlow<RecordingFormat> = _selectedFormat.asStateFlow()
-    val availableFormats: List<RecordingFormat> = RecordingFormat.entries.filter {
-        it != RecordingFormat.MP3 || AudioEngine.isMp3EncodingAvailable()
-    }
+    val availableFormats: List<RecordingFormat> = RecordingFormat.entries
 
     private val _rootUsbMode = MutableStateFlow(false)
     val rootUsbMode: StateFlow<Boolean> = _rootUsbMode.asStateFlow()

@@ -38,6 +38,10 @@ data class UsbAudioDeviceInfo(
     /** True if [vendorId] matches a known Pioneer/AlphaTheta USB vendor ID. */
     val isPioneer: Boolean = false
 ) {
+    /** Proprietary routing profile, or null for generic USB Audio devices. */
+    val pioneerMixerProfile: PioneerMixerProfile?
+        get() = PioneerMixerProfile.find(vendorId, productId)
+
     /**
      * Whether this device should be captured via the raw libusb isochronous path
      * ([com.audiopro.djmrec.audio.AudioEngine.openUsbIso]) rather than AAudio -- true only for
@@ -45,7 +49,7 @@ data class UsbAudioDeviceInfo(
      * the right channel pair for) and only when we actually parsed a usable max packet size.
      */
     val requiresIsoCapture: Boolean
-        get() = isPioneer && channelCount > 2 && isochronousInMaxPacketSize > 0
+        get() = pioneerMixerProfile != null && channelCount > 2 && isochronousInMaxPacketSize > 0
 }
 
 /** Raw result of walking a single USB Audio Streaming interface's descriptor block. */

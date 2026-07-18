@@ -1,0 +1,71 @@
+package com.audiopro.djmrec.usb
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Test
+
+class PioneerMixerProfileTest {
+    @Test
+    fun `recognizes all supported mixer product ids`() {
+        val vendor = PioneerMixerProfile.ALPHATHETA_VENDOR_ID
+
+        assertEquals(PioneerMixerProfile.DJM_A9, PioneerMixerProfile.find(vendor, 0x003C))
+        assertEquals(PioneerMixerProfile.DJM_900NXS2, PioneerMixerProfile.find(vendor, 0x000A))
+        assertEquals(PioneerMixerProfile.DJM_750MK2, PioneerMixerProfile.find(vendor, 0x001B))
+        listOf(0x0058, 0x0059, 0x005A, 0x005B).forEach { productId ->
+            assertEquals(PioneerMixerProfile.DJM_V5, PioneerMixerProfile.find(vendor, productId))
+        }
+    }
+
+    @Test
+    fun `rejects unknown products and vendors`() {
+        assertNull(PioneerMixerProfile.find(PioneerMixerProfile.ALPHATHETA_VENDOR_ID, 0xFFFF))
+        assertNull(PioneerMixerProfile.find(0x08E4, 0x003C))
+    }
+
+    @Test
+    fun `uses driver-derived default capture pairs`() {
+        assertEquals(8, PioneerMixerProfile.DJM_A9.defaultCaptureChannelOffset)
+        assertEquals(0, PioneerMixerProfile.DJM_V5.defaultCaptureChannelOffset)
+        assertEquals(0, PioneerMixerProfile.DJM_900NXS2.defaultCaptureChannelOffset)
+        assertEquals(0, PioneerMixerProfile.DJM_750MK2.defaultCaptureChannelOffset)
+    }
+
+    @Test
+    fun `encodes each driver route GET convention`() {
+        assertEquals(0, PioneerMixerProfile.DJM_A9.routeReadValue(0))
+        assertEquals(4, PioneerMixerProfile.DJM_A9.routeReadValue(4))
+        assertEquals(1, PioneerMixerProfile.DJM_V5.routeReadValue(0))
+        assertEquals(4, PioneerMixerProfile.DJM_V5.routeReadValue(3))
+        assertEquals(0, PioneerMixerProfile.DJM_900NXS2.routeReadValue(4))
+        assertEquals(0, PioneerMixerProfile.DJM_750MK2.routeReadValue(4))
+    }
+
+    @Test
+    fun `decodes per-output and all-output route replies`() {
+        assertEquals(0x0A, PioneerMixerProfile.DJM_A9.decodeRouteSource(byteArrayOf(0, 0x0A), 4))
+        assertEquals(0x0E, PioneerMixerProfile.DJM_V5.decodeRouteSource(byteArrayOf(0, 0x0E), 2))
+        assertEquals(
+            0x0A,
+            PioneerMixerProfile.DJM_900NXS2.decodeRouteSource(
+                byteArrayOf(1, 2, 3, 4, 0x0A),
+                4
+            )
+        )
+        assertEquals(
+            0x0F,
+            PioneerMixerProfile.DJM_750MK2.decodeRouteSource(
+                byteArrayOf(0x0F, 2, 3, 4, 5),
+                0
+            )
+        )
+    }
+
+    @Test
+    fun `validates output selector byte for per-output replies`() {
+        assertEquals(true, PioneerMixerProfile.DJM_A9.isRouteResponseValid(byteArrayOf(4, 0x0A), 4))
+        assertEquals(false, PioneerMixerProfile.DJM_A9.isRouteResponseValid(byteArrayOf(3, 0x0A), 4))
+        assertEquals(true, PioneerMixerProfile.DJM_V5.isRouteResponseValid(byteArrayOf(4, 0x0E), 3))
+        assertEquals(false, PioneerMixerProfile.DJM_V5.isRouteResponseValid(byteArrayOf(3, 0x0E), 3))
+    }
+}

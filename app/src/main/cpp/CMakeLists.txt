@@ -65,28 +65,6 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(tinyalsa)
 
 # ---------------------------------------------------------------------------
-# libmp3lame: NOT auto-fetched (LGPL source distribution is the integrator's
-# responsibility). Drop the upstream LAME source tree (the `libmp3lame/`
-# folder from https://sourceforge.net/projects/lame/) under
-# `third_party/lame/libmp3lame` and reconfigure — Mp3Writer will otherwise
-# compile in a stub that fails fast at runtime with a clear log message.
-# ---------------------------------------------------------------------------
-set(LAME_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/lame/libmp3lame")
-if (EXISTS "${LAME_SRC_DIR}/lame.c")
-    file(GLOB LAME_SOURCES "${LAME_SRC_DIR}/*.c")
-    add_library(mp3lame STATIC ${LAME_SOURCES})
-    target_include_directories(mp3lame PUBLIC
-        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/lame/include"
-        "${LAME_SRC_DIR}"
-    )
-    target_compile_definitions(mp3lame PRIVATE HAVE_CONFIG_H=0)
-    set(HAVE_LAME 1)
-else ()
-    message(WARNING "djmrec: LAME source not found at ${LAME_SRC_DIR} -- MP3 export will be disabled at runtime.")
-    set(HAVE_LAME 0)
-endif ()
-
-# ---------------------------------------------------------------------------
 # libusb: raw isochronous USB-audio capture, bypassing AAudio/AudioRecord.
 #
 # Why this exists: Android's audio HAL only ever exposes a stereo (or, in the
@@ -169,11 +147,8 @@ add_library(
     WaveformAnalyzer.cpp
     writers/WavWriter.cpp
     writers/FlacWriter.cpp
-    writers/Mp3Writer.cpp
     jni/AudioEngineJNI.cpp
 )
-
-target_compile_definitions(djmrec_audio PRIVATE HAVE_LAME=${HAVE_LAME})
 
 target_include_directories(
     djmrec_audio PRIVATE
@@ -192,7 +167,3 @@ target_link_libraries(
     android
     log
 )
-
-if (HAVE_LAME)
-    target_link_libraries(djmrec_audio PRIVATE mp3lame)
-endif ()

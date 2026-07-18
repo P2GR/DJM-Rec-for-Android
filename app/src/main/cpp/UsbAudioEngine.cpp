@@ -3,11 +3,11 @@
 #include <algorithm>
 #include <android/log.h>
 #include <cstring>
+#include <sstream>
 
 #include "MeterCalculator.h"
 #include "writers/WavWriter.h"
 #include "writers/FlacWriter.h"
-#include "writers/Mp3Writer.h"
 
 #define TAG "UsbAudioEngine"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
@@ -383,14 +383,13 @@ void UsbAudioEngine::onErrorAfterClose(oboe::AudioStream* /*stream*/, oboe::Resu
     mStreamOpen.store(false, std::memory_order_release);
 }
 
-bool UsbAudioEngine::startRecording(const std::string& path, ContainerFormat format, int mp3BitrateKbps) {
+bool UsbAudioEngine::startRecording(const std::string& path, ContainerFormat format) {
     std::lock_guard<std::mutex> lock(mControlMutex);
     if (!mStreamOpen.load() || mRecording.load()) return false;
 
     switch (format) {
         case ContainerFormat::Wav: mWriter = std::make_unique<WavWriter>(); break;
         case ContainerFormat::Flac: mWriter = std::make_unique<FlacWriter>(); break;
-        case ContainerFormat::Mp3: mWriter = std::make_unique<Mp3Writer>(mp3BitrateKbps, /*useVbr=*/false); break;
     }
 
     if (!mWriter->open(path, mFormat)) {
@@ -532,6 +531,36 @@ void UsbAudioEngine::getUsbIsoTransferStats(uint64_t outStats[7]) const {
     outStats[4] = stats.bytesReceived;
     outStats[5] = stats.nonZeroBytesReceived;
     outStats[6] = stats.resubmitFailures;
+}
+
+std::string UsbAudioEngine::getDiagnosticSummary() {
+    std::lock_guard<std::mutex> lock(mControlMutex);
+    const char* sourceMode = "none";
+    switch (mSourceMode) {
+        case SourceMode::Oboe: sourceMode = "aaudio"; break;
+        case SourceMode::UsbIso: sourceMode = "usb_iso"; break;
+        case SourceMode::RootAlsa: sourceMode = "root_alsa"; break;
+        case SourceMode::None: break;
+    }
+
+    std::ostringstream out;
+    out << "source_mode=" << sourceMode << '\n'
+        << "stream_open=" << (mStreamOpen.load(std::memory_order_relaxed) ? "true" : "false") << '\n'
+        << "recording=" << (mRecording.load(std::memory_order_relaxed) ? "true" : "false") << '\n'
+        << "paused=" << (mPaused.load(std::memory_order_relaxed) ? "true" : "false") << '\n'
+        << "format=" << mFormat.sampleRate << "Hz/" << mFormat.channelCount
+        << "ch/" << mFormat.bitsPerSample << "bit\n"
+        << "xrun_count=" << mXRunCount.load(std::memory_order_relaxed) << '\n'
+        << "elapsed_ms=" << mElapsedMillis.load(std::memory_order_relaxed) << '\n'
+        << "levels_db=peak_l:" << mLeftPeakDb.load(std::memory_order_relaxed)
+        << " rms_l:" << mLeftRmsDb.load(std::memory_order_relaxed)
+        << " peak_r:" << mRightPeakDb.load(std::memory_order_relaxed)
+        << " rms_r:" << mRightRmsDb.load(std::memory_order_relaxed)
+        << " clipping:" << (mClipping.load(std::memory_order_relaxed) ? "true" : "false");
+    if (mUsbIsoSource) {
+        out << "\n--- usb_iso_source ---\n" << mUsbIsoSource->diagnosticSummary();
+    }
+    return out.str();
 }
 
 void UsbAudioEngine::getWaveformBins(float* outBins) const {

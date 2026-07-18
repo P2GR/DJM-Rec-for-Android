@@ -117,7 +117,7 @@ fun LibraryScreen(onBack: (() -> Unit)?) {
             }
         }
         dir.listFiles()
-            ?.filter { it.extension.lowercase() in listOf("wav", "flac", "mp3") }
+            ?.filter { it.extension.lowercase() in listOf("wav", "flac") }
             ?.sortedByDescending { it.lastModified() }
             ?.map { file ->
                 val dur = try {
@@ -325,7 +325,6 @@ fun LibraryScreen(onBack: (() -> Unit)?) {
 private fun mimeType(format: String): String = when (format.lowercase()) {
     "wav" -> "audio/wav"
     "flac" -> "audio/flac"
-    "mp3" -> "audio/mpeg"
     else -> "audio/*"
 }
 

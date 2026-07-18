@@ -87,9 +87,7 @@ object AudioEngine {
      * Begins pulling from the ring buffer into the selected encoder and writing to [outputPath].
      * [format] is [RecordingFormat.nativeValue].
      */
-    external fun startRecording(outputPath: String, format: Int, mp3BitrateKbps: Int): Boolean
-
-    external fun isMp3EncodingAvailable(): Boolean
+    external fun startRecording(outputPath: String, format: Int): Boolean
 
     external fun pauseRecording()
 
@@ -117,6 +115,9 @@ object AudioEngine {
 
     /** [completed, missed, empty, partial, bytes, nonZeroBytes, resubmitFailures] for raw USB capture. */
     external fun getUsbIsoTransferStats(): LongArray
+
+    /** Structured native pipeline/session snapshot included in release diagnostic reports. */
+    external fun getDiagnosticSummary(): String
 
     /**
      * RGB waveform snapshot: returns `kWaveformBinCount * 4` floats in the layout

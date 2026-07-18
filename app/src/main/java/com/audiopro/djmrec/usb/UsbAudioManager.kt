@@ -35,12 +35,7 @@ class UsbAudioManager(private val context: Context) {
         /** Pioneer Corporation (legacy) and AlphaTheta/Pioneer DJ (current) USB vendor IDs. */
         val PIONEER_VENDOR_IDS = setOf(0x08E4, 0x2B73)
 
-        /** Default pair; native DJM-A9 setup temporarily routes MIX (REC OUT) to this output. */
-        const val MASTER_MIX_CHANNEL_OFFSET = 8
         const val AUTO_CHANNEL_OFFSET = -1
-        private const val DJM_A9_VENDOR_ID = 0x2B73
-        private const val DJM_A9_PRODUCT_ID = 0x003C
-
         private fun isPioneerDevice(device: UsbDevice) = device.vendorId in PIONEER_VENDOR_IDS
     }
 
@@ -244,7 +239,9 @@ class UsbAudioManager(private val context: Context) {
             Log.i(TAG, "${device.deviceName}: read ${rawDescriptors.size} bytes of raw descriptors")
             streamingInterfaces = UsbAudioDescriptorParser.findAudioStreamingInterfaces(rawDescriptors)
             topology = UsbAudioDescriptorParser.parseTopology(rawDescriptors)
-            clockSampleRates = if (isDjmA9(device.vendorId, device.productId)) {
+            val mixerProfile = PioneerMixerProfile.find(device.vendorId, device.productId)
+            clockSampleRates = if (mixerProfile != null) {
+                Log.i(TAG, "${device.deviceName}: using ${mixerProfile.displayName} endpoint/vendor clock profile")
                 emptyList()
             } else {
                 queryClockSampleRates(device, connection, topology)
@@ -441,9 +438,9 @@ class UsbAudioManager(private val context: Context) {
         val streaming = info.topology?.audioStreamingInterfaces?.firstOrNull {
             it.interfaceNumber == info.streamingInterfaceNumber && it.alternateSetting == info.activeAlternateSetting
         }
-        // The A9 descriptor set is hybrid, but Pioneer's driver initializes its streaming
-        // interfaces and endpoint clock directly. UAC2 entity requests stall this device.
-        val clock = if (isDjmA9(info.vendorId, info.productId)) {
+        // Supported Pioneer profiles use endpoint/vendor clock flow. Entity requests stall
+        // some firmware, including the A9, so native code measures the active stream cadence.
+        val clock = if (info.pioneerMixerProfile != null) {
             null
         } else {
             streaming?.let { info.topology?.let { topology -> clockFor(it, topology) } }
@@ -482,9 +479,6 @@ class UsbAudioManager(private val context: Context) {
             productId = info.productId
         )
     }
-
-    private fun isDjmA9(vendorId: Int, productId: Int): Boolean =
-        vendorId == DJM_A9_VENDOR_ID && productId == DJM_A9_PRODUCT_ID
 
     /**
      * Closes the connection opened by [openIsoCaptureHandle], if any. Must only be called once

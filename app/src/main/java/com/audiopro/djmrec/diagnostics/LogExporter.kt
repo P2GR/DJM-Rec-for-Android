@@ -44,15 +44,22 @@ object LogExporter {
         sb.appendLine("djmrec diagnostic report")
         sb.appendLine("generated: $timestamp")
         sb.appendLine("app version: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+        sb.appendLine("build type: ${BuildConfig.BUILD_TYPE} debug=${BuildConfig.DEBUG}")
         sb.appendLine("device: ${Build.MANUFACTURER} ${Build.MODEL} (Android ${Build.VERSION.RELEASE}, API ${Build.VERSION.SDK_INT})")
+        sb.appendLine("hardware: ${Build.HARDWARE} board=${Build.BOARD} supportedAbis=${Build.SUPPORTED_ABIS.toList()}")
         sb.appendLine()
 
+        val nativeSummary = AudioEngine.getDiagnosticSummary()
         appendUsbSection(context, sb)
+        UsbDiagnosticsCollector.append(context, sb, nativeSummary)
         appendAudioSection(context, sb)
         appendPowerSection(context, sb)
         appendRootSection(context, sb)
         appendUsbCaptureSettingsSection(context, sb)
-        appendUsbTransferStatsSection(sb)
+        appendUsbTransferStatsSection(sb, nativeSummary)
+        sb.appendLine("=== Native audio pipeline snapshot ===")
+        sb.appendLine(nativeSummary)
+        sb.appendLine()
 
         sb.appendLine("=== logcat (this app's process only, most recent first not guaranteed) ===")
         sb.append(readOwnLogcat())
@@ -106,9 +113,24 @@ object LogExporter {
         val inputs = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
         sb.appendLine("=== AudioManager input devices (${inputs.size}) ===")
         inputs.forEach { info: AudioDeviceInfo ->
-            sb.appendLine("  id=${info.id} type=${info.type} product=${info.productName} sampleRates=${info.sampleRates.toList()}")
+            appendAudioDevice(sb, info)
         }
         sb.appendLine()
+
+        val outputs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+        sb.appendLine("=== AudioManager output devices (${outputs.size}) ===")
+        outputs.forEach { info: AudioDeviceInfo -> appendAudioDevice(sb, info) }
+        sb.appendLine()
+    }
+
+    private fun appendAudioDevice(sb: StringBuilder, info: AudioDeviceInfo) {
+        sb.appendLine(
+            "  id=${info.id} type=${info.type} address=${info.address} product=${info.productName} " +
+                "source=${info.isSource} sink=${info.isSink} sampleRates=${info.sampleRates.toList()} " +
+                "channelCounts=${info.channelCounts.toList()} " +
+                "channelIndexMasks=${info.channelIndexMasks.toList()} " +
+                "channelMasks=${info.channelMasks.toList()} encodings=${info.encodings.toList()}"
+        )
     }
 
     private fun appendPowerSection(context: Context, sb: StringBuilder) {
@@ -194,7 +216,7 @@ object LogExporter {
         sb.appendLine()
     }
 
-    private fun appendUsbTransferStatsSection(sb: StringBuilder) {
+    private fun appendUsbTransferStatsSection(sb: StringBuilder, nativeSummary: String) {
         val stats = AudioEngine.getUsbIsoTransferStats()
         sb.appendLine("=== Raw USB transfer stats ===")
         if (stats.size >= 7) {
@@ -203,6 +225,17 @@ object LogExporter {
                     "partial=${stats[3]} bytes=${stats[4]} nonZeroBytes=${stats[5]} " +
                     "resubmitFailures=${stats[6]}"
             )
+            val active = nativeSummary.lineSequence().any { it == "source_mode=usb_iso" } &&
+                nativeSummary.lineSequence().any { it == "stream_open=true" }
+            val health = when {
+                !active -> "INFO - raw USB capture not active"
+                stats[0] == 0L || stats[4] == 0L -> "FAIL - endpoint delivers no packets/audio bytes"
+                stats[5] == 0L -> "WARN - packets arrive but payload is digital silence"
+                stats[6] > 0L -> "WARN - isochronous transfer resubmission failed"
+                stats[1] > 0L -> "WARN - one or more isochronous packets were missed"
+                else -> "PASS - packets and non-zero audio payload are arriving"
+            }
+            sb.appendLine("health: $health")
         } else {
             sb.appendLine("unavailable")
         }

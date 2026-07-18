@@ -93,6 +93,7 @@ Thumbs.db
 # These files were used for reverse-engineering the USB control protocol only.
 # Do not commit them to the open-source repository.
 windows_driver/
+research_drivers/
 app/src/main/cpp/third_party/lame/
 # LAME (LGPL) must be added manually by the integrator.
 # See README.md for instructions.

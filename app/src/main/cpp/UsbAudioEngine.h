@@ -18,8 +18,7 @@ namespace djmrec {
 
 enum class ContainerFormat : int {
     Wav = 0,
-    Flac = 1,
-    Mp3 = 2
+    Flac = 1
 };
 
 /**
@@ -38,7 +37,7 @@ enum class SourceMode { None, Oboe, UsbIso, RootAlsa };
  *        -> encoder thread (consumer, THREAD_PRIORITY_URGENT_AUDIO on the Kotlin side owns
  *           the *service* thread priority; this native thread inherits pthread defaults and
  *           is deliberately NOT realtime since file I/O/encoding must be free to block)
- *        -> AudioWriter (Wav/Flac/Mp3)
+ *        -> AudioWriter (WAV/FLAC)
  *
  * Exactly one recording session is supported at a time, matching the app's single-mixer,
  * single-session use case.
@@ -59,7 +58,7 @@ public:
     int openUsbIso(const UsbIsoAudioSource::Config& isoConfig, int32_t sampleRateHint);
     int openRootAlsa(const AlsaPcmAudioSource::Config& alsaConfig);
 
-    bool startRecording(const std::string& path, ContainerFormat format, int mp3BitrateKbps);
+    bool startRecording(const std::string& path, ContainerFormat format);
     void pauseRecording();
     void resumeRecording();
     /** Stops encoding, finalizes the file, and returns total recorded duration in ms. */
@@ -72,6 +71,7 @@ public:
     int64_t getElapsedMillis() const;
     int32_t getXRunCount() const;
     void getUsbIsoTransferStats(uint64_t outStats[7]) const;
+    std::string getDiagnosticSummary();
 
     /** Copies the RGB waveform snapshot into @p outBins (kBinCount * 4 floats).
      *  Safe to call from any thread. */

@@ -36,7 +36,6 @@ fun FormatSelector(
             val detail = when (format) {
                 RecordingFormat.WAV -> "PCM"
                 RecordingFormat.FLAC -> "LOSSLESS"
-                RecordingFormat.MP3 -> "320 KBPS"
             }
             val isSelected = selected == format
             Surface(

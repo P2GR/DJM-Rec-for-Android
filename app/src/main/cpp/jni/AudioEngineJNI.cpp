@@ -84,19 +84,10 @@ Java_com_audiopro_djmrec_audio_AudioEngine_openRootAlsa(
 JNIEXPORT jboolean JNICALL
 Java_com_audiopro_djmrec_audio_AudioEngine_startRecording(
     JNIEnv* env, jobject /*thiz*/,
-    jstring outputPath, jint format, jint mp3BitrateKbps) {
+    jstring outputPath, jint format) {
     const std::string path = jstringToStdString(env, outputPath);
     const auto container = static_cast<ContainerFormat>(format);
-    return UsbAudioEngine::instance().startRecording(path, container, mp3BitrateKbps) ? JNI_TRUE : JNI_FALSE;
-}
-
-JNIEXPORT jboolean JNICALL
-Java_com_audiopro_djmrec_audio_AudioEngine_isMp3EncodingAvailable(JNIEnv* /*env*/, jobject /*thiz*/) {
-#if HAVE_LAME
-    return JNI_TRUE;
-#else
-    return JNI_FALSE;
-#endif
+    return UsbAudioEngine::instance().startRecording(path, container) ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT void JNICALL
@@ -155,6 +146,12 @@ Java_com_audiopro_djmrec_audio_AudioEngine_getUsbIsoTransferStats(JNIEnv* env, j
     jlongArray result = env->NewLongArray(7);
     env->SetLongArrayRegion(result, 0, 7, values);
     return result;
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_getDiagnosticSummary(JNIEnv* env, jobject /*thiz*/) {
+    const std::string summary = UsbAudioEngine::instance().getDiagnosticSummary();
+    return env->NewStringUTF(summary.c_str());
 }
 
 JNIEXPORT jfloatArray JNICALL

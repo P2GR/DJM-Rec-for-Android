@@ -114,7 +114,7 @@ android {
 
     packaging {
         jniLibs {
-            // We statically link Oboe/FLAC/LAME into libdjmrec_audio.so, so only
+            // We statically link Oboe/FLAC into libdjmrec_audio.so, so only
             // the shared C++ runtime and our own library need to ship.
             useLegacyPackaging = false
         }

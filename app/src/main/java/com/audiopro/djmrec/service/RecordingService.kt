@@ -402,7 +402,7 @@ class RecordingService : LifecycleService() {
         if (monitorOnly) {
             beginMonitoring()
         } else {
-            beginUsbIsoEncodingWhenSignalReady(bitDepth, format, totalChannels)
+            beginUsbIsoEncodingWhenSignalReady(bitDepth, format)
         }
     }
 
@@ -471,8 +471,7 @@ class RecordingService : LifecycleService() {
         currentOutputFile = outputFile
         currentFormat = format
 
-        val mp3Bitrate = 320
-        val started = AudioEngine.startRecording(outputFile.absolutePath, format.nativeValue, mp3Bitrate)
+        val started = AudioEngine.startRecording(outputFile.absolutePath, format.nativeValue)
         if (!started) {
             AudioEngine.close()
             releaseIsoConnectionIfNeeded()
@@ -487,15 +486,10 @@ class RecordingService : LifecycleService() {
         _state.value = RecordingState.Recording
     }
 
-    /**
-     * A successful USB isochronous transfer only proves transport works. A DJM-A9 rear USB-B
-     * port can still deliver a valid all-zero stream when its USB output routing is not set.
-     * Wait for source bytes before creating an apparently-valid but silent recording.
-     */
+    /** A valid isochronous transfer can still contain digital silence. Wait for source bytes. */
     private fun beginUsbIsoEncodingWhenSignalReady(
         bitDepth: Int,
-        format: RecordingFormat,
-        totalChannels: Int
+        format: RecordingFormat
     ) {
         val deadlineMs = SystemClock.elapsedRealtime() + USB_SIGNAL_CHECK_TIMEOUT_MS
         val checkSignal = object : Runnable {
@@ -520,12 +514,9 @@ class RecordingService : LifecycleService() {
                 failPreparation(
                     if (receivedBytes == 0L) {
                         "USB audio endpoint sent no data. Reconnect the mixer and retry."
-                    } else if (totalChannels >= 12) {
-                        "DJM-A9 rear USB-B sent digital silence. In DJM-A9 Setting Utility, " +
-                            "route USB 1/2 for this port to MIX (REC OUT with/without MIC), " +
-                            "play audio, then retry. iOS DJM-REC uses the top digital send/return USB port."
                     } else {
-                        "Mixer USB stream contains only digital silence. Check its USB output routing, then retry."
+                        "$deviceLabel sent digital silence after MIX/REC OUT routing. " +
+                            "Check the mixer's USB output setting, play audio, then retry."
                     }
                 )
             }
@@ -607,7 +598,6 @@ class RecordingService : LifecycleService() {
     private fun mimeTypeFor(format: RecordingFormat): String = when (format) {
         RecordingFormat.WAV -> "audio/wav"
         RecordingFormat.FLAC -> "audio/flac"
-        RecordingFormat.MP3 -> "audio/mpeg"
     }
 
     fun setDeviceLabel(label: String) {

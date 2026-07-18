@@ -11,6 +11,8 @@
 #include <thread>
 #include <vector>
 
+#include "PioneerMixerProfiles.h"
+
 struct libusb_context;
 struct libusb_device_handle;
 struct libusb_transfer;
@@ -100,6 +102,9 @@ public:
 
     TransferStatsSnapshot getTransferStats() const;
 
+    /** Release-safe, read-only snapshot used by exported support reports. */
+    std::string diagnosticSummary() const;
+
 private:
     void eventThreadLoop();
     void handleCompletedTransfer(libusb_transfer* transfer);
@@ -108,11 +113,11 @@ private:
     void updateMeasuredSampleRate(size_t frameCount);
     bool submitTransfer(libusb_transfer* transfer);
     bool submitPlaybackTransfer(libusb_transfer* transfer);
-    bool startDjmA9PlaybackSilence(int sampleRate);
-    void configureDjmA9RecordingRoute();
-    void routeAllDjmA9OutputsToMix();
-    void routeDjmA9OutputToMix(int output);
-    void restoreDjmA9RecordingRoute();
+    bool startPioneerPlaybackSilence(int sampleRate);
+    void configurePioneerRecordingRoute();
+    void routeAllPioneerOutputsToMix();
+    void routePioneerOutputToMix(int output);
+    void restorePioneerRecordingRoute();
 
     static void onTransferComplete(libusb_transfer* transfer);
     static void onPlaybackTransferComplete(libusb_transfer* transfer);
@@ -127,16 +132,18 @@ private:
     libusb_device_handle* mHandle = nullptr;
     int mClaimedClockControlInterface = -1;
     int mClaimedPlaybackInterface = -1;
-    std::array<int, 5> mDjmA9OriginalSources{{-1, -1, -1, -1, -1}};
-    std::array<int, 5> mDjmA9AppliedSources{{-1, -1, -1, -1, -1}};
-    std::array<bool, 5> mDjmA9RoutesChanged{{false, false, false, false, false}};
+    const PioneerMixerProfile* mMixerProfile = nullptr;
+    std::array<int, 5> mPioneerOriginalSources{{-1, -1, -1, -1, -1}};
+    std::array<int, 5> mPioneerAppliedSources{{-1, -1, -1, -1, -1}};
+    std::array<bool, 5> mPioneerRoutesChanged{{false, false, false, false, false}};
+    mutable std::mutex mDiagnosticMutex;
     std::vector<libusb_transfer*> mTransfers;
     std::vector<libusb_transfer*> mPlaybackTransfers;
     int mPlaybackPacketsPerSecond = 0;
     int mPlaybackFrameBytes = 0;
     int mPlaybackMaxPacketSize = 0;
     uint64_t mPlaybackFrameRemainder = 0;
-    int mDjmA9FallbackStage = 0;
+    std::atomic<int> mPioneerFallbackStage{0};
 
     std::atomic<bool> mRunning{false};
     std::atomic<int> mOutstandingTransfers{0};
@@ -153,7 +160,7 @@ private:
     std::vector<uint8_t> mWorking;   // scratch: carryover + newest packet, reused per call
     std::vector<int32_t> mScratch;   // reusable decode buffer, grown as needed
     std::vector<uint32_t> mPairPeaks;
-    int mResolvedChannelOffset = -1;
+    std::atomic<int> mResolvedChannelOffset{-1};
     size_t mFramesSincePeakLog = 0;
     uint64_t mBytesSincePeakLog = 0;
     uint64_t mNonZeroBytesSincePeakLog = 0;

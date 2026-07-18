@@ -3,8 +3,7 @@ package com.audiopro.djmrec.audio
 /** Container formats the native encoder chain supports. Ordinal maps 1:1 to the C++ enum. */
 enum class RecordingFormat(val nativeValue: Int, val extension: String) {
     WAV(0, "wav"),
-    FLAC(1, "flac"),
-    MP3(2, "mp3")
+    FLAC(1, "flac")
 }
 
 /** Bit depth requested from the hardware. 24-bit is packed into a 32-bit container by AAudio. */

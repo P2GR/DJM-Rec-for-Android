@@ -5,33 +5,72 @@
 [![NDK](https://img.shields.io/badge/NDK-26.1-blue?logo=android&logoColor=white)](https://developer.android.com/ndk)
 [![Min SDK](https://img.shields.io/badge/minSdk-29-32DE84?logo=android&logoColor=white)]()
 
-Dedicated Android recorder for capturing DJ sets from a Pioneer DJM mixer's USB audio output.
+Open-source Android recorder for capturing DJ sets from Pioneer DJM mixer USB audio outputs.
 
-AAudio cannot select an arbitrary pair from the DJM-A9's 12-channel UAC2 input. This app uses
-root-free `libusb` isochronous capture, asks the mixer to route MIX (REC OUT) to the selected
-USB pair, then extracts that pair from the wire.
+Android cannot select arbitrary stereo pairs from multichannel DJ mixer inputs. DJM Rec uses
+root-free `libusb` isochronous capture, temporarily routes MIX/REC OUT to a USB pair, then
+extracts that pair from the wire.
+
+Download signed APKs from [GitHub Releases](https://github.com/P2GR/DJM-Rec-for-Android/releases).
+
+## Mixer support
+
+| Mixer | USB IDs | Status |
+|---|---|---|
+| DJM-A9 | `2B73:003C` | Hardware validated |
+| DJM-V5 | `2B73:0058` through `2B73:005B` | Driver-derived implementation, hardware test needed |
+| DJM-900NXS2 | `2B73:000A` | Driver-derived implementation, hardware test needed |
+| DJM-750MK2 | `2B73:001B` | Driver-derived implementation, hardware test needed |
+
+V5, 900NXS2, and 750MK2 profiles use each model's extracted vendor-control read format and
+MIX/REC OUT source values. Route changes are read, verified, and restored when capture stops.
+Unknown devices never receive Pioneer vendor routing requests.
+
+Installed Windows driver binaries were used only for interoperability research. They remain
+ignored and are not distributed by this repository.
+
+DJM-A9 supports USB-C to USB-C or USB-B to USB-C. DJM-900NXS2 and DJM-750MK2 require
+USB-B to USB-C. Cable must support data and USB host/OTG mode.
+
+## Features
+
+| Module | Description |
+|---|---|
+| USB recording | Capture multichannel UAC2 audio to WAV or FLAC |
+| Live monitoring | Stereo meters and optional CDJ-style RGB waveform |
+| Recording library | Browse, share, rename, and delete saved sets |
+| Diagnostics | Export USB descriptors, UAC topology, mixer profile, routes, and transfer health |
+| Updates | Check GitHub Releases without interrupting active recordings |
 
 ## Build
 
 ```bash
 ./gradlew assembleDebug
 ./gradlew assembleRelease
-./gradlew assembleLocal      # installable local test APK, signed with ~/.android/debug.keystore
+./gradlew assembleLocal
 ```
 
-Needs JDK 17, NDK 26.1, CMake 3.22.1. Emulator won't work — you need a physical device with
-USB host and a UAC2 mixer plugged in.
+Requires JDK 17, NDK 26.1, CMake 3.22.1, and an ARM64 Android device with USB host support.
+Emulators cannot test physical USB audio capture.
 
-Release builds are unsigned unless `keystore.properties` is present. They never fall back to a
-debug signing key. Use `assembleLocal` for phone testing; never publish its debug-signed APK.
+Release builds require `keystore.properties`. They never fall back to debug signing.
+`assembleLocal` creates an installable test APK signed with the Android debug key. Never publish
+that APK.
 
-## Features
+## How it works
 
-| Module | Description |
+| Layer | Implementation |
 |---|---|
-| USB Recording | Capture multichannel UAC2 audio from Pioneer DJM mixers to WAV/FLAC/MP3 |
-| Live monitoring | Stereo input meters and an optional CDJ-style RGB waveform |
-| Recording library | Browse and manage saved sets from the app |
+| USB transport | Root-free raw isochronous capture through `libusb_wrap_sys_device()` |
+| Mixer routing | Model profiles using verified Pioneer vendor controls |
+| Channel extraction | Native C++ demux of one stereo pair from multichannel PCM |
+| Audio engine | Raw USB path for supported mixers, AAudio fallback for generic stereo UAC devices |
+| Encoding | WAV and FLAC (libFLAC 1.4.3) |
+| Diagnostics | Structured USB/UAC/profile/session snapshot plus app logcat in release builds |
+| UI | Jetpack Compose, stereo meters, optional RGB waveform, format selector |
+
+The `WaveformAnalyzer` uses a three-band IIR filter bank to render a scrolling
+CDJ-3000-style RGB waveform.
 
 ## Releases
 
@@ -47,67 +86,21 @@ SHA-256 checksum:
 
 ```powershell
 git add version.properties
-git commit -m "chore: release v0.34.0"
-git tag v0.34.0
-git push origin main v0.34.0
+git commit -m "chore: release v0.35.0"
+git tag v0.35.0
+git push origin main v0.35.0
 ```
 
-Configure these GitHub Actions secrets before tagging a release:
+Required GitHub Actions secrets:
 
-- `ANDROID_KEYSTORE_BASE64`: base64-encoded release `.jks`
+- `ANDROID_KEYSTORE_BASE64`
 - `ANDROID_STORE_PASSWORD`
 - `ANDROID_KEY_ALIAS`
 - `ANDROID_KEY_PASSWORD`
 
-Create the release key once, then keep multiple secure backups. Losing this key prevents future
-versions from updating existing installations:
-
-```powershell
-keytool -genkeypair -v -keystore decklab-release.jks -alias decklab -keyalg RSA -keysize 4096 -validity 10000
-[Convert]::ToBase64String([IO.File]::ReadAllBytes("decklab-release.jks")) | Set-Clipboard
-```
-
-Paste the clipboard value into `ANDROID_KEYSTORE_BASE64`; add the remaining values in GitHub
-under **Settings > Secrets and variables > Actions**. The workflow verifies the APK signature
-before publishing it.
-
-The installed app checks `P2GR/DJM-Rec-for-Android` GitHub Releases for a newer version. Update prompts
-are deferred while a recording is being prepared, recorded, or paused.
-
-## MP3 support
-
-FLAC and Oboe are fetched by CMake automatically. LAME is not — it's LGPL and distributed
-as an autotools project, so you need to drop the source in yourself:
-
-1. Grab [LAME 3.100](https://sourceforge.net/projects/lame/files/lame/3.100/)
-2. Copy `libmp3lame/` → `app/src/main/cpp/third_party/lame/libmp3lame/`
-3. Copy `include/lame.h` → `app/src/main/cpp/third_party/lame/include/lame/lame.h`
-4. Rebuild
-
-Without it the app still works — the MP3 option just won't start recording.
-
-## How it works
-
-| Layer | What |
-|---|---|
-| USB transport | `libusb` raw isochronous capture (root-free, uses Android's existing `UsbManager` permission) |
-| Mixer routing | Verified DJM-A9 vendor controls route MIX (REC OUT) to the selected USB pair |
-| Channel extraction | Native C++ demuxes the selected pair from the 12-channel PCM stream |
-| Audio engine | Dual-mode: `libusb` iso path for multichannel mixers, AAudio exclusive fallback for plain stereo devices |
-| Encoding | WAV, FLAC (libFLAC 1.4.3), MP3 (LAME, optional) |
-| UI | Jetpack Compose + Material 3 — stereo VU meter, RGB waveform, format selector |
-
-There's also a `WaveformAnalyzer` (three-band IIR filter bank → red/green/blue waveform)
-rendered as a scrolling CDJ-3000-style display while recording.
-
-## DJM-A9 routing
-
-The app defaults to USB channels 9/10, reads their current mixer route, temporarily selects
-`MIX (REC OUT without MIC)`, verifies the change, and restores the previous route after capture.
-The request layout and route table come from Pioneer `DJM-A9_Setup.dll` version 1.100.002.0.
-Routing is enabled only for VID `0x2B73`, PID `0x003C`; other mixers remain unchanged.
+The installed app checks `P2GR/DJM-Rec-for-Android` GitHub Releases for newer versions.
+Update prompts wait until recording preparation, recording, or pause has ended.
 
 ## License
 
-Source is provided as reference. Oboe, libFLAC, LAME, and libusb each carry their own
-licenses.
+Licensed under the MIT License. Oboe, libFLAC, tinyalsa, and libusb retain their own licenses.
