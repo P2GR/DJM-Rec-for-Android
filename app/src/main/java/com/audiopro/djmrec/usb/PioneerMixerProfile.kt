@@ -31,14 +31,26 @@ enum class PioneerMixerProfile(
      * `extractChannelOffset = -1` (auto-pick loudest pair) is used at the call site specifically
      * to stay robust against this channel-count guess being off by a constant factor.
      *
-     * UPDATE 2026-07-20: a raw hex dump of the untouched capture-endpoint wire bytes (see
+     * UPDATE 2026-07-20 (a): a raw hex dump of the untouched capture-endpoint wire bytes (see
      * [com.audiopro.djmrec.diagnostics] logcat output, `raw iso packet #N dump`) confirmed
      * genuine all-zero payload on every MIX-routed pair while music was confirmed audibly playing
      * on the mixer -- this rules out the channel/bit-depth guess above as the cause of silence (a
-     * wrong format would misplace real nonzero bytes into the wrong slots, not zero them). The
-     * native isochronous pipeline now also drives the OUT endpoint with silence
-     * (`requiresPlaybackTraffic`, see [com.audiopro.djmrec] native `PioneerMixerProfiles.h`) as
-     * the current working hypothesis for what unlocks real audio on the IN side.
+     * wrong format would misplace real nonzero bytes into the wrong slots, not zero them). Fixed
+     * by sending the UAC1 SET_CUR sampling-frequency control transfer unconditionally (see
+     * `setPioneerCaptureSampleRate` call site in native `UsbIsoAudioSource.cpp`), matching
+     * Pioneer's own driver sequence captured via USBPcap -- real audio started flowing.
+     *
+     * UPDATE 2026-07-20 (b): once real audio was flowing, recordings came out quiet and
+     * "washing machine"-distorted. Testing the real captured wire bytes from Pioneer's own driver
+     * (whit_sound_on.pcapng, device 2b73:000a, endpoint 0x82) against every plausible
+     * channel-count/subframe combination -- scoring each by how smooth/autocorrelated the decoded
+     * samples come out, since real audio is continuous and a wrong stride produces near-noise --
+     * showed 12 channels at 3-byte (24-bit) subframes fits roughly 10x better than every other
+     * combination, including the 10-channel guess below. Corroborated independently: this app's
+     * own observed capture packets are consistently 216 bytes, which divides evenly into 6 frames
+     * of 12ch x 3B (36B/frame) but never evenly into the old assumed 10ch x 3B (30B/frame,
+     * 216/30=7.2) -- a whole session's worth of packets that never once contained a whole number
+     * of "frames" under the old assumption. vendorCaptureChannelCount corrected to 12.
      */
     val vendorCaptureInterface: Int = -1,
     val vendorCaptureAlternateSetting: Int = -1,
@@ -68,7 +80,7 @@ enum class PioneerMixerProfile(
         listOf(0x0A, 0x0A, 0x0A, 0x0A, 0x0A),
         requiresPlaybackTraffic = true, playbackInterface = 0, playbackAlternateSetting = 1,
         vendorCaptureInterface = 0, vendorCaptureAlternateSetting = 1,
-        vendorCaptureChannelCount = 10, vendorCaptureSubframeSize = 3, vendorCaptureBitResolution = 24,
+        vendorCaptureChannelCount = 12, vendorCaptureSubframeSize = 3, vendorCaptureBitResolution = 24,
         additionalMixOutputs = listOf(4)
     ),
     DJM_750MK2(

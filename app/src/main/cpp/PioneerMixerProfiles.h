@@ -58,7 +58,11 @@ constexpr PioneerMixerProfile kDjm900Nxs2Profile{
     "DJM-900NXS2", 0x000A, 0x000A, 5, 0,
     {0x0A, 0x0A, 0x0A, 0x0A, 0x0A},
     {0x0A, 0x0A, 0x0A, 0x0A, 0x0A},
-    PioneerRouteReadMode::AllOutputs, true, true, 0, 1, 10, 3
+    // playbackChannels/playbackSubframeBytes only size the zero-filled OUT silence buffer (see
+    // "washing machine" wire-format correction in PioneerMixerProfile.kt: real capture data is
+    // 12ch/24-bit, not 10ch as originally guessed here) -- kept consistent for documentation, but
+    // since the OUT content is always zero this has no effect on captured audio either way.
+    PioneerRouteReadMode::AllOutputs, true, true, 0, 1, 12, 3
 };
 
 constexpr PioneerMixerProfile kDjm750Mk2Profile{
