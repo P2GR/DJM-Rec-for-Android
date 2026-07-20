@@ -185,8 +185,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setUsbChannelOffset(offset: Int) {
         val sanitized = if (offset < 0) UsbAudioManager.AUTO_CHANNEL_OFFSET else offset
+        if (sanitized == _usbChannelOffset.value) return
         prefs.edit().putInt(KEY_USB_CHANNEL_OFFSET, sanitized).apply()
         _usbChannelOffset.value = sanitized
+
+        // The offset is only read when the native capture session opens (baked into the
+        // service Intent), so an already-running monitor stream won't pick up the new pair on
+        // its own. Restart it here so the VU meter reflects the new pair immediately -- this is
+        // the whole point of exposing the picker: audition pairs against live audio, the same
+        // way the Windows Setting Utility lets you flip MIX/REC OUT between USB pairs and watch
+        // levels move. Never auto-restart out of Recording/Paused -- that would kill a take.
+        if (_recordingState.value is RecordingState.Monitoring) {
+            val context = getApplication<Application>()
+            viewModelScope.launch {
+                sendCommand(RecordingService.ACTION_STOP)
+                delay(250L)
+                startMonitoringDevice(context)
+            }
+        }
     }
 
     fun setForceAndroidCapture(enabled: Boolean) {
@@ -250,7 +266,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val context = getApplication<Application>()
 
         if (_recordingState.value is RecordingState.Preparing) {
-            context.startService(
+            startServiceSafely(
+                context,
                 Intent(context, RecordingService::class.java)
                     .setAction(RecordingService.ACTION_START)
                     .putExtra(RecordingService.EXTRA_FORMAT, _selectedFormat.value.nativeValue)
@@ -260,7 +277,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         // If already monitoring, begin encoding to file.
         if (_recordingState.value is RecordingState.Monitoring) {
-            context.startService(
+            startServiceSafely(
+                context,
                 Intent(context, RecordingService::class.java)
                     .setAction(RecordingService.ACTION_START)
                     .putExtra(RecordingService.EXTRA_FORMAT, _selectedFormat.value.nativeValue)
@@ -329,8 +347,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 putExtra(RecordingService.EXTRA_CHANNEL_COUNT, if (device.isPioneer) 2 else device.channelCount)
             }
         }
-        ContextCompat.startForegroundService(context, intent)
-        boundService?.setDeviceLabel(device.productName)
+        val hadIsoHandle = intent.hasExtra(RecordingService.EXTRA_USB_FD)
+        if (startForegroundServiceSafely(context, intent, hadIsoHandle)) {
+            boundService?.setDeviceLabel(device.productName)
+        }
     }
 
     /** Opens the audio stream for live monitoring (meters + waveform) without writing a file. */
@@ -375,9 +395,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 putExtra(RecordingService.EXTRA_CHANNEL_COUNT, if (device.isPioneer) 2 else device.channelCount)
             }
         }
-        ContextCompat.startForegroundService(context, intent)
-        boundService?.setDeviceLabel(device.productName)
-        Log.i(TAG, "USB attached: auto-starting live monitor for ${device.productName}")
+        val hadIsoHandle = intent.hasExtra(RecordingService.EXTRA_USB_FD)
+        if (startForegroundServiceSafely(context, intent, hadIsoHandle)) {
+            boundService?.setDeviceLabel(device.productName)
+            Log.i(TAG, "USB attached: auto-starting live monitor for ${device.productName}")
+        }
     }
 
     private fun startRootAlsaRecording(context: Context, device: UsbAudioDeviceInfo?): Boolean {
@@ -415,7 +437,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             putExtra(RecordingService.EXTRA_USB_TOTAL_CHANNELS, totalChannels)
             putExtra(RecordingService.EXTRA_USB_CHANNEL_OFFSET, _usbChannelOffset.value)
         }
-        ContextCompat.startForegroundService(context, intent)
+        if (!startForegroundServiceSafely(context, intent)) return false
         boundService?.setDeviceLabel("Root ALSA ${rootAlsaDevice.description}")
         Log.i(TAG, "starting root ALSA capture from ${rootAlsaDevice.path}: ${rootAlsaDevice.description}")
         return true
@@ -449,7 +471,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             putExtra(RecordingService.EXTRA_CHANNEL_COUNT, 2)
             putExtra(RecordingService.EXTRA_FORMAT, _selectedFormat.value.nativeValue)
         }
-        ContextCompat.startForegroundService(context, intent)
+        if (!startForegroundServiceSafely(context, intent)) return false
         boundService?.setDeviceLabel("DJM REC Port (${usbDevice.productName})")
         Log.i(TAG, "DJM REC port: starting AAudio capture deviceId=${usbDevice.id} @ ${sampleRate}Hz")
         return true
@@ -461,7 +483,53 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun sendCommand(action: String) {
         val context = getApplication<Application>()
-        context.startService(Intent(context, RecordingService::class.java).setAction(action))
+        startServiceSafely(context, Intent(context, RecordingService::class.java).setAction(action))
+    }
+
+    /**
+     * Same background-start restriction as [startForegroundServiceSafely], but for plain
+     * `startService()`: observed crashing with `BackgroundServiceStartNotAllowedException` when
+     * a USB detach (`usbDeviceReceiver`, see `UsbAudioManager`) triggers an ACTION_STOP a few
+     * minutes after the user last touched the app -- a background `BroadcastReceiver` doesn't
+     * count as enough "foreground-ness" for Android to allow it. Whatever command this was
+     * carrying (start/pause/resume/stop) is either already moot (service already gone) or not
+     * actionable by the user right now (they're not looking at the app); either way, this only
+     * needs to not crash it.
+     */
+    private fun startServiceSafely(context: Context, intent: Intent) {
+        try {
+            context.startService(intent)
+        } catch (e: IllegalStateException) {
+            Log.w(TAG, "startService(${intent.action}) refused by the OS: ${e.message}")
+        }
+    }
+
+    /**
+     * Android 12+ refuses `startForegroundService()` outright (throwing
+     * `ForegroundServiceStartNotAllowedException`, an `IllegalStateException`) when it decides
+     * the app isn't in a state that justifies it -- observed on-device as an intermittent crash
+     * right when the record button (or an auto-restart after a USB channel-pair change) tried to
+     * start the service. There's no reliable way to predict the OS's call in advance, so this
+     * just makes the failure a visible error instead of a fatal crash. `hadIsoHandle` releases
+     * the just-opened libusb connection on failure -- otherwise it leaks open (never handed to a
+     * service that would close it) and blocks the next attempt from claiming the interface.
+     */
+    private fun startForegroundServiceSafely(
+        context: Context,
+        intent: Intent,
+        hadIsoHandle: Boolean = false
+    ): Boolean {
+        return try {
+            ContextCompat.startForegroundService(context, intent)
+            true
+        } catch (e: IllegalStateException) {
+            Log.w(TAG, "startForegroundService refused by the OS: ${e.message}")
+            if (hadIsoHandle) usbAudioManager.releaseIsoCaptureConnection()
+            _recordingState.value = RecordingState.Error(
+                "Android blocked starting the recording service -- try pressing record again"
+            )
+            false
+        }
     }
 
     override fun onCleared() {

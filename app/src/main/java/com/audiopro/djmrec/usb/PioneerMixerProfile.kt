@@ -10,7 +10,50 @@ enum class PioneerMixerProfile(
     val mixWithoutMicSources: List<Int>,
     val requiresPlaybackTraffic: Boolean = false,
     val playbackInterface: Int = -1,
-    val playbackAlternateSetting: Int = -1
+    val playbackAlternateSetting: Int = -1,
+    /**
+     * Some models (confirmed: DJM-900NXS2) don't declare their audio-carrying interface under
+     * the standard USB Audio Class (class 1 / subclass 2) at all -- the isochronous IN endpoint
+     * lives on a USB_CLASS_VENDOR_SPEC (255) interface instead, which
+     * [com.audiopro.djmrec.usb.UsbAudioDescriptorParser.findAudioStreamingInterfaces] never
+     * looks at. When set (>= 0), [UsbAudioManager] falls back to scanning this exact
+     * (interface, alt setting) for its isochronous IN endpoint regardless of declared class, and
+     * uses [vendorCaptureChannelCount]/[vendorCaptureSubframeSize]/[vendorCaptureBitResolution]
+     * as the wire format, since a vendor-class interface has no CS_INTERFACE AS_GENERAL/FORMAT_TYPE
+     * descriptors to read those from.
+     *
+     * DJM-900NXS2 values: endpoint (0x82 IN / 0x01 OUT, both isochronous, 1024B, interval 1)
+     * confirmed via on-device descriptor dump (2026-07-20). Channel count/subframe/bit
+     * resolution are NOT confirmed -- no CS descriptor declares them, and no known Pioneer driver
+     * for this model has been decompiled. The guess of 10ch/24-bit mirrors the DJM-A9's confirmed
+     * playbackChannels=10/subframeBytes=3, since both share the identical 5-output
+     * PioneerMixerProfile shape (suggesting the same underlying multichannel wire template).
+     * `extractChannelOffset = -1` (auto-pick loudest pair) is used at the call site specifically
+     * to stay robust against this channel-count guess being off by a constant factor.
+     *
+     * UPDATE 2026-07-20: a raw hex dump of the untouched capture-endpoint wire bytes (see
+     * [com.audiopro.djmrec.diagnostics] logcat output, `raw iso packet #N dump`) confirmed
+     * genuine all-zero payload on every MIX-routed pair while music was confirmed audibly playing
+     * on the mixer -- this rules out the channel/bit-depth guess above as the cause of silence (a
+     * wrong format would misplace real nonzero bytes into the wrong slots, not zero them). The
+     * native isochronous pipeline now also drives the OUT endpoint with silence
+     * (`requiresPlaybackTraffic`, see [com.audiopro.djmrec] native `PioneerMixerProfiles.h`) as
+     * the current working hypothesis for what unlocks real audio on the IN side.
+     */
+    val vendorCaptureInterface: Int = -1,
+    val vendorCaptureAlternateSetting: Int = -1,
+    val vendorCaptureChannelCount: Int = -1,
+    val vendorCaptureSubframeSize: Int = -1,
+    val vendorCaptureBitResolution: Int = -1,
+    /**
+     * Extra 0-based output indices (beyond [defaultCaptureChannelOffset]'s output) that
+     * [com.audiopro.djmrec.usb.UsbAudioManager.establishPioneerRoute] should also set to MIX.
+     * DJM-900NXS2: a USBPcap capture of Pioneer's Setting Utility confirmed both output 1
+     * (USB1/2) and output 5 (USB9/10, index 4) accept `source=0x0A` for MIX -- routing both
+     * up front means the app's own USB-channel-pair picker (and the auto-pick-loudest-pair
+     * fallback) can land on either without a second round of vendor requests.
+     */
+    val additionalMixOutputs: List<Int> = emptyList()
 ) {
     DJM_A9(
         "DJM-A9", setOf(0x003C), 8, 5, RouteReadMode.SINGLE_OUTPUT_ZERO_BASED,
@@ -22,12 +65,18 @@ enum class PioneerMixerProfile(
     ),
     DJM_900NXS2(
         "DJM-900NXS2", setOf(0x000A), 0, 5, RouteReadMode.ALL_OUTPUTS,
-        listOf(0x0A, 0x0A, 0x0A, 0x0A, 0x0A)
+        listOf(0x0A, 0x0A, 0x0A, 0x0A, 0x0A),
+        requiresPlaybackTraffic = true, playbackInterface = 0, playbackAlternateSetting = 1,
+        vendorCaptureInterface = 0, vendorCaptureAlternateSetting = 1,
+        vendorCaptureChannelCount = 10, vendorCaptureSubframeSize = 3, vendorCaptureBitResolution = 24,
+        additionalMixOutputs = listOf(4)
     ),
     DJM_750MK2(
         "DJM-750MK2", setOf(0x001B), 0, 5, RouteReadMode.ALL_OUTPUTS,
         listOf(0x0F, 0x0F, 0x0F, 0x0F, 0x0A)
     );
+
+    val hasVendorCaptureOverride: Boolean get() = vendorCaptureInterface >= 0
 
     enum class RouteReadMode(val responseLength: Int) {
         SINGLE_OUTPUT_ZERO_BASED(2),

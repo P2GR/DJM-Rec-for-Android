@@ -17,6 +17,7 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.os.Process
 import android.os.SystemClock
+import android.util.Log
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -89,6 +90,7 @@ class RecordingService : LifecycleService() {
         const val EXTRA_USB_PRODUCT_ID = "extra_usb_product_id"
         const val EXTRA_USB_RAW_DESCRIPTORS = "extra_usb_raw_descriptors"
 
+        private const val TAG = "RecordingService"
         private const val CHANNEL_ID = "recording_channel"
         private const val NOTIFICATION_ID = 1001
         private const val METER_UPDATE_INTERVAL_MS = 66L // ~15 fps, plenty for a VU meter
@@ -201,7 +203,11 @@ class RecordingService : LifecycleService() {
                 pendingRecordingFormat = null
                 _state.value = RecordingState.Preparing
                 // Promote before native USB open/rate probing can block.
-                startForegroundNotification()
+                if (!startForegroundNotification()) {
+                    _state.value = RecordingState.Error("Android blocked the recording service -- open the app and try again")
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
                 val sampleRate = intent.getIntExtra(EXTRA_SAMPLE_RATE, 48000)
                 val bitDepth = intent.getIntExtra(EXTRA_BIT_DEPTH, 24)
                 val captureMode = intent.getIntExtra(EXTRA_CAPTURE_MODE, CAPTURE_MODE_AAUDIO)
@@ -262,7 +268,11 @@ class RecordingService : LifecycleService() {
                     return START_NOT_STICKY
                 }
                 _state.value = RecordingState.Preparing
-                startForegroundNotification()
+                if (!startForegroundNotification()) {
+                    _state.value = RecordingState.Error("Android blocked the recording service -- open the app and try again")
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
                 // Otherwise, open stream + encode immediately (full recording from idle).
                 val sampleRate = intent.getIntExtra(EXTRA_SAMPLE_RATE, 48000)
                 val bitDepth = intent.getIntExtra(EXTRA_BIT_DEPTH, 24)
@@ -454,7 +464,13 @@ class RecordingService : LifecycleService() {
             return
         }
         acquireWakeLock()
-        startForegroundNotification()
+        if (!startForegroundNotification()) {
+            AudioEngine.close()
+            releaseIsoConnectionIfNeeded()
+            failPreparation("Android blocked the recording service -- open the app and try again")
+            stopSelf()
+            return
+        }
         monitorHandler.post(meterRunnable)
         monitorHandler.post(notificationRunnable)
         _state.value = RecordingState.Monitoring
@@ -480,7 +496,13 @@ class RecordingService : LifecycleService() {
         }
 
         acquireWakeLock()
-        startForegroundNotification()
+        if (!startForegroundNotification()) {
+            AudioEngine.close()
+            releaseIsoConnectionIfNeeded()
+            failPreparation("Android blocked the recording service -- open the app and try again")
+            stopSelf()
+            return
+        }
         monitorHandler.post(meterRunnable)
         monitorHandler.post(notificationRunnable)
         _state.value = RecordingState.Recording
@@ -644,7 +666,19 @@ class RecordingService : LifecycleService() {
         NotificationManagerCompat.from(this).createNotificationChannel(channel)
     }
 
-    private fun startForegroundNotification() {
+    /**
+     * Returns false instead of crashing when the OS refuses to promote this service to
+     * foreground -- observed on-device as `SecurityException: Starting FGS with type
+     * microphone ... requires ... and the app must be in the eligible state/exemptions`,
+     * thrown from deep inside `Service.startForeground()` itself (i.e. after
+     * `ContextCompat.startForegroundService()` on the caller side already returned normally --
+     * catching there, as [com.audiopro.djmrec.ui.MainViewModel.startForegroundServiceSafely]
+     * does, is not enough). This can happen even with RECORD_AUDIO granted and
+     * FOREGROUND_SERVICE_MICROPHONE declared: Android 14+ additionally requires the app to be
+     * in a narrow "recently interacted with" eligibility window for a microphone-type FGS
+     * specifically, which a device-attach auto-start can miss by the time onStartCommand runs.
+     */
+    private fun startForegroundNotification(): Boolean {
         val notification = buildNotification()
         // minSdk is 29 (Q), so the ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE overload is
         // always available — no legacy startForeground(id, notification) fallback needed.
@@ -653,7 +687,16 @@ class RecordingService : LifecycleService() {
         } else {
             0
         }
-        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, foregroundType)
+        return try {
+            ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, foregroundType)
+            true
+        } catch (e: SecurityException) {
+            Log.w(TAG, "startForeground refused by the OS: ${e.message}")
+            false
+        } catch (e: IllegalStateException) {
+            Log.w(TAG, "startForeground refused by the OS: ${e.message}")
+            false
+        }
     }
 
     private fun updateNotification() {

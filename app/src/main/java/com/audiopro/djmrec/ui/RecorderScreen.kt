@@ -39,6 +39,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.audiopro.djmrec.audio.RecordingState
+import com.audiopro.djmrec.ui.components.ChannelPairSelector
 import com.audiopro.djmrec.ui.components.DeviceStatusCard
 import com.audiopro.djmrec.ui.components.FormatSelector
 import com.audiopro.djmrec.ui.components.RgbWaveform
@@ -59,6 +60,7 @@ fun RecorderScreen(viewModel: MainViewModel) {
     val selectedFormat by viewModel.selectedFormat.collectAsState()
     val djmrecPortMode by viewModel.djmrecPortMode.collectAsState()
     val otgStatus by viewModel.otgStatus.collectAsState()
+    val usbChannelOffset by viewModel.usbChannelOffset.collectAsState()
     val context = LocalContext.current
 
     LaunchedEffect(device?.deviceName) {
@@ -125,7 +127,9 @@ fun RecorderScreen(viewModel: MainViewModel) {
                     recordingState is RecordingState.Error,
                 onFormatSelected = viewModel::selectFormat,
                 device = device,
-                onRescan = viewModel::rescanUsbDevices
+                onRescan = viewModel::rescanUsbDevices,
+                channelOffset = usbChannelOffset,
+                onChannelOffsetSelected = viewModel::setUsbChannelOffset
             )
         }
 
@@ -257,7 +261,9 @@ private fun RecordingSetupSection(
     formatEnabled: Boolean,
     onFormatSelected: (com.audiopro.djmrec.audio.RecordingFormat) -> Unit,
     device: com.audiopro.djmrec.usb.UsbAudioDeviceInfo?,
-    onRescan: () -> Unit
+    onRescan: () -> Unit,
+    channelOffset: Int,
+    onChannelOffsetSelected: (Int) -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -287,6 +293,19 @@ private fun RecordingSetupSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             DeviceStatusCard(device = device, onRescan = onRescan)
+            if (device != null && device.channelCount > 2) {
+                Text(
+                    "USB CHANNEL PAIR",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                ChannelPairSelector(
+                    selectedOffset = channelOffset,
+                    pairCount = device.channelCount / 2,
+                    enabled = formatEnabled,
+                    onSelect = onChannelOffsetSelected
+                )
+            }
         }
     }
 }

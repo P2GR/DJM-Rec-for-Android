@@ -164,6 +164,7 @@ private:
     size_t mFramesSincePeakLog = 0;
     uint64_t mBytesSincePeakLog = 0;
     uint64_t mNonZeroBytesSincePeakLog = 0;
+    int mRawPacketDumpsLogged = 0; // caps one-time hex dumps of raw iso packet payload at capture start
     std::atomic<int> mOpenedSampleRate{0};
 
     std::mutex mRateProbeMutex;
