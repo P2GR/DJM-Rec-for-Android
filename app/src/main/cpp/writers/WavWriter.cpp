@@ -4,6 +4,7 @@
 #include <android/log.h>
 #include <cstring>
 #include <limits>
+#include <unistd.h>
 
 #define TAG "WavWriter"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
@@ -18,30 +19,51 @@ void writeU16(FILE* f, uint16_t v) { fwrite(&v, sizeof(v), 1, f); }
 }
 
 bool WavWriter::open(const std::string& path, const AudioFormatInfo& format) {
+    FILE* file = fopen(path.c_str(), "wb");
+    if (!file) {
+        LOGE("Failed to open %s for writing", path.c_str());
+        return false;
+    }
+    return initialize(file, format, path.c_str());
+}
+
+bool WavWriter::openFd(int fd, const AudioFormatInfo& format) {
+    const int duplicated = dup(fd);
+    if (duplicated < 0) {
+        LOGE("Failed to duplicate MediaStore fd %d", fd);
+        return false;
+    }
+    FILE* file = fdopen(duplicated, "wb");
+    if (!file) {
+        ::close(duplicated);
+        LOGE("fdopen failed for MediaStore fd %d", fd);
+        return false;
+    }
+    return initialize(file, format, "MediaStore fd");
+}
+
+bool WavWriter::initialize(FILE* file, const AudioFormatInfo& format, const char* description) {
     if (format.sampleRate <= 0 || format.channelCount <= 0 ||
         (format.bitsPerSample != 16 && format.bitsPerSample != 24 && format.bitsPerSample != 32)) {
         LOGE("Invalid WAV format: %dHz / %d-bit / %dch", format.sampleRate,
              format.bitsPerSample, format.channelCount);
+        fclose(file);
         return false;
     }
     mFormat = format;
     mBytesPerSample = format.bitsPerSample / 8;
     mDataBytesWritten = 0;
 
-    mFile = fopen(path.c_str(), "wb");
-    if (!mFile) {
-        LOGE("Failed to open %s for writing", path.c_str());
-        return false;
-    }
+    mFile = file;
 
     writeHeaderPlaceholder();
     if (ferror(mFile)) {
-        LOGE("Failed to write WAV header for %s", path.c_str());
+        LOGE("Failed to write WAV header for %s", description);
         fclose(mFile);
         mFile = nullptr;
         return false;
     }
-    LOGI("Opened WAV %s @ %dHz / %d-bit / %dch", path.c_str(), mFormat.sampleRate,
+    LOGI("Opened WAV %s @ %dHz / %d-bit / %dch", description, mFormat.sampleRate,
          mFormat.bitsPerSample, mFormat.channelCount);
     return true;
 }
@@ -136,12 +158,18 @@ bool WavWriter::patchHeaderSizes() {
 
     if (fseek(mFile, 40, SEEK_SET) != 0) return false;
     writeU32(mFile, dataSize);
-    return fflush(mFile) == 0 && !ferror(mFile);
+    if (fflush(mFile) != 0 || ferror(mFile)) return false;
+    return fseek(mFile, 0, SEEK_END) == 0;
+}
+
+bool WavWriter::checkpoint() {
+    if (!mFile || !patchHeaderSizes()) return false;
+    return fsync(fileno(mFile)) == 0;
 }
 
 bool WavWriter::close() {
     if (!mFile) return true;
-    const bool headerOk = patchHeaderSizes();
+    const bool headerOk = checkpoint();
     const bool closeOk = fclose(mFile) == 0;
     const bool ok = headerOk && closeOk;
     mFile = nullptr;

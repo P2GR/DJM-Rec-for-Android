@@ -19,8 +19,8 @@ Download signed APKs from [GitHub Releases](https://github.com/P2GR/DJM-Rec-for-
 |---|---|---|
 | DJM-A9 | `2B73:003C` | Hardware validated |
 | DJM-V5 | `2B73:0058` through `2B73:005B` | Driver-derived implementation, hardware test needed |
-| DJM-900NXS2 | `2B73:000A` | Driver-derived implementation, hardware test needed |
-| DJM-750MK2 | `2B73:001B` | Driver-derived implementation, hardware test needed |
+| DJM-900NXS2 | `2B73:000A` | Hardware validated (v0.36) |
+| DJM-750MK2 | `2B73:001B` | Vendor-capture profile configured, hardware test needed |
 
 V5, 900NXS2, and 750MK2 profiles use each model's extracted vendor-control read format and
 MIX/REC OUT source values. Route changes are read, verified, and restored when capture stops.
@@ -38,6 +38,7 @@ USB-B to USB-C. Cable must support data and USB host/OTG mode.
 |---|---|
 | USB recording | Capture multichannel UAC2 audio to WAV or FLAC |
 | Live monitoring | Stereo meters and optional CDJ-style RGB waveform |
+| Livestreaming | Send mixer audio plus custom artwork, rear camera, or front camera over RTMP/RTMPS |
 | Recording library | Browse, share, rename, and delete saved sets |
 | Diagnostics | Export USB descriptors, UAC topology, mixer profile, routes, and transfer health |
 | Updates | Check GitHub Releases without interrupting active recordings |
@@ -72,6 +73,41 @@ that APK.
 The `WaveformAnalyzer` uses a three-band IIR filter bank to render a scrolling
 CDJ-3000-style RGB waveform.
 
+## Livestreaming
+
+Connect a mixer and wait for USB monitoring, then open **Go Live**. Choose a custom image, rear
+camera, or front camera. Artwork mode has no built-in image; select one through Android's document
+picker. Its read permission is retained for later streams. Camera output and preview follow device
+rotation. Mixer PCM is converted to stable stereo PCM16 blocks and encoded as AAC. Video is H.264
+at 720p/30 fps with a 2-second keyframe interval. WAV/FLAC recording can continue while streaming.
+The live status card shows PCM throughput and peak level so silent input is visible.
+
+- YouTube: Google authorization creates and binds a broadcast, waits for active RTMP ingest,
+  transitions it to live, and provides a shareable viewer link. Stopping finalizes the broadcast.
+- Mixcloud: the app opens `mixcloud.com/live/new`; paste the reusable key. Its server and 320 kbps
+  music-audio preset are already configured.
+- Custom: paste any RTMP or RTMPS server and key.
+
+Stream keys and provider access tokens stay in memory and are excluded from diagnostics.
+
+### Provider configuration
+
+YouTube authorization requires a Google Cloud project with YouTube Data API v3 enabled, an OAuth
+consent screen, and Android OAuth clients registered for the package and signing SHA-1. Register
+`com.audiopro.djmrec` with the release certificate. Register `com.audiopro.djmrec.debug` with the
+debug certificate for debug APK testing. The `local` APK uses `com.audiopro.djmrec` with the debug
+certificate. Run `./gradlew signingReport` (or `.\gradlew.bat signingReport` on Windows) to print
+the exact SHA-1 values. Each installed package/signature pair needs its own Android OAuth client;
+otherwise Google returns `UNREGISTERED_ON_API_CONSOLE`. Public use of the YouTube scope may require
+Google OAuth app verification.
+
+The Android OAuth client IDs are public identifiers and are intentionally included in
+`app/build.gradle.kts`: local builds use
+`333115759527-9i5hsmubo1up8d7qvqjbgfm2ur9inkvl.apps.googleusercontent.com`; release builds use
+`333115759527-o8poec8lbsa8c98mkpb2k52g7mist9o6.apps.googleusercontent.com`. They are not secrets and
+cannot authorize another package or signing certificate. No Google client secret belongs in the
+repository or APK.
+
 ## Releases
 
 `version.properties` is the single version source. Bump it on Windows with:
@@ -81,26 +117,8 @@ CDJ-3000-style RGB waveform.
 # Or: .\scripts\bump-version.ps1 -Version 1.0.0
 ```
 
-Pushes and pull requests run CI. A tag matching `VERSION_NAME` publishes a signed APK and
-SHA-256 checksum:
-
-```powershell
-git add version.properties
-git commit -m "chore: release v0.35.0"
-git tag v0.35.0
-git push origin main v0.35.0
-```
-
-Required GitHub Actions secrets:
-
-- `ANDROID_KEYSTORE_BASE64`
-- `ANDROID_STORE_PASSWORD`
-- `ANDROID_KEY_ALIAS`
-- `ANDROID_KEY_PASSWORD`
-
-The installed app checks `P2GR/DJM-Rec-for-Android` GitHub Releases for newer versions.
-Update prompts wait until recording preparation, recording, or pause has ended.
+Signed APKs are published on [GitHub Releases](https://github.com/P2GR/DJM-Rec-for-Android/releases).
 
 ## License
 
-Licensed under the MIT License. Oboe, libFLAC, tinyalsa, and libusb retain their own licenses.
+Licensed under the MIT License. RootEncoder, Oboe, libFLAC, tinyalsa, and libusb retain their own licenses.

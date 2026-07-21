@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Coffee
 import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.DrawerValue
@@ -45,6 +46,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.audiopro.djmrec.DjmRecApplication
 import com.audiopro.djmrec.ui.theme.BackgroundDark
 import com.audiopro.djmrec.ui.theme.SurfaceDark
 import com.audiopro.djmrec.ui.theme.TextPrimary
@@ -56,6 +58,7 @@ import kotlinx.coroutines.launch
 
 private enum class Destination(val label: String, val icon: ImageVector) {
     RECORDING("Recording", Icons.Filled.FiberManualRecord),
+    LIVE("Go Live", Icons.Filled.LiveTv),
     RECORDINGS("My Recordings", Icons.Filled.LibraryMusic),
     SETTINGS("Settings", Icons.Filled.Settings),
     DIAGNOSTICS("Diagnostics", Icons.Filled.BugReport)
@@ -65,6 +68,8 @@ private enum class Destination(val label: String, val icon: ImageVector) {
 @Composable
 fun MainScreen(viewModel: MainViewModel) {
     val context = LocalContext.current
+    val application = context.applicationContext as DjmRecApplication
+    val recoveryNotice by application.recoveryNotice.collectAsState()
     val recordingState by viewModel.recordingState.collectAsState()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -75,7 +80,19 @@ fun MainScreen(viewModel: MainViewModel) {
         availableUpdate = UpdateChecker.check(context.applicationContext)
     }
 
-    val mayPromptForUpdate = recordingState !is RecordingState.Recording &&
+    recoveryNotice?.let { message ->
+        AlertDialog(
+            onDismissRequest = application::dismissRecoveryNotice,
+            title = { Text("Recording recovered") },
+            text = { Text(message) },
+            confirmButton = {
+                TextButton(onClick = application::dismissRecoveryNotice) { Text("OK") }
+            }
+        )
+    }
+
+    val mayPromptForUpdate = recoveryNotice == null &&
+        recordingState !is RecordingState.Recording &&
         recordingState !is RecordingState.Paused &&
         recordingState !is RecordingState.Preparing
     if (availableUpdate != null && mayPromptForUpdate) {
@@ -208,6 +225,7 @@ fun MainScreen(viewModel: MainViewModel) {
             Column(modifier = Modifier.fillMaxSize().padding(padding)) {
                 when (selectedDestination) {
                     Destination.RECORDING -> RecorderScreen(viewModel = viewModel)
+                    Destination.LIVE -> LiveStreamScreen(viewModel = viewModel)
                     Destination.RECORDINGS -> LibraryScreen(onBack = null)
                     Destination.SETTINGS -> SettingsScreen(viewModel = viewModel)
                     Destination.DIAGNOSTICS -> DiagnosticsScreen()

@@ -59,6 +59,14 @@ public:
     int openRootAlsa(const AlsaPcmAudioSource::Config& alsaConfig);
 
     bool startRecording(const std::string& path, ContainerFormat format);
+    bool startRecordingFd(int fd, ContainerFormat format);
+    bool rollRecordingFd(int fd, ContainerFormat format);
+    int64_t checkpointRecording();
+    int32_t getRecordingErrorCode() const;
+    bool isStreamOpen() const;
+    bool startLivePcm();
+    void stopLivePcm();
+    size_t readLivePcm16(uint8_t* output, size_t maxBytes);
     void pauseRecording();
     void resumeRecording();
     /** Stops encoding, finalizes the file, and returns total recorded duration in ms. */
@@ -95,22 +103,30 @@ private:
      *  updates the VU meter atomics and (if recording) writes into mRingBuffer. Called from
      *  the libusb event thread by UsbIsoAudioSource's callback. */
     void onUsbIsoFrames(const int32_t* interleavedStereo, size_t frameCount);
+    void writeLiveFrames(const int32_t* interleaved, size_t frameCount, int32_t channelCount);
 
     std::shared_ptr<oboe::AudioStream> mStream;
     std::unique_ptr<UsbIsoAudioSource> mUsbIsoSource;
     std::unique_ptr<AlsaPcmAudioSource> mAlsaSource;
     SourceMode mSourceMode = SourceMode::None;
     std::unique_ptr<RingBuffer> mRingBuffer;
+    std::unique_ptr<RingBuffer> mLiveRingBuffer;
     std::unique_ptr<AudioWriter> mWriter;
     std::unique_ptr<WaveformAnalyzer> mWaveformAnalyzer;
     std::thread mEncoderThread;
 
     std::mutex mControlMutex; // guards start/stop/pause transitions (not the realtime path)
+    mutable std::mutex mWriterMutex;
     std::atomic<bool> mStreamOpen{false};
     std::atomic<bool> mRecording{false};
     std::atomic<bool> mPaused{false};
     std::atomic<bool> mStopRequested{false};
     std::atomic<bool> mWaveformEnabled{true};
+    std::atomic<bool> mLivePcmActive{false};
+    std::atomic<uint64_t> mLiveDroppedFrames{0};
+    std::atomic<uint64_t> mLivePcmFramesRead{0};
+    std::atomic<uint64_t> mLivePcmNonZeroSamples{0};
+    std::atomic<int32_t> mRecordingErrorCode{0};
 
     AudioFormatInfo mFormat;
     oboe::AudioFormat mOboeFormat = oboe::AudioFormat::I32;

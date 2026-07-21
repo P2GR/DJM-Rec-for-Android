@@ -40,12 +40,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.audiopro.djmrec.audio.RecordingState
 import com.audiopro.djmrec.ui.components.ChannelPairSelector
+import com.audiopro.djmrec.audio.RecordingHealth
+import com.audiopro.djmrec.audio.RecordingHealthLevel
 import com.audiopro.djmrec.ui.components.DeviceStatusCard
 import com.audiopro.djmrec.ui.components.FormatSelector
 import com.audiopro.djmrec.ui.components.RgbWaveform
 import com.audiopro.djmrec.ui.components.StereoVuMeter
 import com.audiopro.djmrec.ui.components.TransportControls
 import com.audiopro.djmrec.ui.theme.AccentGreen
+import com.audiopro.djmrec.ui.theme.AccentAmber
 import com.audiopro.djmrec.ui.theme.AccentRed
 import java.util.Locale
 
@@ -57,6 +60,7 @@ fun RecorderScreen(viewModel: MainViewModel) {
     val elapsedMillis by viewModel.elapsedMillis.collectAsState()
     val waveformBins by viewModel.waveformBins.collectAsState()
     val waveformEnabled by viewModel.waveformEnabled.collectAsState()
+    val recordingHealth by viewModel.recordingHealth.collectAsState()
     val selectedFormat by viewModel.selectedFormat.collectAsState()
     val djmrecPortMode by viewModel.djmrecPortMode.collectAsState()
     val otgStatus by viewModel.otgStatus.collectAsState()
@@ -105,6 +109,8 @@ fun RecorderScreen(viewModel: MainViewModel) {
                 levels = levels
             )
 
+            RecordingHealthStrip(health = recordingHealth)
+
             if (recordingState is RecordingState.Error) {
                 Surface(
                     color = MaterialTheme.colorScheme.errorContainer,
@@ -141,6 +147,45 @@ fun RecorderScreen(viewModel: MainViewModel) {
             onResume = viewModel::resumeRecording,
             onStop = viewModel::stopRecording
         )
+    }
+}
+
+@Composable
+private fun RecordingHealthStrip(health: RecordingHealth) {
+    val (label, color) = when (health.level) {
+        RecordingHealthLevel.READY -> "STANDBY" to MaterialTheme.colorScheme.onSurfaceVariant
+        RecordingHealthLevel.GOOD -> "HEALTHY" to AccentGreen
+        RecordingHealthLevel.SILENCE -> "NO SIGNAL" to AccentAmber
+        RecordingHealthLevel.USB_UNSTABLE -> "USB WARNING" to AccentAmber
+        RecordingHealthLevel.LOW_STORAGE -> "LOW STORAGE" to AccentRed
+        RecordingHealthLevel.ERROR -> "STOPPED" to MaterialTheme.colorScheme.error
+    }
+    val details = buildList {
+        add(health.message)
+        if (health.remainingSeconds in 1 until Long.MAX_VALUE) {
+            add("${formatRemaining(health.remainingSeconds)} recording time left")
+        }
+        if (health.freeBytes > 0 && health.freeBytes < Long.MAX_VALUE) {
+            add(String.format(Locale.US, "%.1f GB free", health.freeBytes / 1_073_741_824.0))
+        }
+    }.joinToString(" | ")
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = color.copy(alpha = 0.10f),
+        shape = RoundedCornerShape(14.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(Modifier.size(8.dp).background(color, CircleShape))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(label, style = MaterialTheme.typography.labelSmall, color = color, fontWeight = FontWeight.Bold)
+                Text(details, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
     }
 }
 
@@ -344,4 +389,10 @@ private fun formatElapsed(millis: Long): String {
     val seconds = totalSeconds % 60
     return if (hours > 0) String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
     else String.format(Locale.US, "%02d:%02d", minutes, seconds)
+}
+
+private fun formatRemaining(seconds: Long): String {
+    val hours = seconds / 3600
+    val minutes = (seconds % 3600) / 60
+    return if (hours > 0) "${hours}h ${minutes}m" else "${minutes.coerceAtLeast(1)}m"
 }

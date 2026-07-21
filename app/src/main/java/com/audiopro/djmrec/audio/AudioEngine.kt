@@ -89,6 +89,25 @@ object AudioEngine {
      */
     external fun startRecording(outputPath: String, format: Int): Boolean
 
+    external fun startRecordingFd(fd: Int, format: Int): Boolean
+
+    external fun rollRecordingFd(fd: Int, format: Int): Boolean
+
+    /** Flushes a recoverable checkpoint and returns current part bytes, or -1 on failure. */
+    external fun checkpointRecording(): Long
+
+    external fun getRecordingErrorCode(): Int
+
+    external fun isStreamOpen(): Boolean
+
+    /** Starts/stops independent stereo PCM tap used by AAC livestream encoder. */
+    external fun startLivePcm(): Boolean
+
+    external fun stopLivePcm()
+
+    /** Reads little-endian stereo PCM16 without consuming recording writer data. */
+    external fun readLivePcm16(destination: ByteArray): Int
+
     external fun pauseRecording()
 
     external fun resumeRecording()

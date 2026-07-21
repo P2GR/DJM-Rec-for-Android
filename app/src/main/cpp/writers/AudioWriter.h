@@ -26,11 +26,19 @@ public:
 
     virtual bool open(const std::string& path, const AudioFormatInfo& format) = 0;
 
+    /** Opens a duplicate of an Android MediaStore file descriptor. */
+    virtual bool openFd(int fd, const AudioFormatInfo& format) = 0;
+
     /** Consumes `frameCount` frames (frameCount * channelCount int32 samples) from `interleaved`. */
     virtual bool writeFrames(const int32_t* interleaved, size_t frameCount) = 0;
 
     /** Finalizes the file (patches headers / flushes encoder state) and closes the handle. */
     virtual bool close() = 0;
+
+    /** Makes the current file recoverable and asks the kernel to persist buffered data. */
+    virtual bool checkpoint() = 0;
+
+    virtual uint64_t bytesWritten() const = 0;
 };
 
 } // namespace djmrec

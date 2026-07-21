@@ -1,6 +1,7 @@
 #include <jni.h>
 #include <cstring>
 #include <string>
+#include <vector>
 
 #include "../UsbAudioEngine.h"
 
@@ -88,6 +89,61 @@ Java_com_audiopro_djmrec_audio_AudioEngine_startRecording(
     const std::string path = jstringToStdString(env, outputPath);
     const auto container = static_cast<ContainerFormat>(format);
     return UsbAudioEngine::instance().startRecording(path, container) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_startRecordingFd(
+    JNIEnv* /*env*/, jobject /*thiz*/, jint fd, jint format) {
+    return UsbAudioEngine::instance().startRecordingFd(
+        fd, static_cast<ContainerFormat>(format)) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_rollRecordingFd(
+    JNIEnv* /*env*/, jobject /*thiz*/, jint fd, jint format) {
+    return UsbAudioEngine::instance().rollRecordingFd(
+        fd, static_cast<ContainerFormat>(format)) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_checkpointRecording(JNIEnv* /*env*/, jobject /*thiz*/) {
+    return static_cast<jlong>(UsbAudioEngine::instance().checkpointRecording());
+}
+
+JNIEXPORT jint JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_getRecordingErrorCode(JNIEnv* /*env*/, jobject /*thiz*/) {
+    return UsbAudioEngine::instance().getRecordingErrorCode();
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_isStreamOpen(JNIEnv* /*env*/, jobject /*thiz*/) {
+    return UsbAudioEngine::instance().isStreamOpen() ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_startLivePcm(JNIEnv* /*env*/, jobject /*thiz*/) {
+    return UsbAudioEngine::instance().startLivePcm() ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_stopLivePcm(JNIEnv* /*env*/, jobject /*thiz*/) {
+    UsbAudioEngine::instance().stopLivePcm();
+}
+
+JNIEXPORT jint JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_readLivePcm16(
+    JNIEnv* env, jobject /*thiz*/, jbyteArray destination) {
+    if (!destination) return 0;
+    const jsize capacity = env->GetArrayLength(destination);
+    if (capacity <= 0) return 0;
+    static thread_local std::vector<uint8_t> buffer;
+    if (buffer.size() < static_cast<size_t>(capacity)) buffer.resize(capacity);
+    const size_t read = UsbAudioEngine::instance().readLivePcm16(buffer.data(), capacity);
+    if (read > 0) {
+        env->SetByteArrayRegion(
+            destination, 0, static_cast<jsize>(read), reinterpret_cast<const jbyte*>(buffer.data()));
+    }
+    return static_cast<jint>(read);
 }
 
 JNIEXPORT void JNICALL

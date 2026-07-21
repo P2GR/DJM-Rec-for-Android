@@ -18,10 +18,20 @@ fun loadProperties(path: String): Properties = Properties().apply {
 val appVersion = loadProperties("version.properties")
 val keystoreFile = rootProject.file("keystore.properties")
 val keystore = if (keystoreFile.exists()) loadProperties("keystore.properties") else null
+val streamingFile = rootProject.file("streaming.properties")
+val streaming = if (streamingFile.exists()) loadProperties("streaming.properties") else null
+val twitchClientId = providers.environmentVariable("TWITCH_CLIENT_ID").orNull
+    ?: streaming?.getProperty("TWITCH_CLIENT_ID").orEmpty()
+// OAuth client IDs are public identifiers. Google still authenticates Android builds using the
+// package name and signing certificate registered against each ID in Google Cloud.
+val googleLocalClientId =
+    "333115759527-9i5hsmubo1up8d7qvqjbgfm2ur9inkvl.apps.googleusercontent.com"
+val googlePublicClientId =
+    "333115759527-o8poec8lbsa8c98mkpb2k52g7mist9o6.apps.googleusercontent.com"
 
 android {
     namespace = "com.audiopro.djmrec"
-    compileSdk = 34
+    compileSdk = 35
     // Pinned so CI (and every dev machine) builds native code against the exact same
     // NDK — avoids "works locally, fails/behaves differently in CI" native-build drift.
     ndkVersion = "26.1.10909125"
@@ -41,6 +51,8 @@ android {
         targetSdk = 34
         versionCode = appVersion.getProperty("VERSION_CODE").toInt()
         versionName = appVersion.getProperty("VERSION_NAME")
+        buildConfigField("String", "TWITCH_CLIENT_ID", "\"${twitchClientId.replace("\"", "\\\"")}\"")
+        buildConfigField("String", "GOOGLE_OAUTH_CLIENT_ID", "\"$googlePublicClientId\"")
 
         // Only ship arm64-v8a: all modern DJ-capable Android hardware (USB-C host + UAC2)
         // is 64-bit ARM. Keeping a single ABI keeps the native audio path easy to validate.
@@ -73,11 +85,13 @@ android {
             isDebuggable = true
             // So debug and release can be installed side-by-side
             applicationIdSuffix = ".debug"
+            buildConfigField("String", "GOOGLE_OAUTH_CLIENT_ID", "\"$googleLocalClientId\"")
         }
         create("local") {
             initWith(getByName("release"))
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += listOf("release")
+            buildConfigField("String", "GOOGLE_OAUTH_CLIENT_ID", "\"$googleLocalClientId\"")
         }
     }
 
@@ -103,10 +117,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     buildFeatures {
         compose = true
         buildConfig = true
@@ -121,6 +131,12 @@ android {
     }
 }
 
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
+
 dependencies {
     testImplementation(kotlin("test"))
     implementation("androidx.core:core-ktx:1.13.1")
@@ -131,13 +147,15 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.9.1")
     implementation("androidx.activity:activity-compose:1.9.1")
 
-    val composeBom = platform("androidx.compose:compose-bom:2024.06.00")
+    val composeBom = platform("androidx.compose:compose-bom:2026.06.00")
     implementation(composeBom)
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
+    implementation("com.google.android.gms:play-services-auth:21.6.0")
+    implementation("com.github.pedroSG94.RootEncoder:library:2.7.2")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

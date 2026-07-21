@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+- Add RTMP/RTMPS livestreaming with direct DJM USB audio
+- Add optional rear/front camera and custom artwork video modes
+- Correct camera and preview rotation at startup and while device orientation changes
+- Add persisted custom artwork selection with sampled preview; remove built-in artwork
+- Add YouTube, Mixcloud, Twitch, TikTok, and custom RTMP destination setup
+- Add Google authorization with automatic YouTube broadcast/RTMPS provisioning
+- Map public Google OAuth client IDs to local and release build variants
+- Show installed package and signing SHA-1 when Google OAuth registration is missing
+- Start and complete YouTube broadcasts after confirming active RTMP ingest
+- Add shareable YouTube watch links and broadcast lifecycle status
+- Feed AAC with stable stereo PCM16 blocks and expose mixer-audio telemetry
+- Fix black camera preview caused by stream startup clearing its pending SurfaceView
+- Upgrade RootEncoder to 2.7.2 for monotonic A/V timestamps and GL lifecycle fixes
+- Upgrade Android build tools for Kotlin 2.3-compatible release shrinking
+- Upgrade Compose runtime and lint rules for Kotlin 2.3 metadata support
+- Require sent AAC and H.264 packets before reporting a stream as live
+- Report mixer PCM, AAC, camera, or H.264 startup failures directly in stream status
+- Add Twitch device authorization, stream-key retrieval, and official ingest discovery
+- Keep WAV/FLAC recording available while streaming
+
 ## v0.35.0 (2026-07-18)
 
 - Add driver-derived DJM-V5, DJM-900NXS2, and DJM-750MK2 capture profiles

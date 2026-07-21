@@ -30,6 +30,7 @@ build/
 *.pkcs12
 !debug.keystore
 keystore.properties
+streaming.properties
 
 # Local configuration file (sdk path, etc)
 local.properties

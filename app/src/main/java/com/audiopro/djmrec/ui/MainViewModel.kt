@@ -8,26 +8,46 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
 import android.util.Log
+import android.view.SurfaceView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.audiopro.djmrec.BuildConfig
 import com.audiopro.djmrec.DjmRecApplication
 import com.audiopro.djmrec.audio.AudioEngine
 import com.audiopro.djmrec.audio.ChannelLevel
 import com.audiopro.djmrec.audio.RecordingFormat
+import com.audiopro.djmrec.audio.RecordingHealth
 import com.audiopro.djmrec.audio.RecordingState
 import com.audiopro.djmrec.audio.StereoLevels
 import com.audiopro.djmrec.service.RecordingService
+import com.audiopro.djmrec.streaming.LiveStreamConfig
+import com.audiopro.djmrec.streaming.LiveStreamState
+import com.audiopro.djmrec.streaming.LiveStreamStatus
+import com.audiopro.djmrec.streaming.LivePlatform
+import com.audiopro.djmrec.streaming.StreamSetupState
+import com.audiopro.djmrec.streaming.StreamSetupStatus
+import com.audiopro.djmrec.streaming.StreamingSetupRepository
+import com.audiopro.djmrec.streaming.YouTubePrivacy
+import com.audiopro.djmrec.streaming.YouTubeBroadcastState
+import com.audiopro.djmrec.streaming.YouTubeBroadcastStatus
+import com.audiopro.djmrec.streaming.YouTubeFinishResult
+import com.audiopro.djmrec.streaming.YouTubeLiveSession
 import com.audiopro.djmrec.usb.UsbAudioDeviceInfo
 import com.audiopro.djmrec.usb.UsbAudioManager
 import com.audiopro.djmrec.usb.RootUsbHostController
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
+import java.io.IOException
 
 /**
  * Wires the USB device stream, the bound [RecordingService], and the Compose UI together.
@@ -65,6 +85,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _waveformBins = MutableStateFlow(emptyWaveform)
     val waveformBins: StateFlow<FloatArray> = _waveformBins.asStateFlow()
 
+    private val _recordingHealth = MutableStateFlow(RecordingHealth.Ready)
+    val recordingHealth: StateFlow<RecordingHealth> = _recordingHealth.asStateFlow()
+
+    private val _liveStreamState = MutableStateFlow(LiveStreamState())
+    val liveStreamState: StateFlow<LiveStreamState> = _liveStreamState.asStateFlow()
+
+    private val _streamSetupState = MutableStateFlow(StreamSetupState())
+    val streamSetupState: StateFlow<StreamSetupState> = _streamSetupState.asStateFlow()
+    private val _youtubeBroadcastState = MutableStateFlow(YouTubeBroadcastState())
+    val youtubeBroadcastState: StateFlow<YouTubeBroadcastState> =
+        _youtubeBroadcastState.asStateFlow()
+    private var streamSetupJob: Job? = null
+    private var youtubeLifecycleJob: Job? = null
+    private var youtubeCompletionJob: Job? = null
+    private var youtubeLiveSession: YouTubeLiveSession? = null
+
     private val _waveformEnabled = MutableStateFlow(
         prefs.getBoolean(KEY_WAVEFORM_ENABLED, true)
     )
@@ -91,6 +127,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     @SuppressLint("StaticFieldLeak")
     private var boundService: RecordingService? = null
     private var isBound = false
+    private var livePreview: SurfaceView? = null
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -102,6 +139,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             viewModelScope.launch { service.levels.collect { _levels.value = it } }
             viewModelScope.launch { service.elapsedMillis.collect { _elapsedMillis.value = it } }
             viewModelScope.launch { service.waveformBins.collect { _waveformBins.value = it } }
+            viewModelScope.launch { service.health.collect { _recordingHealth.value = it } }
+            viewModelScope.launch {
+                var previous = _liveStreamState.value
+                service.liveState.collect { current ->
+                    _liveStreamState.value = current
+                    if (previous.platform == LivePlatform.YOUTUBE &&
+                        previous.isActive && !current.isActive) {
+                        finishYouTubeSession()
+                    }
+                    previous = current
+                }
+            }
+            livePreview?.let(service::attachLivePreview)
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -126,9 +176,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             deviceState.collect { device ->
                 if (device == null) {
                     if (activeDeviceKey != null) {
-                        sendCommand(RecordingService.ACTION_STOP)
-                        delay(150L)
-                        sendCommand(RecordingService.ACTION_STOP)
+                        sendCommand(RecordingService.ACTION_DEVICE_DETACHED)
                     }
                     activeDeviceKey = null
                     return@collect
@@ -481,6 +529,177 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun resumeRecording() = sendCommand(RecordingService.ACTION_RESUME)
     fun stopRecording() = sendCommand(RecordingService.ACTION_STOP)
 
+    fun startLiveStream(config: LiveStreamConfig) {
+        val context = getApplication<Application>()
+        _liveStreamState.value = LiveStreamState(
+            status = LiveStreamStatus.PREPARING,
+            message = "Starting ${config.platform.label} encoders",
+            platform = config.platform,
+            videoMode = config.videoMode
+        )
+        context.startService(
+            Intent(context, RecordingService::class.java)
+                .setAction(RecordingService.ACTION_START_LIVE)
+                .putExtra(RecordingService.EXTRA_LIVE_PLATFORM, config.platform.name)
+                .putExtra(RecordingService.EXTRA_LIVE_SERVER_URL, config.serverUrl)
+                .putExtra(RecordingService.EXTRA_LIVE_STREAM_KEY, config.streamKey)
+                .putExtra(RecordingService.EXTRA_LIVE_VIDEO_MODE, config.videoMode.name)
+                .putExtra(RecordingService.EXTRA_LIVE_PORTRAIT, config.portrait)
+                .putExtra(RecordingService.EXTRA_LIVE_ARTWORK_URI, config.artworkUri)
+                .putExtra(RecordingService.EXTRA_LIVE_AUDIO_BITRATE, config.audioBitrate)
+        )
+        if (config.platform == LivePlatform.YOUTUBE) startYouTubeLifecycle()
+    }
+
+    fun stopLiveStream() {
+        sendCommand(RecordingService.ACTION_STOP_LIVE)
+        finishYouTubeSession()
+    }
+
+    fun prepareYouTubeDestination(accessToken: String, title: String, privacy: YouTubePrivacy) {
+        streamSetupJob?.cancel()
+        streamSetupJob = viewModelScope.launch {
+            _streamSetupState.value = StreamSetupState(
+                LivePlatform.YOUTUBE,
+                StreamSetupStatus.CONNECTING,
+                "Creating YouTube broadcast"
+            )
+            try {
+                youtubeLifecycleJob?.cancel()
+                youtubeCompletionJob?.cancel()
+                youtubeLiveSession?.let { previous ->
+                    runCatching { StreamingSetupRepository.finishYouTubeBroadcast(previous) }
+                }
+                val prepared = StreamingSetupRepository.prepareYouTubeLive(accessToken, title, privacy)
+                youtubeLiveSession = prepared.session
+                _youtubeBroadcastState.value = YouTubeBroadcastState(
+                    status = YouTubeBroadcastStatus.PLANNED,
+                    message = "Broadcast planned. Start streaming to go live.",
+                    watchUrl = prepared.session.watchUrl,
+                    studioUrl = prepared.session.studioUrl
+                )
+                _streamSetupState.value = StreamSetupState(
+                    LivePlatform.YOUTUBE,
+                    StreamSetupStatus.READY,
+                    "YouTube broadcast ready",
+                    credentials = prepared.credentials
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _streamSetupState.value = StreamSetupState(
+                    LivePlatform.YOUTUBE,
+                    StreamSetupStatus.ERROR,
+                    error.message ?: "YouTube setup failed"
+                )
+            }
+        }
+    }
+
+    private fun startYouTubeLifecycle() {
+        val session = youtubeLiveSession ?: return
+        youtubeLifecycleJob?.cancel()
+        youtubeLifecycleJob = viewModelScope.launch {
+            _youtubeBroadcastState.value = YouTubeBroadcastState(
+                YouTubeBroadcastStatus.WAITING_FOR_INGEST,
+                "Connecting RTMP feed to YouTube",
+                session.watchUrl,
+                session.studioUrl
+            )
+            try {
+                val rtmpState = withTimeoutOrNull(30_000L) {
+                    liveStreamState.first { state ->
+                        state.platform == LivePlatform.YOUTUBE &&
+                            (state.status == LiveStreamStatus.LIVE ||
+                                state.status == LiveStreamStatus.ERROR)
+                    }
+                } ?: throw IOException("YouTube RTMP connection timed out")
+                if (rtmpState.status != LiveStreamStatus.LIVE) {
+                    throw IOException(rtmpState.message)
+                }
+                _youtubeBroadcastState.value = _youtubeBroadcastState.value.copy(
+                    status = YouTubeBroadcastStatus.STARTING,
+                    message = "YouTube detected RTMP. Starting broadcast..."
+                )
+                StreamingSetupRepository.startYouTubeBroadcast(session)
+                _youtubeBroadcastState.value = _youtubeBroadcastState.value.copy(
+                    status = YouTubeBroadcastStatus.LIVE,
+                    message = "Broadcast is live and ready to share"
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _youtubeBroadcastState.value = _youtubeBroadcastState.value.copy(
+                    status = YouTubeBroadcastStatus.ERROR,
+                    message = error.message ?: "YouTube could not start the broadcast"
+                )
+            }
+        }
+    }
+
+    private fun finishYouTubeSession() {
+        val session = youtubeLiveSession ?: return
+        youtubeLiveSession = null
+        youtubeLifecycleJob?.cancel()
+        youtubeLifecycleJob = null
+        youtubeCompletionJob?.cancel()
+        youtubeCompletionJob = viewModelScope.launch {
+            _youtubeBroadcastState.value = _youtubeBroadcastState.value.copy(
+                status = YouTubeBroadcastStatus.COMPLETING,
+                message = "Finishing YouTube broadcast..."
+            )
+            try {
+                when (StreamingSetupRepository.finishYouTubeBroadcast(session)) {
+                    YouTubeFinishResult.COMPLETED -> {
+                        _youtubeBroadcastState.value = _youtubeBroadcastState.value.copy(
+                            status = YouTubeBroadcastStatus.COMPLETE,
+                            message = "YouTube broadcast finished"
+                        )
+                    }
+                    YouTubeFinishResult.DELETED -> {
+                        _youtubeBroadcastState.value = YouTubeBroadcastState(
+                            status = YouTubeBroadcastStatus.COMPLETE,
+                            message = "Unused planned broadcast removed"
+                        )
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _youtubeBroadcastState.value = _youtubeBroadcastState.value.copy(
+                    status = YouTubeBroadcastStatus.ERROR,
+                    message = error.message ?: "YouTube broadcast could not be finalized"
+                )
+            }
+        }
+    }
+
+    fun setStreamSetupError(platform: LivePlatform, message: String) {
+        _streamSetupState.value = StreamSetupState(platform, StreamSetupStatus.ERROR, message)
+    }
+
+    fun consumeStreamCredentials() {
+        _streamSetupState.value = StreamSetupState()
+    }
+
+    fun cancelStreamSetup() {
+        streamSetupJob?.cancel()
+        streamSetupJob = null
+        _streamSetupState.value = StreamSetupState()
+    }
+
+    fun attachLivePreview(surfaceView: SurfaceView) {
+        livePreview = surfaceView
+        boundService?.attachLivePreview(surfaceView)
+    }
+
+    fun detachLivePreview() {
+        boundService?.detachLivePreview()
+        livePreview = null
+    }
+
+    fun switchLiveCamera() = boundService?.switchLiveCamera()
+
     private fun sendCommand(action: String) {
         val context = getApplication<Application>()
         startServiceSafely(context, Intent(context, RecordingService::class.java).setAction(action))
@@ -533,6 +752,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     override fun onCleared() {
+        streamSetupJob?.cancel()
+        youtubeLifecycleJob?.cancel()
+        youtubeCompletionJob?.cancel()
+        detachLivePreview()
         if (isBound) {
             getApplication<Application>().unbindService(connection)
             isBound = false

@@ -12,6 +12,8 @@ import android.util.Log
 import androidx.core.content.FileProvider
 import com.audiopro.djmrec.BuildConfig
 import com.audiopro.djmrec.audio.AudioEngine
+import com.audiopro.djmrec.storage.RecordingOutputManager
+import com.audiopro.djmrec.storage.RecordingSessionStore
 import com.audiopro.djmrec.usb.RootUsbHostController
 import java.io.BufferedReader
 import java.io.File
@@ -45,6 +47,7 @@ object LogExporter {
         sb.appendLine("generated: $timestamp")
         sb.appendLine("app version: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
         sb.appendLine("build type: ${BuildConfig.BUILD_TYPE} debug=${BuildConfig.DEBUG}")
+        sb.appendLine("Google OAuth client ID: ${BuildConfig.GOOGLE_OAUTH_CLIENT_ID}")
         sb.appendLine("device: ${Build.MANUFACTURER} ${Build.MODEL} (Android ${Build.VERSION.RELEASE}, API ${Build.VERSION.SDK_INT})")
         sb.appendLine("hardware: ${Build.HARDWARE} board=${Build.BOARD} supportedAbis=${Build.SUPPORTED_ABIS.toList()}")
         sb.appendLine()
@@ -57,6 +60,7 @@ object LogExporter {
         appendRootSection(context, sb)
         appendUsbCaptureSettingsSection(context, sb)
         appendUsbTransferStatsSection(sb, nativeSummary)
+        appendRecordingSafetySection(context, sb)
         sb.appendLine("=== Native audio pipeline snapshot ===")
         sb.appendLine(nativeSummary)
         sb.appendLine()
@@ -65,6 +69,17 @@ object LogExporter {
         sb.append(readOwnLogcat())
 
         return sb.toString()
+    }
+
+    private fun appendRecordingSafetySection(context: Context, sb: StringBuilder) {
+        val freeBytes = RecordingOutputManager.freeBytes()
+        sb.appendLine("=== Recording safety ===")
+        sb.appendLine("active session journal: ${RecordingSessionStore.describe(context)}")
+        sb.appendLine(
+            if (freeBytes == Long.MAX_VALUE) "free storage: unavailable"
+            else "free storage: $freeBytes bytes (${String.format(Locale.US, "%.2f", freeBytes / 1_073_741_824.0)} GiB)"
+        )
+        sb.appendLine()
     }
 
     private fun appendUsbSection(context: Context, sb: StringBuilder) {

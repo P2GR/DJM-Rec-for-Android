@@ -65,11 +65,16 @@ constexpr PioneerMixerProfile kDjm900Nxs2Profile{
     PioneerRouteReadMode::AllOutputs, true, true, 0, 1, 12, 3
 };
 
+// Same vendor-class interface topology as DJM-900NXS2: isochronous IN endpoint (0x82) lives on
+// if0/alt1 declared as USB_CLASS_VENDOR_SPEC (255), OUT endpoint (0x01) on the same interface.
+// requiresPlaybackTraffic and vendor-capture override applied per the same evidence chain.
+// Channel count 10 is the best initial guess (5 outputs x 2ch); the raw hex dump feature will
+// reveal the actual packet size on first capture if this turns out wrong (NXS2 was 12ch).
 constexpr PioneerMixerProfile kDjm750Mk2Profile{
     "DJM-750MK2", 0x001B, 0x001B, 5, 0,
     {0x0F, 0x0F, 0x0F, 0x0F, 0x0A},
     {0x0F, 0x0F, 0x0F, 0x0F, 0x0A},
-    PioneerRouteReadMode::AllOutputs, true, false, -1, -1, 0, 0
+    PioneerRouteReadMode::AllOutputs, true, true, 0, 1, 10, 3
 };
 
 inline const PioneerMixerProfile* findPioneerMixerProfile(int vendorId, int productId) {

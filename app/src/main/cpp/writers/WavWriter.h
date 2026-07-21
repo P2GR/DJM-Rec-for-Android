@@ -16,10 +16,14 @@ public:
     ~WavWriter() override { if (mFile) close(); }
 
     bool open(const std::string& path, const AudioFormatInfo& format) override;
+    bool openFd(int fd, const AudioFormatInfo& format) override;
     bool writeFrames(const int32_t* interleaved, size_t frameCount) override;
     bool close() override;
+    bool checkpoint() override;
+    uint64_t bytesWritten() const override { return mDataBytesWritten; }
 
 private:
+    bool initialize(FILE* file, const AudioFormatInfo& format, const char* description);
     void writeHeaderPlaceholder();
     bool patchHeaderSizes();
 

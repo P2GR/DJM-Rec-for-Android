@@ -85,7 +85,10 @@ enum class PioneerMixerProfile(
     ),
     DJM_750MK2(
         "DJM-750MK2", setOf(0x001B), 0, 5, RouteReadMode.ALL_OUTPUTS,
-        listOf(0x0F, 0x0F, 0x0F, 0x0F, 0x0A)
+        listOf(0x0F, 0x0F, 0x0F, 0x0F, 0x0A),
+        requiresPlaybackTraffic = true, playbackInterface = 0, playbackAlternateSetting = 1,
+        vendorCaptureInterface = 0, vendorCaptureAlternateSetting = 1,
+        vendorCaptureChannelCount = 10, vendorCaptureSubframeSize = 3, vendorCaptureBitResolution = 24
     );
 
     val hasVendorCaptureOverride: Boolean get() = vendorCaptureInterface >= 0
