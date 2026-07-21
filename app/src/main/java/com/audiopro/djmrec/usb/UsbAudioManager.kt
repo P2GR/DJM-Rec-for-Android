@@ -517,15 +517,16 @@ class UsbAudioManager(private val context: Context) {
         info.pioneerMixerProfile?.let { profile ->
             establishPioneerRoute(connection, profile)
         }
-        val streaming = info.topology?.audioStreamingInterfaces?.firstOrNull {
+        val topology = info.topology
+        val streaming = topology?.audioStreamingInterfaces?.firstOrNull {
             it.interfaceNumber == info.streamingInterfaceNumber && it.alternateSetting == info.activeAlternateSetting
         }
         // Supported Pioneer profiles use endpoint/vendor clock flow. Entity requests stall
         // some firmware, including the A9, so native code measures the active stream cadence.
-        val clock = if (info.pioneerMixerProfile != null) {
-            null
-        } else {
-            streaming?.let { info.topology?.let { topology -> clockFor(it, topology) } }
+        val clock = when {
+            info.pioneerMixerProfile != null -> null
+            streaming != null -> clockFor(streaming, topology)
+            else -> null
         }
         Log.i(
             TAG,
