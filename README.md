@@ -90,23 +90,6 @@ The live status card shows PCM throughput and peak level so silent input is visi
 
 Stream keys and provider access tokens stay in memory and are excluded from diagnostics.
 
-### Provider configuration
-
-YouTube authorization requires a Google Cloud project with YouTube Data API v3 enabled, an OAuth
-consent screen, and Android OAuth clients registered for the package and signing SHA-1. Register
-`com.audiopro.djmrec` with the release certificate. Register `com.audiopro.djmrec.debug` with the
-debug certificate for debug APK testing. The `local` APK uses `com.audiopro.djmrec` with the debug
-certificate. Run `./gradlew signingReport` (or `.\gradlew.bat signingReport` on Windows) to print
-the exact SHA-1 values. Each installed package/signature pair needs its own Android OAuth client;
-otherwise Google returns `UNREGISTERED_ON_API_CONSOLE`. Public use of the YouTube scope may require
-Google OAuth app verification.
-
-The Android OAuth client IDs are public identifiers and are intentionally included in
-`app/build.gradle.kts`: local builds use
-`333115759527-9i5hsmubo1up8d7qvqjbgfm2ur9inkvl.apps.googleusercontent.com`; release builds use
-`333115759527-o8poec8lbsa8c98mkpb2k52g7mist9o6.apps.googleusercontent.com`. They are not secrets and
-cannot authorize another package or signing certificate. No Google client secret belongs in the
-repository or APK.
 
 ## Releases
 
