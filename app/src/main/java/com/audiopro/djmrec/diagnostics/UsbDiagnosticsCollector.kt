@@ -267,6 +267,14 @@ internal object UsbDiagnosticsCollector {
             return
         }
         report.appendLine("route GET probe (read-only, no mixer settings changed):")
+        if (profile == PioneerMixerProfile.DJM_900NXS2) {
+            report.appendLine(
+                "  NOTE: on this model, a USBPcap capture of Pioneer's own Setting Utility showed " +
+                    "this GET response never changes (00 01 01 01 01, before/during/after real MIX " +
+                    "route SETs) -- treat the PASS/INFO labels below as informational only, not as " +
+                    "confirmation of the mixer's actual current routing."
+            )
+        }
         val outputs = if (profile.routeReadMode == PioneerMixerProfile.RouteReadMode.ALL_OUTPUTS) {
             listOf(0)
         } else {

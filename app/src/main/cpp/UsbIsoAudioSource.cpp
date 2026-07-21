@@ -305,6 +305,7 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
     mFramesSincePeakLog = 0;
     mBytesSincePeakLog = 0;
     mNonZeroBytesSincePeakLog = 0;
+    mRawPacketDumpsLogged = 0;
     mOpenedSampleRate.store(config.requestedSampleRate, std::memory_order_release);
     mPacketsCompleted.store(0, std::memory_order_relaxed);
     mPacketsMissed.store(0, std::memory_order_relaxed);
@@ -444,15 +445,52 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
         return libusbErrorString("libusb_set_interface_alt_setting", rc);
     }
 
+    // The route configuration attempted above (before any interface was claimed) works on
+    // models whose vendor control pipe accepts requests pre-claim (confirmed: DJM-A9). On the
+    // DJM-900NXS2, that same route GET instead fails outright at that point on real hardware --
+    // every output stays unreadable, so no SET is ever attempted and the mixer's MIX/REC routing
+    // is left wherever it happened to be (observed: digital silence on the USB pair despite a
+    // perfectly healthy isochronous transport). Retry once now that an interface is actually
+    // claimed, in case that ordering is what the vendor control pipe needs. Guarded so it's a
+    // no-op when the earlier attempt already succeeded, to avoid any risk of regressing the
+    // already-validated DJM-A9 path (configurePioneerRecordingRoute() resets its bookkeeping on
+    // entry, which would otherwise wipe a route restorePioneerRecordingRoute() needs on stop()).
+    if (mMixerProfile) {
+        bool routeAlreadyEstablished;
+        {
+            std::lock_guard<std::mutex> lock(mDiagnosticMutex);
+            routeAlreadyEstablished =
+                std::any_of(mPioneerRoutesChanged.begin(), mPioneerRoutesChanged.end(),
+                            [](bool changed) { return changed; }) ||
+                std::any_of(mPioneerAppliedSources.begin(), mPioneerAppliedSources.end(),
+                            [](int applied) { return applied >= 0; });
+        }
+        if (!routeAlreadyEstablished) {
+            LOGI("%s: pre-claim route configuration did not take; retrying now that if%d is claimed",
+                 mMixerProfile->name, config.interfaceNumber);
+            configurePioneerRecordingRoute();
+        }
+    }
+
     if (mMixerProfile && mMixerProfile->usesEndpointSampleRate) {
+        // A USBPcap capture of Pioneer's own driver actually recording real audio (2026-07-20,
+        // whit_sound_on.pcapng) showed it never sends a GET_CUR probe here at all: right after
+        // SET_INTERFACE it unconditionally sends SET_CUR sampling frequency (bmRequestType=0x22,
+        // bRequest=0x01, wValue=0x0100, wIndex=0x0082, 3-byte LE rate), OUT traffic starts within
+        // ~150us of that SET completing, and the first real (nonzero) IN packet doesn't appear
+        // until ~13ms after that. This code used to GET first and skip the SET whenever the GET
+        // returned a plausible-looking rate -- but exactly like the MIX-route GET (separately
+        // proven via pcap to return a static, non-informative value regardless of real state),
+        // that GET result may not reflect whether the endpoint is actually armed, so gating the
+        // SET on it could have been silently skipping the one command that arms real streaming.
+        // Always SET now, unconditionally, matching the proven-working driver sequence.
+        setPioneerCaptureSampleRate(
+            mHandle, config.endpointAddress, config.requestedSampleRate, mMixerProfile->name);
         const int endpointRate = readPioneerEndpointSampleRate(
             mHandle, config.endpointAddress, mMixerProfile->name);
         if (endpointRate > 0) {
             mOpenedSampleRate.store(endpointRate, std::memory_order_release);
             LOGI("%s capture endpoint reports active rate %d Hz", mMixerProfile->name, endpointRate);
-        } else {
-            setPioneerCaptureSampleRate(
-                mHandle, config.endpointAddress, config.requestedSampleRate, mMixerProfile->name);
         }
         if (mMixerProfile->requiresPlaybackTraffic &&
             !startPioneerPlaybackSilence(mOpenedSampleRate.load(std::memory_order_acquire))) {
@@ -896,6 +934,24 @@ void UsbIsoAudioSource::demuxAndEmit(const uint8_t* data, size_t length) {
         mNonZeroBytesReceived.fetch_add(nonZeroBytes, std::memory_order_relaxed);
     }
 
+    // One-time raw hex dump of the first few completed packets per capture session, taken
+    // directly from the untouched wire bytes (same `data`/`length` the nonZeroBytes scan above
+    // just walked) -- lets a human eyeball whether the endpoint is truly emitting all-zero
+    // payload versus the demux/format math downstream misinterpreting real content.
+    if (mRawPacketDumpsLogged < 5) {
+        ++mRawPacketDumpsLogged;
+        const size_t dumpLen = std::min<size_t>(length, 64);
+        char hex[64 * 3 + 1];
+        char* p = hex;
+        for (size_t i = 0; i < dumpLen; ++i) {
+            p += std::snprintf(p, 4, "%02x ", data[i]);
+        }
+        *p = '\0';
+        LOGI("raw iso packet #%d dump (len=%zu, nonzero_in_packet=%llu): %s",
+             mRawPacketDumpsLogged, length,
+             static_cast<unsigned long long>(nonZeroBytes), hex);
+    }
+
     // Frames from a UAC2 isochronous endpoint are not guaranteed to align to packet
     // boundaries, so leftover bytes from the previous packet are stitched onto the front of
     // this one before we start slicing out whole frames.
@@ -931,27 +987,6 @@ void UsbIsoAudioSource::demuxAndEmit(const uint8_t* data, size_t length) {
             }
         }
 
-        if (mConfig.extractChannelOffset < 0) {
-            uint32_t bestMagnitude = 0;
-            int bestOffset = 0;
-            for (size_t pairIndex = 0; pairIndex < mPairPeaks.size(); ++pairIndex) {
-                const uint32_t pairMagnitude = mPairPeaks[pairIndex];
-                if (pairMagnitude > bestMagnitude) {
-                    bestMagnitude = pairMagnitude;
-                    bestOffset = static_cast<int>(pairIndex * 2);
-                }
-            }
-
-            constexpr uint32_t kAudibleThreshold = 1u << 20;
-            const int currentOffset = mResolvedChannelOffset.load(std::memory_order_relaxed);
-            if (bestMagnitude >= kAudibleThreshold && bestOffset != currentOffset) {
-                mResolvedChannelOffset.store(bestOffset, std::memory_order_relaxed);
-                LOGI("Auto-selected USB channels %d-%d for active audio", bestOffset + 1, bestOffset + 2);
-            } else if (currentOffset < 0) {
-                mResolvedChannelOffset.store(bestOffset, std::memory_order_relaxed);
-            }
-        }
-
         const int selectedOffset = std::max(
             0, mResolvedChannelOffset.load(std::memory_order_relaxed));
         const int offsetBytes = selectedOffset * subframe;
@@ -977,7 +1012,13 @@ void UsbIsoAudioSource::demuxAndEmit(const uint8_t* data, size_t length) {
                  peakSummary(mPairPeaks).c_str(), selectedOffset + 1, selectedOffset + 2);
             if (mMixerProfile) {
                 const int fallbackStage = mPioneerFallbackStage.load(std::memory_order_relaxed);
-                if (mNonZeroBytesReceived.load(std::memory_order_relaxed) > 0 &&
+                // mNonZeroBytesReceived is cumulative for the whole session -- a single stray
+                // nonzero byte anywhere in the stream's history (isochronous framing glitch at
+                // startup, USB electrical noise) would satisfy ">0" forever and latch this
+                // fallback into "succeeded", permanently skipping routeAllPioneerOutputsToMix()
+                // even if every window since has been 100% silent. Use the per-window counter
+                // instead so "succeeded" means *this* window actually carried signal.
+                if (mNonZeroBytesSincePeakLog > 0 &&
                     fallbackStage > 0 && fallbackStage < 3) {
                     LOGI("%s fallback strategy %d succeeded: capture payload is non-zero",
                          mMixerProfile->name, fallbackStage);
@@ -989,6 +1030,44 @@ void UsbIsoAudioSource::demuxAndEmit(const uint8_t* data, size_t length) {
                     LOGW("%s fallback strategies exhausted: all MIX routes still produce an "
                          "all-zero capture payload", mMixerProfile->name);
                     mPioneerFallbackStage.store(4, std::memory_order_relaxed);
+                }
+            }
+            if (mConfig.extractChannelOffset < 0) {
+                // Auto-pick decisions used to be re-evaluated on every incoming packet against
+                // mPairPeaks *while it was still accumulating* for the current window -- multiple
+                // output pairs carrying genuinely comparable real-audio amplitude (confirmed on
+                // DJM-900NXS2 once real signal started flowing, 2026-07-20: all 5 pairs within
+                // ~20% of each other) meant whichever pair's running max happened to be highest at
+                // that exact instant kept leapfrogging, flipping the selected pair dozens of times
+                // per second. That mid-recording channel-switching is what produced the reported
+                // quiet/distorted output: FLAC frames interleaved from different pairs mid-stream.
+                // Deciding once per finished window, against the now-final peaks, removes the
+                // in-progress-data race. A margin (not just ">") on top avoids flapping between
+                // two pairs that are close but not equal from one window to the next.
+                uint32_t bestMagnitude = 0;
+                int bestOffset = 0;
+                for (size_t pairIndex = 0; pairIndex < mPairPeaks.size(); ++pairIndex) {
+                    const uint32_t pairMagnitude = mPairPeaks[pairIndex];
+                    if (pairMagnitude > bestMagnitude) {
+                        bestMagnitude = pairMagnitude;
+                        bestOffset = static_cast<int>(pairIndex * 2);
+                    }
+                }
+
+                constexpr uint32_t kAudibleThreshold = 1u << 20;
+                const int currentOffset = mResolvedChannelOffset.load(std::memory_order_relaxed);
+                if (currentOffset < 0) {
+                    mResolvedChannelOffset.store(bestOffset, std::memory_order_relaxed);
+                } else if (bestOffset != currentOffset && bestMagnitude >= kAudibleThreshold) {
+                    const size_t currentPairIndex = static_cast<size_t>(currentOffset / 2);
+                    const uint32_t currentMagnitude = currentPairIndex < mPairPeaks.size()
+                        ? mPairPeaks[currentPairIndex] : 0;
+                    // Require a clear (25%) lead over the currently-selected pair, not just a
+                    // higher number, so two pairs that are merely close don't swap every window.
+                    if (bestMagnitude > currentMagnitude + currentMagnitude / 4) {
+                        mResolvedChannelOffset.store(bestOffset, std::memory_order_relaxed);
+                        LOGI("Auto-selected USB channels %d-%d for active audio", bestOffset + 1, bestOffset + 2);
+                    }
                 }
             }
             std::fill(mPairPeaks.begin(), mPairPeaks.end(), 0);
@@ -1035,11 +1114,19 @@ void UsbIsoAudioSource::stop() {
         restorePioneerRecordingRoute();
         libusb_set_interface_alt_setting(mHandle, mConfig.interfaceNumber, 0);
         libusb_release_interface(mHandle, mConfig.interfaceNumber);
-        if (mClaimedPlaybackInterface >= 0) {
+        // DJM-900NXS2's playback (OUT) endpoint lives on the same interface+alt-setting as
+        // capture (both playbackInterface and config.interfaceNumber are 0), so the release
+        // immediately above already released it -- a second release/alt-setting call on the same
+        // interface number is redundant. libusb's own claimed_interfaces bitmap makes the second
+        // call a harmless no-op at the core.c level, but skip it outright rather than lean on
+        // that: a crash traced to a destroyed mutex inside libusb_close() surfaced right after
+        // this dual-claim path was introduced, and removing the redundant call is a safe
+        // simplification regardless of whether it was the actual cause.
+        if (mClaimedPlaybackInterface >= 0 && mClaimedPlaybackInterface != mConfig.interfaceNumber) {
             libusb_set_interface_alt_setting(mHandle, mClaimedPlaybackInterface, 0);
             libusb_release_interface(mHandle, mClaimedPlaybackInterface);
-            mClaimedPlaybackInterface = -1;
         }
+        mClaimedPlaybackInterface = -1;
         if (mClaimedClockControlInterface >= 0) {
             libusb_release_interface(mHandle, mClaimedClockControlInterface);
             mClaimedClockControlInterface = -1;

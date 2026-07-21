@@ -375,6 +375,81 @@ object UsbAudioDescriptorParser {
     }
 
     /**
+     * Scans one exact (interfaceNumber, alternateSetting) pair for its isochronous IN endpoint,
+     * ignoring the interface's declared class entirely -- unlike [findAudioStreamingInterfaces],
+     * which only considers class=1/subclass=2 (standard USB Audio Class) interfaces. This exists
+     * for mixers (confirmed: DJM-900NXS2) whose audio-carrying interface is declared as
+     * USB_CLASS_VENDOR_SPEC (255) instead, so it never has CS_INTERFACE AS_GENERAL/FORMAT_TYPE
+     * descriptors to read channel count / bit resolution from -- callers must supply those from
+     * a [PioneerMixerProfile] vendor-capture override instead.
+     */
+    internal fun findVendorEndpoint(
+        rawDescriptors: ByteArray,
+        interfaceNumber: Int,
+        alternateSetting: Int
+    ): AudioStreamingInterfaceInfo? {
+        var offset = 0
+        var currentInterfaceNumber = -1
+        var currentAlternateSetting = -1
+        var inTargetInterface = false
+        var isoInEndpoint: Int? = null
+        var isoInMaxPacketSize: Int? = null
+        var isoFeedbackEndpoint: Int? = null
+        var isoFeedbackMaxPacketSize: Int? = null
+
+        while (offset + 1 < rawDescriptors.size) {
+            val bLength = rawDescriptors[offset].toInt() and 0xFF
+            if (bLength < 2 || offset + bLength > rawDescriptors.size) break
+            val bDescriptorType = rawDescriptors[offset + 1].toInt() and 0xFF
+
+            when (bDescriptorType) {
+                DT_INTERFACE -> {
+                    currentInterfaceNumber = rawDescriptors[offset + 2].toInt() and 0xFF
+                    currentAlternateSetting = rawDescriptors[offset + 3].toInt() and 0xFF
+                    inTargetInterface =
+                        currentInterfaceNumber == interfaceNumber && currentAlternateSetting == alternateSetting
+                }
+
+                DT_ENDPOINT -> if (inTargetInterface) {
+                    val address = rawDescriptors[offset + 2].toInt() and 0xFF
+                    val attributes = rawDescriptors[offset + 3].toInt() and 0xFF
+                    val isIn = (address and ENDPOINT_DIR_IN_MASK) != 0
+                    val isIsochronous =
+                        (attributes and ENDPOINT_ATTR_TRANSFER_TYPE_MASK) == ENDPOINT_ATTR_TRANSFER_TYPE_ISOCHRONOUS
+                    if (offset + 5 < rawDescriptors.size) {
+                        val wMaxPacketSizeRaw =
+                            (rawDescriptors[offset + 4].toInt() and 0xFF) or
+                                ((rawDescriptors[offset + 5].toInt() and 0xFF) shl 8)
+                        val maxPacketSize = wMaxPacketSizeRaw and 0x7FF
+                        if (isIn && isIsochronous) {
+                            isoInEndpoint = address
+                            isoInMaxPacketSize = maxPacketSize
+                        } else if (isIsochronous && ((attributes shr 4) and 0x03) == 0x01) {
+                            isoFeedbackEndpoint = address
+                            isoFeedbackMaxPacketSize = maxPacketSize
+                        }
+                    }
+                }
+            }
+            offset += bLength
+        }
+
+        if (isoInEndpoint == null) return null
+        return AudioStreamingInterfaceInfo(
+            interfaceNumber = interfaceNumber,
+            alternateSetting = alternateSetting,
+            channelCount = 0, // filled in by the caller from the PioneerMixerProfile override
+            terminalLink = -1,
+            bitResolution = 0,
+            subframeSize = 0,
+            isochronousInEndpointAddress = isoInEndpoint,
+            isochronousInMaxPacketSize = isoInMaxPacketSize,
+            isochronousFeedbackEndpointAddress = isoFeedbackEndpoint,
+            isochronousFeedbackMaxPacketSize = isoFeedbackMaxPacketSize
+        )
+    }
+
+    /**
      * Picks the "best" capture-capable alternate setting.
      *
      * Many real UAC2 DJ mixers (e.g. Pioneer DJM-A9, DJM-V10) do not expose a dedicated

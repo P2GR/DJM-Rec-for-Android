@@ -44,11 +44,25 @@ constexpr PioneerMixerProfile kDjmV5Profile{
     PioneerRouteReadMode::SingleOutputOneBased, true, false, -1, -1, 0, 0
 };
 
+// requiresPlaybackTraffic added 2026-07-20: a raw hex dump of the capture endpoint's untouched
+// wire bytes (taken before any channel/format demux) confirmed genuine all-zero payload across
+// every MIX-routed output pair, with music confirmed audibly playing on the mixer at the time --
+// ruling out both "no signal at the source" and "wrong channel/bit-depth guess" (a format error
+// would misplace real nonzero bytes, not zero them). The remaining hypothesis, mirrored from
+// DJM-A9's confirmed-working requiresPlaybackTraffic mechanism: this endpoint may only emit real
+// audio once the host is also driving its OUT direction. Unlike DJM-A9 (separate playback
+// interface/alt-setting from its capture interface), DJM-900NXS2's OUT endpoint (0x01) lives on
+// the SAME vendor-class interface+alt-setting (if0/alt1) as its IN capture endpoint (0x82) --
+// untested territory, since no prior USBPcap capture confirms what this OUT endpoint expects.
 constexpr PioneerMixerProfile kDjm900Nxs2Profile{
     "DJM-900NXS2", 0x000A, 0x000A, 5, 0,
     {0x0A, 0x0A, 0x0A, 0x0A, 0x0A},
     {0x0A, 0x0A, 0x0A, 0x0A, 0x0A},
-    PioneerRouteReadMode::AllOutputs, true, false, -1, -1, 0, 0
+    // playbackChannels/playbackSubframeBytes only size the zero-filled OUT silence buffer (see
+    // "washing machine" wire-format correction in PioneerMixerProfile.kt: real capture data is
+    // 12ch/24-bit, not 10ch as originally guessed here) -- kept consistent for documentation, but
+    // since the OUT content is always zero this has no effect on captured audio either way.
+    PioneerRouteReadMode::AllOutputs, true, true, 0, 1, 12, 3
 };
 
 constexpr PioneerMixerProfile kDjm750Mk2Profile{

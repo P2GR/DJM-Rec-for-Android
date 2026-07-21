@@ -234,12 +234,13 @@ class UsbAudioManager(private val context: Context) {
         val rawDescriptors: ByteArray
         val topology: UacTopology
         var clockSampleRates = emptyList<Int>()
+        var mixerProfile: PioneerMixerProfile? = null
         val bestInterface = try {
             rawDescriptors = connection.rawDescriptors ?: ByteArray(0)
             Log.i(TAG, "${device.deviceName}: read ${rawDescriptors.size} bytes of raw descriptors")
             streamingInterfaces = UsbAudioDescriptorParser.findAudioStreamingInterfaces(rawDescriptors)
             topology = UsbAudioDescriptorParser.parseTopology(rawDescriptors)
-            val mixerProfile = PioneerMixerProfile.find(device.vendorId, device.productId)
+            mixerProfile = PioneerMixerProfile.find(device.vendorId, device.productId)
             clockSampleRates = if (mixerProfile != null) {
                 Log.i(TAG, "${device.deviceName}: using ${mixerProfile.displayName} endpoint/vendor clock profile")
                 emptyList()
@@ -265,7 +266,39 @@ class UsbAudioManager(private val context: Context) {
                         "terminals=${topology.inputTerminals.size}/${topology.outputTerminals.size} " +
                             "descriptorRates=${topology.descriptorSampleRates} clockRates=$clockSampleRates"
                     )
-            UsbAudioDescriptorParser.selectBestStereoInterface(streamingInterfaces)
+            val standardBest = UsbAudioDescriptorParser.selectBestStereoInterface(streamingInterfaces)
+            standardBest ?: mixerProfile?.takeIf { it.hasVendorCaptureOverride }?.let { profile ->
+                Log.i(
+                    TAG,
+                    "${device.deviceName}: no standard AudioStreaming interface; trying " +
+                        "${profile.displayName} vendor-class capture override " +
+                        "if${profile.vendorCaptureInterface}/alt${profile.vendorCaptureAlternateSetting}"
+                )
+                UsbAudioDescriptorParser.findVendorEndpoint(
+                    rawDescriptors, profile.vendorCaptureInterface, profile.vendorCaptureAlternateSetting
+                )?.copy(
+                    channelCount = profile.vendorCaptureChannelCount,
+                    bitResolution = profile.vendorCaptureBitResolution,
+                    subframeSize = profile.vendorCaptureSubframeSize
+                ).also {
+                    if (it == null) {
+                        Log.w(
+                            TAG,
+                            "${device.deviceName}: vendor capture override interface has no " +
+                                "isochronous IN endpoint either -- descriptor layout doesn't match " +
+                                "what was captured when this profile was written"
+                        )
+                    } else {
+                        Log.w(
+                            TAG,
+                            "${device.deviceName}: using UNVERIFIED vendor capture format " +
+                                "(${it.channelCount}ch/${it.bitResolution}bit) -- not confirmed on " +
+                                "real hardware; if the resulting recording is noise/silence, this " +
+                                "format guess is what to revisit first"
+                        )
+                    }
+                }
+            }
         } finally {
             // We only needed the descriptors; AAudio/AudioFlinger owns the real data connection.
             connection.close()
@@ -410,6 +443,52 @@ class UsbAudioManager(private val context: Context) {
      * Returns null if there is no published device, permission has not been granted, or the
      * connection could not be opened -- callers should fall back to the AAudio path in that case.
      */
+    /**
+     * Sets the mixer's MIX/REC OUT route via Android's own `UsbDeviceConnection.controlTransfer`
+     * API, on the same connection whose fd is about to be handed to libusb.
+     *
+     * Why here and not in native code: on real DJM-900NXS2 hardware, the route GET/SET requests
+     * reliably succeed through this Java API but reliably fail (`LIBUSB_ERROR_BUSY`) through
+     * `libusb_control_transfer()` on a `libusb_wrap_sys_device` handle wrapping the very same fd
+     * once isochronous transfers are in flight -- regardless of claim/alt-setting ordering.
+     *
+     * Why this no longer verifies the SET by reading it back: a real USBPcap capture of Pioneer's
+     * own Windows Setting Utility toggling this exact output between MIX and another source
+     * confirmed two things -- (1) `wValue = ((output+1)<<8)|source` with source `0x0A` for MIX is
+     * the correct encoding (the utility sent literally that, for both output 1 and output 5), and
+     * (2) the GET response at this wIndex is `00 01 01 01 01` for the *entire* capture -- before
+     * the SET, immediately after it, and hundreds of polls later -- never once reflecting the
+     * change the utility had just made and the user could see take effect on screen. So this
+     * register is not a live route readout (or at least not one the utility itself trusts), and
+     * gating success/retry on it -- as this function and its native counterpart used to -- was
+     * chasing a signal that was never going to move. The official driver doesn't verify either;
+     * it just sends the SET and trusts it. This does the same.
+     */
+    private fun establishPioneerRoute(connection: UsbDeviceConnection, profile: PioneerMixerProfile) {
+        val defaultOutput = profile.defaultCaptureChannelOffset / 2
+        val outputs = (listOf(defaultOutput) + profile.additionalMixOutputs)
+            .distinct()
+            .filter { it in 0 until profile.outputCount }
+        for (output in outputs) {
+            val mixSource = profile.mixWithoutMicSources.getOrNull(output) ?: continue
+            val setValue = ((output + 1) shl 8) or mixSource
+            val setResult = connection.controlTransfer(
+                UsbConstants.USB_DIR_OUT or UsbConstants.USB_TYPE_VENDOR,
+                PioneerMixerProfile.ROUTE_SET_REQUEST,
+                setValue,
+                PioneerMixerProfile.ROUTE_INDEX,
+                null,
+                0,
+                1000
+            )
+            if (setResult < 0) {
+                Log.w(TAG, "${profile.displayName}: route SET output ${output + 1} value 0x${setValue.toString(16)} failed (result=$setResult)")
+            } else {
+                Log.i(TAG, "${profile.displayName}: sent MIX/REC OUT route SET for output ${output + 1} (source=0x${mixSource.toString(16)}) -- not verified by readback, see function doc")
+            }
+        }
+    }
+
     fun openIsoCaptureHandle(): UsbIsoCaptureHandle? {
         val info = _deviceState.value ?: run {
             Log.w(TAG, "openIsoCaptureHandle: no device currently published")
@@ -435,6 +514,9 @@ class UsbAudioManager(private val context: Context) {
             return null
         }
         activeIsoConnection = connection
+        info.pioneerMixerProfile?.let { profile ->
+            establishPioneerRoute(connection, profile)
+        }
         val streaming = info.topology?.audioStreamingInterfaces?.firstOrNull {
             it.interfaceNumber == info.streamingInterfaceNumber && it.alternateSetting == info.activeAlternateSetting
         }
