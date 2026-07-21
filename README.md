@@ -73,7 +73,7 @@ that APK.
 The `WaveformAnalyzer` uses a three-band IIR filter bank to render a scrolling
 CDJ-3000-style RGB waveform.
 
-## Livestreaming
+## Livestreaming (Work in progress)
 
 Connect a mixer and wait for USB monitoring, then open **Go Live**. Choose a custom image, rear
 camera, or front camera. Artwork mode has no built-in image; select one through Android's document
