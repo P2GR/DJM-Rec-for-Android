@@ -66,8 +66,6 @@ jobs:
         run: sdkmanager --install "ndk;26.1.10909125" "cmake;3.22.1"
 
       - name: Verify and build
-        env:
-          TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
         run: ./gradlew lintDebug testDebugUnitTest assembleRelease --console=plain
 
       - name: Create checksum
