@@ -57,6 +57,7 @@ enum class PioneerMixerProfile(
     val vendorCaptureChannelCount: Int = -1,
     val vendorCaptureSubframeSize: Int = -1,
     val vendorCaptureBitResolution: Int = -1,
+    val vendorCaptureSampleRates: List<Int> = emptyList(),
     /**
      * Extra 0-based output indices (beyond [defaultCaptureChannelOffset]'s output) that
      * [com.audiopro.djmrec.usb.UsbAudioManager.establishPioneerRoute] should also set to MIX.
@@ -81,6 +82,7 @@ enum class PioneerMixerProfile(
         requiresPlaybackTraffic = true, playbackInterface = 0, playbackAlternateSetting = 1,
         vendorCaptureInterface = 0, vendorCaptureAlternateSetting = 1,
         vendorCaptureChannelCount = 12, vendorCaptureSubframeSize = 3, vendorCaptureBitResolution = 24,
+        vendorCaptureSampleRates = listOf(96_000),
         additionalMixOutputs = listOf(4)
     ),
     DJM_750MK2(
@@ -88,7 +90,8 @@ enum class PioneerMixerProfile(
         listOf(0x0F, 0x0F, 0x0F, 0x0F, 0x0A),
         requiresPlaybackTraffic = true, playbackInterface = 0, playbackAlternateSetting = 1,
         vendorCaptureInterface = 0, vendorCaptureAlternateSetting = 1,
-        vendorCaptureChannelCount = 10, vendorCaptureSubframeSize = 3, vendorCaptureBitResolution = 24
+        vendorCaptureChannelCount = 12, vendorCaptureSubframeSize = 3,
+        vendorCaptureBitResolution = 24, vendorCaptureSampleRates = listOf(96_000)
     );
 
     val hasVendorCaptureOverride: Boolean get() = vendorCaptureInterface >= 0

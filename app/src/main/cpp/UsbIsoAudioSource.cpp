@@ -287,6 +287,19 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
     if (mRunning.load(std::memory_order_acquire)) {
         return "already running";
     }
+    mMixerProfile = findPioneerMixerProfile(config.vendorId, config.productId);
+    if (mMixerProfile && mMixerProfile->captureInChannels > 0 &&
+        (config.totalChannels != mMixerProfile->captureInChannels ||
+         config.subframeSize != mMixerProfile->captureInSubframeBytes ||
+         config.bitResolution != mMixerProfile->captureInBitResolution)) {
+        return std::string(mMixerProfile->name) +
+            " capture format mismatch between Kotlin and native profiles";
+    }
+    if (mMixerProfile && mMixerProfile->fixedCaptureInSampleRate > 0 &&
+        config.requestedSampleRate != mMixerProfile->fixedCaptureInSampleRate) {
+        return std::string(mMixerProfile->name) + " requires " +
+            std::to_string(mMixerProfile->fixedCaptureInSampleRate) + " Hz capture";
+    }
     if (config.fd < 0 || config.endpointAddress < 0 || config.maxPacketSize <= 0 ||
         config.totalChannels < 1 || config.subframeSize < 1 ||
         config.requestedSampleRate <= 0 ||
@@ -299,7 +312,6 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
     mClaimedPlaybackInterface = -1;
     mPlaybackTransfers.clear();
     mPlaybackFrameRemainder = 0;
-    mMixerProfile = findPioneerMixerProfile(config.vendorId, config.productId);
     mPioneerFallbackStage = 0;
     mResolvedChannelOffset = config.extractChannelOffset;
     mFramesSincePeakLog = 0;
@@ -573,7 +585,7 @@ bool UsbIsoAudioSource::startPioneerPlaybackSilence(int sampleRate) {
     const int intervalShift = std::clamp(endpoint.interval - 1, 0, 10);
     mPlaybackPacketsPerSecond = std::max(1, basePacketsPerSecond >> intervalShift);
     mPlaybackFrameBytes =
-        mMixerProfile->playbackChannels * mMixerProfile->playbackSubframeBytes;
+        mMixerProfile->playbackOutChannels * mMixerProfile->playbackOutSubframeBytes;
     mPlaybackMaxPacketSize = endpoint.maxPacketSize;
     mPlaybackFrameRemainder = 0;
 
@@ -591,7 +603,7 @@ bool UsbIsoAudioSource::startPioneerPlaybackSilence(int sampleRate) {
     mPioneerFallbackStage = 1;
     LOGI("%s fallback strategy 1: streaming silence to endpoint 0x%02x at %d Hz "
          "(%dch packed 24-bit, %d packets/sec, maxPacket=%d)",
-         mMixerProfile->name, endpoint.address, sampleRate, mMixerProfile->playbackChannels,
+         mMixerProfile->name, endpoint.address, sampleRate, mMixerProfile->playbackOutChannels,
          mPlaybackPacketsPerSecond, mPlaybackMaxPacketSize);
     return true;
 }
@@ -1041,9 +1053,9 @@ void UsbIsoAudioSource::demuxAndEmit(const uint8_t* data, size_t length) {
                 // that exact instant kept leapfrogging, flipping the selected pair dozens of times
                 // per second. That mid-recording channel-switching is what produced the reported
                 // quiet/distorted output: FLAC frames interleaved from different pairs mid-stream.
-                // Deciding once per finished window, against the now-final peaks, removes the
-                // in-progress-data race. A margin (not just ">") on top avoids flapping between
-                // two pairs that are close but not equal from one window to the next.
+                // Wait for one finished window containing audible signal, then lock that pair for
+                // the lifetime of this capture. Re-selecting later can splice unrelated routed
+                // outputs into one recording even when the comparison itself is race-free.
                 uint32_t bestMagnitude = 0;
                 int bestOffset = 0;
                 for (size_t pairIndex = 0; pairIndex < mPairPeaks.size(); ++pairIndex) {
@@ -1056,18 +1068,10 @@ void UsbIsoAudioSource::demuxAndEmit(const uint8_t* data, size_t length) {
 
                 constexpr uint32_t kAudibleThreshold = 1u << 20;
                 const int currentOffset = mResolvedChannelOffset.load(std::memory_order_relaxed);
-                if (currentOffset < 0) {
+                if (currentOffset < 0 && bestMagnitude >= kAudibleThreshold) {
                     mResolvedChannelOffset.store(bestOffset, std::memory_order_relaxed);
-                } else if (bestOffset != currentOffset && bestMagnitude >= kAudibleThreshold) {
-                    const size_t currentPairIndex = static_cast<size_t>(currentOffset / 2);
-                    const uint32_t currentMagnitude = currentPairIndex < mPairPeaks.size()
-                        ? mPairPeaks[currentPairIndex] : 0;
-                    // Require a clear (25%) lead over the currently-selected pair, not just a
-                    // higher number, so two pairs that are merely close don't swap every window.
-                    if (bestMagnitude > currentMagnitude + currentMagnitude / 4) {
-                        mResolvedChannelOffset.store(bestOffset, std::memory_order_relaxed);
-                        LOGI("Auto-selected USB channels %d-%d for active audio", bestOffset + 1, bestOffset + 2);
-                    }
+                    LOGI("Locked AUTO capture to USB channels %d-%d for this session",
+                         bestOffset + 1, bestOffset + 2);
                 }
             }
             std::fill(mPairPeaks.begin(), mPairPeaks.end(), 0);

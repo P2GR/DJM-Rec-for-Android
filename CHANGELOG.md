@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.36.2 (2026-07-24)
 
 - Add RTMP/RTMPS livestreaming with direct DJM USB audio
 - Add optional rear/front camera and custom artwork video modes
@@ -21,6 +21,7 @@
 - Report mixer PCM, AAC, camera, or H.264 startup failures directly in stream status
 - Add Twitch device authorization, stream-key retrieval, and official ingest discovery
 - Keep WAV/FLAC recording available while streaming
+- Correct DJM-750MK2 capture framing to 12-channel packed 24-bit PCM
 
 ## v0.35.0 (2026-07-18)
 

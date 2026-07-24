@@ -23,8 +23,12 @@ struct PioneerMixerProfile {
     bool requiresPlaybackTraffic;
     int playbackInterface;
     int playbackAlternateSetting;
-    int playbackChannels;
-    int playbackSubframeBytes;
+    int playbackOutChannels;
+    int playbackOutSubframeBytes;
+    int captureInChannels;
+    int captureInSubframeBytes;
+    int captureInBitResolution;
+    int fixedCaptureInSampleRate;
 };
 
 constexpr int kAlphaThetaVendorId = 0x2B73;
@@ -34,14 +38,14 @@ constexpr PioneerMixerProfile kDjmA9Profile{
     "DJM-A9", 0x003C, 0x003C, 5, 4,
     {0x09, 0x09, 0x09, 0x09, 0x09},
     {0x0A, 0x0A, 0x0A, 0x0A, 0x0A},
-    PioneerRouteReadMode::SingleOutputZeroBased, true, true, 1, 1, 10, 3
+    PioneerRouteReadMode::SingleOutputZeroBased, true, true, 1, 1, 10, 3, 0, 0, 0, 0
 };
 
 constexpr PioneerMixerProfile kDjmV5Profile{
     "DJM-V5", 0x0058, 0x005B, 4, 0,
     {0x0A, 0x0A, 0x0A, 0x0A, -1},
     {0x0E, 0x0E, 0x0E, 0x0E, -1},
-    PioneerRouteReadMode::SingleOutputOneBased, true, false, -1, -1, 0, 0
+    PioneerRouteReadMode::SingleOutputOneBased, true, false, -1, -1, 0, 0, 0, 0, 0, 0
 };
 
 // requiresPlaybackTraffic added 2026-07-20: a raw hex dump of the capture endpoint's untouched
@@ -58,23 +62,22 @@ constexpr PioneerMixerProfile kDjm900Nxs2Profile{
     "DJM-900NXS2", 0x000A, 0x000A, 5, 0,
     {0x0A, 0x0A, 0x0A, 0x0A, 0x0A},
     {0x0A, 0x0A, 0x0A, 0x0A, 0x0A},
-    // playbackChannels/playbackSubframeBytes only size the zero-filled OUT silence buffer (see
-    // "washing machine" wire-format correction in PioneerMixerProfile.kt: real capture data is
-    // 12ch/24-bit, not 10ch as originally guessed here) -- kept consistent for documentation, but
-    // since the OUT content is always zero this has no effect on captured audio either way.
-    PioneerRouteReadMode::AllOutputs, true, true, 0, 1, 12, 3
+    PioneerRouteReadMode::AllOutputs, true, true, 0, 1,
+    12, 3,  // playback OUT keepalive
+    12, 3, 24, 96000 // capture IN PCM
 };
 
 // Same vendor-class interface topology as DJM-900NXS2: isochronous IN endpoint (0x82) lives on
 // if0/alt1 declared as USB_CLASS_VENDOR_SPEC (255), OUT endpoint (0x01) on the same interface.
 // requiresPlaybackTraffic and vendor-capture override applied per the same evidence chain.
-// Channel count 10 is the best initial guess (5 outputs x 2ch); the raw hex dump feature will
-// reveal the actual packet size on first capture if this turns out wrong (NXS2 was 12ch).
+// This mixer uses the same 12-channel packed-24-bit USB frame width in both directions.
 constexpr PioneerMixerProfile kDjm750Mk2Profile{
     "DJM-750MK2", 0x001B, 0x001B, 5, 0,
     {0x0F, 0x0F, 0x0F, 0x0F, 0x0A},
     {0x0F, 0x0F, 0x0F, 0x0F, 0x0A},
-    PioneerRouteReadMode::AllOutputs, true, true, 0, 1, 10, 3
+    PioneerRouteReadMode::AllOutputs, true, true, 0, 1,
+    12, 3,  // playback OUT keepalive
+    12, 3, 24, 96000 // capture IN PCM
 };
 
 inline const PioneerMixerProfile* findPioneerMixerProfile(int vendorId, int productId) {

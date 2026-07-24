@@ -32,6 +32,18 @@ class PioneerMixerProfileTest {
     }
 
     @Test
+    fun `uses mixer multichannel wire formats`() {
+        assertEquals(12, PioneerMixerProfile.DJM_900NXS2.vendorCaptureChannelCount)
+        assertEquals(3, PioneerMixerProfile.DJM_900NXS2.vendorCaptureSubframeSize)
+        assertEquals(24, PioneerMixerProfile.DJM_900NXS2.vendorCaptureBitResolution)
+        assertEquals(listOf(96_000), PioneerMixerProfile.DJM_900NXS2.vendorCaptureSampleRates)
+        assertEquals(12, PioneerMixerProfile.DJM_750MK2.vendorCaptureChannelCount)
+        assertEquals(3, PioneerMixerProfile.DJM_750MK2.vendorCaptureSubframeSize)
+        assertEquals(24, PioneerMixerProfile.DJM_750MK2.vendorCaptureBitResolution)
+        assertEquals(listOf(96_000), PioneerMixerProfile.DJM_750MK2.vendorCaptureSampleRates)
+    }
+
+    @Test
     fun `encodes each driver route GET convention`() {
         assertEquals(0, PioneerMixerProfile.DJM_A9.routeReadValue(0))
         assertEquals(4, PioneerMixerProfile.DJM_A9.routeReadValue(4))
