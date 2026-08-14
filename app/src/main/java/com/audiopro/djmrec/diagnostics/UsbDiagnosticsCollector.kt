@@ -141,16 +141,20 @@ internal object UsbDiagnosticsCollector {
             report.appendLine("protocol contract: generic UAC path; no proprietary route writes allowed")
             return
         }
-        report.appendLine(
-            "protocol contract: vendor GET request=${hex2(PioneerMixerProfile.ROUTE_GET_REQUEST)} " +
-                "SET request=${hex2(PioneerMixerProfile.ROUTE_SET_REQUEST)} " +
-                "index=${hex4(PioneerMixerProfile.ROUTE_INDEX)} readMode=${profile.routeReadMode} " +
-                "readLength=${profile.routeReadMode.responseLength}"
-        )
-        report.appendLine(
-            "route SET encoding: bmRequestType=0x40 wValue=((output+1)<<8)|source; " +
-                "endpoint clock GET_CUR=0x81 SET_CUR=0x01 wValue=0x0100"
-        )
+        if (profile.routeReadMode == PioneerMixerProfile.RouteReadMode.NONE) {
+            report.appendLine("protocol contract: raw USB pair selection only; proprietary routing not configured")
+        } else {
+            report.appendLine(
+                "protocol contract: vendor GET request=${hex2(PioneerMixerProfile.ROUTE_GET_REQUEST)} " +
+                    "SET request=${hex2(PioneerMixerProfile.ROUTE_SET_REQUEST)} " +
+                    "index=${hex4(PioneerMixerProfile.ROUTE_INDEX)} readMode=${profile.routeReadMode} " +
+                    "readLength=${profile.routeReadMode.responseLength}"
+            )
+            report.appendLine(
+                "route SET encoding: bmRequestType=0x40 wValue=((output+1)<<8)|source; " +
+                    "endpoint clock GET_CUR=0x81 SET_CUR=0x01 wValue=0x0100"
+            )
+        }
         report.appendLine(
             "capture contract: outputs=${profile.outputCount} " +
                 "defaultPair=${profile.defaultCaptureChannelOffset + 1}-" +
@@ -262,6 +266,10 @@ internal object UsbDiagnosticsCollector {
         connection: UsbDeviceConnection?,
         profile: PioneerMixerProfile
     ) {
+        if (profile.routeReadMode == PioneerMixerProfile.RouteReadMode.NONE) {
+            report.appendLine("route GET probe: not configured for this mixer")
+            return
+        }
         if (connection == null) {
             report.appendLine("route GET probe: FAIL - openDevice returned null")
             return

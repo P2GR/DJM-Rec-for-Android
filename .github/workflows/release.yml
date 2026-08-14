@@ -66,20 +66,29 @@ jobs:
         run: sdkmanager --install "ndk;26.1.10909125" "cmake;3.22.1"
 
       - name: Verify and build
-        run: ./gradlew lintDebug testDebugUnitTest assembleRelease --console=plain
+        run: ./gradlew lintDebug testDebugUnitTest assembleRelease assembleDebug --console=plain
 
-      - name: Create checksum
+      - name: Verify APKs and create checksums
         shell: bash
         run: |
-          APK=$(find app/build/outputs/apk/release -name '*-release.apk' -print -quit)
-          test -n "$APK"
+          APK_RELEASE=$(find app/build/outputs/apk/release -name '*-release.apk' -print -quit)
+          APK_DEBUG=$(find app/build/outputs/apk/debug -name '*-debug.apk' -print -quit)
+          test -n "$APK_RELEASE"
+          test -n "$APK_DEBUG"
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
           test -n "$APKSIGNER"
-          "$APKSIGNER" verify --verbose --print-certs "$APK"
-          sha256sum "$APK" > "${APK}.sha256"
-          echo "APK=$APK" >> "$GITHUB_ENV"
+          "$APKSIGNER" verify --verbose --print-certs "$APK_RELEASE"
+          "$APKSIGNER" verify --verbose --print-certs "$APK_DEBUG"
+          sha256sum "$APK_RELEASE" > "${APK_RELEASE}.sha256"
+          sha256sum "$APK_DEBUG" > "${APK_DEBUG}.sha256"
+          echo "APK_RELEASE=$APK_RELEASE" >> "$GITHUB_ENV"
+          echo "APK_DEBUG=$APK_DEBUG" >> "$GITHUB_ENV"
 
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" "$APK" "$APK.sha256" --verify-tag --generate-notes --title "$GITHUB_REF_NAME"
+        run: >-
+          gh release create "$GITHUB_REF_NAME"
+          "$APK_RELEASE" "$APK_RELEASE.sha256"
+          "$APK_DEBUG" "$APK_DEBUG.sha256"
+          --verify-tag --generate-notes --title "$GITHUB_REF_NAME"

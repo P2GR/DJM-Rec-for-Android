@@ -1,6 +1,6 @@
 package com.audiopro.djmrec.usb
 
-/** USB identities whose proprietary MIX/REC OUT routing is implemented natively. */
+/** USB identities with known Pioneer mixer USB contracts and optional proprietary routing. */
 enum class PioneerMixerProfile(
     val displayName: String,
     val productIds: Set<Int>,
@@ -92,23 +92,33 @@ enum class PioneerMixerProfile(
         vendorCaptureInterface = 0, vendorCaptureAlternateSetting = 1,
         vendorCaptureChannelCount = 12, vendorCaptureSubframeSize = 3,
         vendorCaptureBitResolution = 24, vendorCaptureSampleRates = listOf(96_000)
+    ),
+    DJM_450(
+        "DJM-450", setOf(0x0013), 0, 0, RouteReadMode.NONE, emptyList(),
+        playbackInterface = 0, playbackAlternateSetting = 1,
+        vendorCaptureInterface = 0, vendorCaptureAlternateSetting = 1,
+        vendorCaptureChannelCount = 8, vendorCaptureSubframeSize = 3,
+        vendorCaptureBitResolution = 24, vendorCaptureSampleRates = listOf(48_000)
     );
 
     val hasVendorCaptureOverride: Boolean get() = vendorCaptureInterface >= 0
 
     enum class RouteReadMode(val responseLength: Int) {
+        NONE(0),
         SINGLE_OUTPUT_ZERO_BASED(2),
         SINGLE_OUTPUT_ONE_BASED(2),
         ALL_OUTPUTS(5)
     }
 
     fun routeReadValue(outputIndex: Int): Int = when (routeReadMode) {
+        RouteReadMode.NONE -> 0
         RouteReadMode.SINGLE_OUTPUT_ZERO_BASED -> outputIndex
         RouteReadMode.SINGLE_OUTPUT_ONE_BASED -> outputIndex + 1
         RouteReadMode.ALL_OUTPUTS -> 0
     }
 
     fun decodeRouteSource(response: ByteArray, outputIndex: Int): Int? = when (routeReadMode) {
+        RouteReadMode.NONE -> null
         RouteReadMode.SINGLE_OUTPUT_ZERO_BASED,
         RouteReadMode.SINGLE_OUTPUT_ONE_BASED -> response.getOrNull(1)?.toInt()?.and(0xFF)
         RouteReadMode.ALL_OUTPUTS -> response.getOrNull(outputIndex)?.toInt()?.and(0xFF)
@@ -116,6 +126,7 @@ enum class PioneerMixerProfile(
 
     fun isRouteResponseValid(response: ByteArray, outputIndex: Int): Boolean =
         response.size == routeReadMode.responseLength && when (routeReadMode) {
+            RouteReadMode.NONE -> false
             RouteReadMode.SINGLE_OUTPUT_ZERO_BASED ->
                 response.firstOrNull()?.toInt()?.and(0xFF) == outputIndex
             RouteReadMode.SINGLE_OUTPUT_ONE_BASED ->

@@ -12,6 +12,7 @@ class PioneerMixerProfileTest {
         assertEquals(PioneerMixerProfile.DJM_A9, PioneerMixerProfile.find(vendor, 0x003C))
         assertEquals(PioneerMixerProfile.DJM_900NXS2, PioneerMixerProfile.find(vendor, 0x000A))
         assertEquals(PioneerMixerProfile.DJM_750MK2, PioneerMixerProfile.find(vendor, 0x001B))
+        assertEquals(PioneerMixerProfile.DJM_450, PioneerMixerProfile.find(vendor, 0x0013))
         listOf(0x0058, 0x0059, 0x005A, 0x005B).forEach { productId ->
             assertEquals(PioneerMixerProfile.DJM_V5, PioneerMixerProfile.find(vendor, productId))
         }
@@ -29,6 +30,7 @@ class PioneerMixerProfileTest {
         assertEquals(0, PioneerMixerProfile.DJM_V5.defaultCaptureChannelOffset)
         assertEquals(0, PioneerMixerProfile.DJM_900NXS2.defaultCaptureChannelOffset)
         assertEquals(0, PioneerMixerProfile.DJM_750MK2.defaultCaptureChannelOffset)
+        assertEquals(0, PioneerMixerProfile.DJM_450.defaultCaptureChannelOffset)
     }
 
     @Test
@@ -41,6 +43,19 @@ class PioneerMixerProfileTest {
         assertEquals(3, PioneerMixerProfile.DJM_750MK2.vendorCaptureSubframeSize)
         assertEquals(24, PioneerMixerProfile.DJM_750MK2.vendorCaptureBitResolution)
         assertEquals(listOf(96_000), PioneerMixerProfile.DJM_750MK2.vendorCaptureSampleRates)
+        assertEquals(8, PioneerMixerProfile.DJM_450.vendorCaptureChannelCount)
+        assertEquals(3, PioneerMixerProfile.DJM_450.vendorCaptureSubframeSize)
+        assertEquals(24, PioneerMixerProfile.DJM_450.vendorCaptureBitResolution)
+        assertEquals(listOf(48_000), PioneerMixerProfile.DJM_450.vendorCaptureSampleRates)
+        assertEquals(0, PioneerMixerProfile.DJM_450.vendorCaptureInterface)
+        assertEquals(1, PioneerMixerProfile.DJM_450.vendorCaptureAlternateSetting)
+    }
+
+    @Test
+    fun `does not assume an unverified DJM-450 route`() {
+        assertEquals(0, PioneerMixerProfile.DJM_450.outputCount)
+        assertEquals(PioneerMixerProfile.RouteReadMode.NONE, PioneerMixerProfile.DJM_450.routeReadMode)
+        assertEquals(false, PioneerMixerProfile.DJM_450.requiresPlaybackTraffic)
     }
 
     @Test
