@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.36.5 (2026-08-14)
+
+- Update the live waveform independently at 50 fps for smoother visual response
+- Keep meter, health, and notification polling on their existing schedules
+- Stop waveform polling automatically when monitoring/recording ends
+
 ## v0.36.4 (2026-08-14)
 
 - Add driver-derived DJM-V10 and DJM-450 capture profiles and Windows driver archives

@@ -119,6 +119,7 @@ class RecordingService : LifecycleService() {
         private const val CHANNEL_ID = "recording_channel"
         private const val NOTIFICATION_ID = 1001
         private const val METER_UPDATE_INTERVAL_MS = 66L // ~15 fps, plenty for a VU meter
+        private const val WAVEFORM_UPDATE_INTERVAL_MS = 20L // 50 fps for smooth visual updates
         private const val NOTIFICATION_UPDATE_INTERVAL_MS = 500L
         private const val USB_SIGNAL_CHECK_INTERVAL_MS = 100L
         private const val USB_SIGNAL_CHECK_TIMEOUT_MS = 1500L
@@ -181,7 +182,6 @@ class RecordingService : LifecycleService() {
     private var isMonitoringOnly = false
     @Volatile
     private var waveformEnabled = true
-    private var waveformPollTick = 0
     private var lastCheckpointRealtime = 0L
     private var lastUsbStats = LongArray(7)
     private var usbHealthInitialized = false
@@ -201,12 +201,19 @@ class RecordingService : LifecycleService() {
                     right = ChannelLevel(peakDb = raw[2], rmsDb = raw[3], isClipping = clipping)
                 )
                 _elapsedMillis.value = AudioEngine.getElapsedMillis()
-                // The waveform is visual context, not a meter. Half-rate polling avoids copying
-                // 2,048 atomic floats every meter tick and materially reduces display/battery work.
-                if (waveformEnabled && waveformPollTick++ % 2 == 0) {
+                monitorHandler.postDelayed(this, METER_UPDATE_INTERVAL_MS)
+            }
+        }
+    }
+
+    private val waveformRunnable = object : Runnable {
+        override fun run() {
+            if (_state.value is RecordingState.Recording || _state.value is RecordingState.Paused ||
+                _state.value is RecordingState.Monitoring) {
+                if (waveformEnabled) {
                     _waveformBins.value = AudioEngine.getWaveformBins()
                 }
-                monitorHandler.postDelayed(this, METER_UPDATE_INTERVAL_MS)
+                monitorHandler.postDelayed(this, WAVEFORM_UPDATE_INTERVAL_MS)
             }
         }
     }
@@ -305,7 +312,6 @@ class RecordingService : LifecycleService() {
 
     fun setWaveformEnabled(enabled: Boolean) {
         waveformEnabled = enabled
-        waveformPollTick = 0
         AudioEngine.setWaveformEnabled(enabled)
         if (!enabled) _waveformBins.value = emptyWaveform
     }
@@ -756,9 +762,11 @@ class RecordingService : LifecycleService() {
     private fun startPolling() {
         resetHealthTracking()
         monitorHandler.removeCallbacks(meterRunnable)
+        monitorHandler.removeCallbacks(waveformRunnable)
         monitorHandler.removeCallbacks(notificationRunnable)
         monitorHandler.removeCallbacks(healthRunnable)
         monitorHandler.post(meterRunnable)
+        monitorHandler.post(waveformRunnable)
         monitorHandler.post(notificationRunnable)
         monitorHandler.post(healthRunnable)
     }
