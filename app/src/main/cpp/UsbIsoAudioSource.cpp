@@ -122,7 +122,8 @@ bool readPioneerRouteSource(
     int& source
 ) {
     if (output < 0 || output >= profile.outputCount) return false;
-    uint8_t response[5]{};
+    if (profile.routeReadMode == PioneerRouteReadMode::None) return false;
+    uint8_t response[6]{};
     const bool allOutputs = profile.routeReadMode == PioneerRouteReadMode::AllOutputs;
     const uint16_t value = profile.routeReadMode == PioneerRouteReadMode::SingleOutputOneBased
         ? static_cast<uint16_t>(output + 1)
@@ -740,9 +741,9 @@ UsbIsoAudioSource::TransferStatsSnapshot UsbIsoAudioSource::getTransferStats() c
 
 std::string UsbIsoAudioSource::diagnosticSummary() const {
     const auto stats = getTransferStats();
-    std::array<int, 5> original{};
-    std::array<int, 5> applied{};
-    std::array<bool, 5> changed{};
+    std::array<int, 6> original{};
+    std::array<int, 6> applied{};
+    std::array<bool, 6> changed{};
     {
         std::lock_guard<std::mutex> lock(mDiagnosticMutex);
         original = mPioneerOriginalSources;

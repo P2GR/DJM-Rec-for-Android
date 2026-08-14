@@ -17,8 +17,8 @@ struct PioneerMixerProfile {
     int productIdLast;
     int outputCount;
     int defaultOutput;
-    std::array<int, 5> mixWithMicSources;
-    std::array<int, 5> mixWithoutMicSources;
+    std::array<int, 6> mixWithMicSources;
+    std::array<int, 6> mixWithoutMicSources;
     PioneerRouteReadMode routeReadMode;
     bool usesEndpointSampleRate;
     bool requiresPlaybackTraffic;
@@ -36,20 +36,30 @@ constexpr int kAlphaThetaVendorId = 0x2B73;
 
 // Values derived from installed Pioneer/AlphaTheta setup DLLs and kernel drivers.
 // Channel counts cross-verified against Linux kernel snd-usb-audio quirks-table.h
-// (torvalds/linux master, 2026-07-28): DJM-A9=10playback/12capture, DJM-900NXS2=10/12,
-// DJM-750MK2=10playback/12capture @48kHz.
+// (torvalds/linux master, 2026-08-14).
 // DJM-A9 capture uses standard UAC AudioStreaming (captureInChannels=0 -- read from descriptor).
 constexpr PioneerMixerProfile kDjmA9Profile{
     "DJM-A9", 0x003C, 0x003C, 5, 4,
-    {0x09, 0x09, 0x09, 0x09, 0x09},
-    {0x0A, 0x0A, 0x0A, 0x0A, 0x0A},
+    {0x09, 0x09, 0x09, 0x09, 0x09, -1},
+    {0x0A, 0x0A, 0x0A, 0x0A, 0x0A, -1},
     PioneerRouteReadMode::SingleOutputZeroBased, true, true, 1, 1, 10, 3, 0, 0, 0, 0
+};
+
+// DJM-V10_Setup.dll exposes six USB input pairs. Its raw route table maps MIX(REC OUT) to
+// source 0x0A for every pair. The kernel quirk confirms the vendor-class if0/alt1 wire format.
+// Route GET semantics were not established, so only the pre-capture SET path uses this mapping.
+constexpr PioneerMixerProfile kDjmV10Profile{
+    "DJM-V10", 0x0034, 0x0034, 6, 0,
+    {0x0A, 0x0A, 0x0A, 0x0A, 0x0A, 0x0A},
+    {0x0A, 0x0A, 0x0A, 0x0A, 0x0A, 0x0A},
+    PioneerRouteReadMode::None, true, true, 0, 1,
+    12, 3, 12, 3, 24, 0
 };
 
 constexpr PioneerMixerProfile kDjmV5Profile{
     "DJM-V5", 0x0058, 0x005B, 4, 0,
-    {0x0A, 0x0A, 0x0A, 0x0A, -1},
-    {0x0E, 0x0E, 0x0E, 0x0E, -1},
+    {0x0A, 0x0A, 0x0A, 0x0A, -1, -1},
+    {0x0E, 0x0E, 0x0E, 0x0E, -1, -1},
     PioneerRouteReadMode::SingleOutputOneBased, true, false, -1, -1, 0, 0, 0, 0, 0, 0
 };
 
@@ -66,8 +76,8 @@ constexpr PioneerMixerProfile kDjmV5Profile{
 // ALSA quirk (Linux kernel quirks-table.h) confirms: 10 playback channels, 12 capture channels.
 constexpr PioneerMixerProfile kDjm900Nxs2Profile{
     "DJM-900NXS2", 0x000A, 0x000A, 5, 0,
-    {0x0A, 0x0A, 0x0A, 0x0A, 0x0A},
-    {0x0A, 0x0A, 0x0A, 0x0A, 0x0A},
+    {0x0A, 0x0A, 0x0A, 0x0A, 0x0A, -1},
+    {0x0A, 0x0A, 0x0A, 0x0A, 0x0A, -1},
     PioneerRouteReadMode::AllOutputs, true, true, 0, 1,
     10, 3,  // playback OUT keepalive (10ch per ALSA snd-usb-audio quirk)
     12, 3, 24, 96000 // capture IN PCM
@@ -79,17 +89,17 @@ constexpr PioneerMixerProfile kDjm900Nxs2Profile{
 // DJM-750MK2 uses 10-channel playback OUT (keepalive) and 12-channel capture IN per ALSA quirk.
 constexpr PioneerMixerProfile kDjm750Mk2Profile{
     "DJM-750MK2", 0x001B, 0x001B, 5, 0,
-    {0x0F, 0x0F, 0x0F, 0x0F, 0x0A},
-    {0x0F, 0x0F, 0x0F, 0x0F, 0x0A},
+    {0x0F, 0x0F, 0x0F, 0x0F, 0x0A, -1},
+    {0x0F, 0x0F, 0x0F, 0x0F, 0x0A, -1},
     PioneerRouteReadMode::AllOutputs, true, true, 0, 1,
     10, 3,  // playback OUT keepalive (10ch per ALSA snd-usb-audio quirk)
     12, 3, 24, 96000 // capture IN PCM
 };
 
 constexpr PioneerMixerProfile kDjm450Profile{
-    "DJM-450", 0x0013, 0x0013, 0, 0,
-    {-1, -1, -1, -1, -1},
-    {-1, -1, -1, -1, -1},
+    "DJM-450", 0x0013, 0x0013, 3, 0,
+    {0x0A, 0x0A, 0x0A, -1, -1, -1},
+    {0x0A, 0x0A, 0x0A, -1, -1, -1},
     PioneerRouteReadMode::None, true, false, 0, 1,
     8, 3,  // playback OUT PCM
     8, 3, 24, 48000 // capture IN PCM
@@ -98,7 +108,8 @@ constexpr PioneerMixerProfile kDjm450Profile{
 inline const PioneerMixerProfile* findPioneerMixerProfile(int vendorId, int productId) {
     if (vendorId != kAlphaThetaVendorId) return nullptr;
     constexpr const PioneerMixerProfile* profiles[] = {
-        &kDjmA9Profile, &kDjmV5Profile, &kDjm900Nxs2Profile, &kDjm750Mk2Profile, &kDjm450Profile
+        &kDjmA9Profile, &kDjmV10Profile, &kDjmV5Profile, &kDjm900Nxs2Profile,
+        &kDjm750Mk2Profile, &kDjm450Profile
     };
     for (const auto* profile : profiles) {
         if (productId >= profile->productIdFirst && productId <= profile->productIdLast) {

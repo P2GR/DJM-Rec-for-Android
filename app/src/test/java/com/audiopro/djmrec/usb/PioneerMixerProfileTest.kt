@@ -10,6 +10,7 @@ class PioneerMixerProfileTest {
         val vendor = PioneerMixerProfile.ALPHATHETA_VENDOR_ID
 
         assertEquals(PioneerMixerProfile.DJM_A9, PioneerMixerProfile.find(vendor, 0x003C))
+        assertEquals(PioneerMixerProfile.DJM_V10, PioneerMixerProfile.find(vendor, 0x0034))
         assertEquals(PioneerMixerProfile.DJM_900NXS2, PioneerMixerProfile.find(vendor, 0x000A))
         assertEquals(PioneerMixerProfile.DJM_750MK2, PioneerMixerProfile.find(vendor, 0x001B))
         assertEquals(PioneerMixerProfile.DJM_450, PioneerMixerProfile.find(vendor, 0x0013))
@@ -27,6 +28,7 @@ class PioneerMixerProfileTest {
     @Test
     fun `uses driver-derived default capture pairs`() {
         assertEquals(8, PioneerMixerProfile.DJM_A9.defaultCaptureChannelOffset)
+        assertEquals(0, PioneerMixerProfile.DJM_V10.defaultCaptureChannelOffset)
         assertEquals(0, PioneerMixerProfile.DJM_V5.defaultCaptureChannelOffset)
         assertEquals(0, PioneerMixerProfile.DJM_900NXS2.defaultCaptureChannelOffset)
         assertEquals(0, PioneerMixerProfile.DJM_750MK2.defaultCaptureChannelOffset)
@@ -35,6 +37,10 @@ class PioneerMixerProfileTest {
 
     @Test
     fun `uses mixer multichannel wire formats`() {
+        assertEquals(12, PioneerMixerProfile.DJM_V10.vendorCaptureChannelCount)
+        assertEquals(3, PioneerMixerProfile.DJM_V10.vendorCaptureSubframeSize)
+        assertEquals(24, PioneerMixerProfile.DJM_V10.vendorCaptureBitResolution)
+        assertEquals(listOf(44_100, 48_000, 96_000), PioneerMixerProfile.DJM_V10.vendorCaptureSampleRates)
         assertEquals(12, PioneerMixerProfile.DJM_900NXS2.vendorCaptureChannelCount)
         assertEquals(3, PioneerMixerProfile.DJM_900NXS2.vendorCaptureSubframeSize)
         assertEquals(24, PioneerMixerProfile.DJM_900NXS2.vendorCaptureBitResolution)
@@ -52,8 +58,12 @@ class PioneerMixerProfileTest {
     }
 
     @Test
-    fun `does not assume an unverified DJM-450 route`() {
-        assertEquals(0, PioneerMixerProfile.DJM_450.outputCount)
+    fun `uses driver-derived routes without assuming readback semantics`() {
+        assertEquals(6, PioneerMixerProfile.DJM_V10.outputCount)
+        assertEquals(List(6) { 0x0A }, PioneerMixerProfile.DJM_V10.mixWithoutMicSources)
+        assertEquals(PioneerMixerProfile.RouteReadMode.NONE, PioneerMixerProfile.DJM_V10.routeReadMode)
+        assertEquals(3, PioneerMixerProfile.DJM_450.outputCount)
+        assertEquals(listOf(0x0A, 0x0A, 0x0A), PioneerMixerProfile.DJM_450.mixWithoutMicSources)
         assertEquals(PioneerMixerProfile.RouteReadMode.NONE, PioneerMixerProfile.DJM_450.routeReadMode)
         assertEquals(false, PioneerMixerProfile.DJM_450.requiresPlaybackTraffic)
     }

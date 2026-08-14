@@ -49,8 +49,7 @@ object RecordingOutputManager {
         format: RecordingFormat,
         partIndex: Int
     ): PendingRecordingOutput? = runCatching {
-        val suffix = if (format == RecordingFormat.WAV) "_part${partIndex.toString().padStart(2, '0')}" else ""
-        val displayName = "mix_${sessionId}$suffix.${format.extension}"
+        val displayName = displayName(sessionId, format, partIndex)
         val values = ContentValues().apply {
             put(MediaStore.Audio.Media.DISPLAY_NAME, displayName)
             put(MediaStore.Audio.Media.MIME_TYPE, mimeType(format))
@@ -204,6 +203,16 @@ object RecordingOutputManager {
     private fun mimeType(format: RecordingFormat): String = when (format) {
         RecordingFormat.WAV -> "audio/wav"
         RecordingFormat.FLAC -> "audio/flac"
+    }
+
+    internal fun displayName(sessionId: String, format: RecordingFormat, partIndex: Int): String {
+        // The normal mixtape is one file. Only a genuine RIFF rollover gets a part suffix.
+        val suffix = if (format == RecordingFormat.WAV && partIndex > 1) {
+            "_part${partIndex.toString().padStart(2, '0')}"
+        } else {
+            ""
+        }
+        return "mix_${sessionId}$suffix.${format.extension}"
     }
 
     private fun ParcelFileDescriptor.closeQuietly() {

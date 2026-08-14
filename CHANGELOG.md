@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.36.4 (2026-08-14)
+
+- Add driver-derived DJM-V10 and DJM-450 capture profiles and Windows driver archives
+- Keep DJM-A9 recording hardware-validated; mark other mixer profiles for physical testing
+- Name normal recordings `mix_YYYYMMDD_HHmmss` without a misleading part suffix
+- Retain part suffixes only for genuine WAV rollover files
+
 ## v0.36.2 (2026-07-24)
 
 - Add RTMP/RTMPS livestreaming with direct DJM USB audio

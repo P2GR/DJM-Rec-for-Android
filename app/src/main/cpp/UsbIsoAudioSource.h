@@ -133,9 +133,9 @@ private:
     int mClaimedClockControlInterface = -1;
     int mClaimedPlaybackInterface = -1;
     const PioneerMixerProfile* mMixerProfile = nullptr;
-    std::array<int, 5> mPioneerOriginalSources{{-1, -1, -1, -1, -1}};
-    std::array<int, 5> mPioneerAppliedSources{{-1, -1, -1, -1, -1}};
-    std::array<bool, 5> mPioneerRoutesChanged{{false, false, false, false, false}};
+    std::array<int, 6> mPioneerOriginalSources{{-1, -1, -1, -1, -1, -1}};
+    std::array<int, 6> mPioneerAppliedSources{{-1, -1, -1, -1, -1, -1}};
+    std::array<bool, 6> mPioneerRoutesChanged{{false, false, false, false, false, false}};
     mutable std::mutex mDiagnosticMutex;
     std::vector<libusb_transfer*> mTransfers;
     std::vector<libusb_transfer*> mPlaybackTransfers;

@@ -1,5 +1,6 @@
 package com.audiopro.djmrec.storage
 
+import com.audiopro.djmrec.audio.RecordingFormat
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -7,6 +8,22 @@ import kotlin.test.assertTrue
 import kotlin.test.assertNull
 
 class RecordingStoragePolicyTest {
+    @Test
+    fun `initial mixtape filename has no part suffix`() {
+        assertEquals(
+            "mix_20260814_120000.wav",
+            RecordingOutputManager.displayName("20260814_120000", RecordingFormat.WAV, 1)
+        )
+    }
+
+    @Test
+    fun `rolled WAV filename keeps part suffix`() {
+        assertEquals(
+            "mix_20260814_120000_part02.wav",
+            RecordingOutputManager.displayName("20260814_120000", RecordingFormat.WAV, 2)
+        )
+    }
+
     @Test
     fun `24-bit stereo estimate matches PCM byte rate`() {
         assertEquals(288_000L, RecordingStoragePolicy.worstCaseBytesPerSecond(48_000, 2, 24))

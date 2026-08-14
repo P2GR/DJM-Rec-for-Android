@@ -1,10 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Matches any USB Audio Class (UAC) interface (class 0x01).
-    We intentionally do not lock to a single vendor/product ID so that any
-    UAC2-compliant mixer (Pioneer DJM-A9, DJM-V10, Xone:96, etc.) is detected.
-    Fine-grained interface/endpoint validation happens in UsbAudioManager.
+    Match standard UAC devices plus supported Pioneer vendor-class devices.
+    Fine-grained interface/endpoint validation still happens in UsbAudioManager.
 -->
 <resources>
     <usb-device class="1" />
+    <usb-device vendor-id="11123" product-id="10" />  <!-- DJM-900NXS2 -->
+    <usb-device vendor-id="11123" product-id="19" />  <!-- DJM-450 -->
+    <usb-device vendor-id="11123" product-id="27" />  <!-- DJM-750MK2 -->
+    <usb-device vendor-id="11123" product-id="52" />  <!-- DJM-V10 -->
+    <usb-device vendor-id="11123" product-id="60" />  <!-- DJM-A9 -->
+    <usb-device vendor-id="11123" product-id="88" />  <!-- DJM-V5 -->
+    <usb-device vendor-id="11123" product-id="89" />  <!-- DJM-V5-LF -->
+    <usb-device vendor-id="11123" product-id="90" />  <!-- DJM-V5-W -->
+    <usb-device vendor-id="11123" product-id="91" />  <!-- DJM-V5-W-LF -->
 </resources>

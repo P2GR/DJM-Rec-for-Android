@@ -72,6 +72,15 @@ enum class PioneerMixerProfile(
         "DJM-A9", setOf(0x003C), 8, 5, RouteReadMode.SINGLE_OUTPUT_ZERO_BASED,
         listOf(0x0A, 0x0A, 0x0A, 0x0A, 0x0A), true, 1, 1
     ),
+    DJM_V10(
+        "DJM-V10", setOf(0x0034), 0, 6, RouteReadMode.NONE,
+        List(6) { 0x0A },
+        requiresPlaybackTraffic = true, playbackInterface = 0, playbackAlternateSetting = 1,
+        vendorCaptureInterface = 0, vendorCaptureAlternateSetting = 1,
+        vendorCaptureChannelCount = 12, vendorCaptureSubframeSize = 3,
+        vendorCaptureBitResolution = 24,
+        vendorCaptureSampleRates = listOf(44_100, 48_000, 96_000)
+    ),
     DJM_V5(
         "DJM-V5", setOf(0x0058, 0x0059, 0x005A, 0x005B), 0, 4,
         RouteReadMode.SINGLE_OUTPUT_ONE_BASED, listOf(0x0E, 0x0E, 0x0E, 0x0E)
@@ -94,7 +103,8 @@ enum class PioneerMixerProfile(
         vendorCaptureBitResolution = 24, vendorCaptureSampleRates = listOf(96_000)
     ),
     DJM_450(
-        "DJM-450", setOf(0x0013), 0, 0, RouteReadMode.NONE, emptyList(),
+        "DJM-450", setOf(0x0013), 0, 3, RouteReadMode.NONE,
+        listOf(0x0A, 0x0A, 0x0A),
         playbackInterface = 0, playbackAlternateSetting = 1,
         vendorCaptureInterface = 0, vendorCaptureAlternateSetting = 1,
         vendorCaptureChannelCount = 8, vendorCaptureSubframeSize = 3,

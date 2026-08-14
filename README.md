@@ -17,20 +17,26 @@ Download signed APKs from [GitHub Releases](https://github.com/P2GR/DJM-Rec-for-
 
 | Mixer | USB IDs | Status |
 |---|---|---|
-| DJM-A9 | `2B73:003C` | Hardware validated |
-| DJM-V5 | `2B73:0058` through `2B73:005B` | Driver-derived implementation, hardware test needed |
-| DJM-900NXS2 | `2B73:000A` | Hardware validated (v0.36) |
-| DJM-750MK2 | `2B73:001B` | Vendor-capture profile configured, hardware test needed |
+| DJM-A9 | `2B73:003C` | Fully hardware validated; recording works correctly |
+| DJM-V10 | `2B73:0034` | Driver-derived profile added; hardware testing required |
+| DJM-V5 | `2B73:0058` through `2B73:005B` | Driver-derived profile added; hardware testing required |
+| DJM-900NXS2 | `2B73:000A` | Previously validated in v0.36; current implementation needs retesting |
+| DJM-750MK2 | `2B73:001B` | Vendor-capture profile added; hardware testing required |
+| DJM-450 | `2B73:0013` | Driver-derived profile added; hardware testing required |
 
-V5, 900NXS2, and 750MK2 profiles use each model's extracted vendor-control read format and
-MIX/REC OUT source values. Route changes are read, verified, and restored when capture stops.
-Unknown devices never receive Pioneer vendor routing requests.
+Only the DJM-A9 is currently considered fully tested and production-ready. All other mixer
+profiles are experimental until their recording quality, routing, and long-session stability
+have been verified on physical hardware.
+
+Model profiles use driver-derived wire formats and MIX/REC OUT source values. Where route
+readback semantics are unverified, the app sends the same pre-capture SET used by Pioneer's
+utility without relying on readback. Unknown devices never receive Pioneer vendor requests.
 
 Installed Windows driver binaries were used only for interoperability research. They remain
 ignored and are not distributed by this repository.
 
-DJM-A9 supports USB-C to USB-C or USB-B to USB-C. DJM-900NXS2 and DJM-750MK2 require
-USB-B to USB-C. Cable must support data and USB host/OTG mode.
+DJM-A9 supports USB-C to USB-C or USB-B to USB-C. DJM-V10, DJM-450, DJM-900NXS2, and
+DJM-750MK2 require USB-B to USB-C. Cable must support data and USB host/OTG mode.
 
 ## Features
 
