@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.36.6 (2026-08-22)
+
+- Correct the input-meter scale so every dB label aligns with the measured peak position
+- Add the installed DJM-S11 Windows driver-derived VID/PID profile (`2B73:0037`)
+- Add the S11 vendor-class 14-channel playback / 10-channel capture contract and playback
+  keepalive required by its clocking
+- Route S11 MIX/REC OUT to USB 5/6 with the validated Pioneer vendor request
+
 ## v0.36.5 (2026-08-14)
 
 - Update the live waveform independently at 50 fps for smoother visual response

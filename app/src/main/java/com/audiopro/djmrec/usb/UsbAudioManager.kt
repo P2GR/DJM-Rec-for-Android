@@ -466,6 +466,14 @@ class UsbAudioManager(private val context: Context) {
      * it just sends the SET and trusts it. This does the same.
      */
     private fun establishPioneerRoute(connection: UsbDeviceConnection, profile: PioneerMixerProfile) {
+        if (!profile.allowRouteWrites) {
+            Log.i(
+                TAG,
+                "${profile.displayName}: route writes disabled; use the mixer/driver setting " +
+                    "for the MIX/REC OUT USB pair until its vendor protocol is validated"
+            )
+            return
+        }
         val defaultOutput = profile.defaultCaptureChannelOffset / 2
         val outputs = (listOf(defaultOutput) + profile.additionalMixOutputs)
             .distinct()

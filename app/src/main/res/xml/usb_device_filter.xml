@@ -14,4 +14,5 @@
     <usb-device vendor-id="11123" product-id="89" />  <!-- DJM-V5-LF -->
     <usb-device vendor-id="11123" product-id="90" />  <!-- DJM-V5-W -->
     <usb-device vendor-id="11123" product-id="91" />  <!-- DJM-V5-W-LF -->
+    <usb-device vendor-id="11123" product-id="55" />  <!-- DJM-S11 -->
 </resources>

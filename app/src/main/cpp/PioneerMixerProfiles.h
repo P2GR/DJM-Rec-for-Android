@@ -105,11 +105,24 @@ constexpr PioneerMixerProfile kDjm450Profile{
     8, 3, 24, 48000 // capture IN PCM
 };
 
+// DJM-S11: the installed Windows driver identifies VID 2B73/PID 0037. Its INF leaves the
+// vendor-class stream framing implicit; the matching ALSA quirk establishes 14ch playback on
+// if1/alt1 and 10ch 24-bit capture on if2/alt1 at 48 kHz. Capture is clock-slaved to playback,
+// so the native path must keep the 14-channel OUT endpoint active. MIX/REC OUT is source 0x0A
+// on USB 5/6 (output 3), using the same 0x8002 route index as the other Pioneer mixers.
+constexpr PioneerMixerProfile kDjmS11Profile{
+    "DJM-S11", 0x0037, 0x0037, 5, 2,
+    {0x0A, 0x0A, 0x0A, 0x0A, 0x0A, -1},
+    {0x0A, 0x0A, 0x0A, 0x0A, 0x0A, -1},
+    PioneerRouteReadMode::None, false, true, 1, 1,
+    14, 3, 10, 3, 24, 48000
+};
+
 inline const PioneerMixerProfile* findPioneerMixerProfile(int vendorId, int productId) {
     if (vendorId != kAlphaThetaVendorId) return nullptr;
     constexpr const PioneerMixerProfile* profiles[] = {
         &kDjmA9Profile, &kDjmV10Profile, &kDjmV5Profile, &kDjm900Nxs2Profile,
-        &kDjm750Mk2Profile, &kDjm450Profile
+        &kDjm750Mk2Profile, &kDjm450Profile, &kDjmS11Profile
     };
     for (const auto* profile : profiles) {
         if (productId >= profile->productIdFirst && productId <= profile->productIdLast) {

@@ -23,6 +23,7 @@ Download signed APKs from [GitHub Releases](https://github.com/P2GR/DJM-Rec-for-
 | DJM-900NXS2 | `2B73:000A` | Previously validated in v0.36; current implementation needs retesting |
 | DJM-750MK2 | `2B73:001B` | Vendor-capture profile added; hardware testing required |
 | DJM-450 | `2B73:0013` | Driver-derived profile added; hardware testing required |
+| DJM-S11 | `2B73:0037` | Driver-derived 2-channel mixer profile added; hardware testing required |
 
 Only the DJM-A9 is currently considered fully tested and production-ready. All other mixer
 profiles are experimental until their recording quality, routing, and long-session stability
@@ -32,11 +33,20 @@ Model profiles use driver-derived wire formats and MIX/REC OUT source values. Wh
 readback semantics are unverified, the app sends the same pre-capture SET used by Pioneer's
 utility without relying on readback. Unknown devices never receive Pioneer vendor requests.
 
+For DJM-S11, the profile routes `MIX (REC OUT)` to `CH 3 (USB 5/6)` with the validated Pioneer
+vendor request before capture. Its raw USB contract is 14-channel playback plus 10-channel,
+24-bit capture at 48 kHz; playback keepalive is required because the capture clock is slaved to
+the playback stream. The installed INF does not spell out those vendor-class frame details, so
+they were cross-checked against the [matching USB quirk implementation](https://kernel.googlesource.com/pub/scm/linux/kernel/git/tiwai/sound/+/39edd6d5f6e751e3675bd4e436f168cdd4d03983/sound/usb/quirks-table.h).
+The installed `DJM-S11Audio.inf` reports driver version `1.010.002.0` for
+`USB\\VID_2B73&PID_0037&MI_00`; it registers standard WDM audio and does not declare a fixed
+USB channel/frame layout, so those values are read from the connected mixer descriptors.
+
 Installed Windows driver binaries were used only for interoperability research. They remain
 ignored and are not distributed by this repository.
 
-DJM-A9 supports USB-C to USB-C or USB-B to USB-C. DJM-V10, DJM-450, DJM-900NXS2, and
-DJM-750MK2 require USB-B to USB-C. Cable must support data and USB host/OTG mode.
+DJM-A9 supports USB-C to USB-C or USB-B to USB-C. DJM-V10, DJM-450, DJM-900NXS2,
+DJM-750MK2, and DJM-S11 require USB-B to USB-C. Cable must support data and USB host/OTG mode.
 
 ## Features
 
@@ -74,7 +84,7 @@ that APK.
 | Audio engine | Raw USB path for supported mixers, AAudio fallback for generic stereo UAC devices |
 | Encoding | WAV and FLAC (libFLAC 1.4.3) |
 | Diagnostics | Structured USB/UAC/profile/session snapshot plus app logcat in release builds |
-| UI | Jetpack Compose, stereo meters, optional RGB waveform, format selector |
+| UI | Jetpack Compose, correctly spaced dBFS meters, optional RGB waveform, format selector |
 
 The `WaveformAnalyzer` uses a three-band IIR filter bank to render a scrolling
 CDJ-3000-style RGB waveform.

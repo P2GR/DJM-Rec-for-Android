@@ -505,10 +505,14 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
             mOpenedSampleRate.store(endpointRate, std::memory_order_release);
             LOGI("%s capture endpoint reports active rate %d Hz", mMixerProfile->name, endpointRate);
         }
-        if (mMixerProfile->requiresPlaybackTraffic &&
-            !startPioneerPlaybackSilence(mOpenedSampleRate.load(std::memory_order_acquire))) {
-            LOGW("%s could not start playback traffic; continuing capture-only", mMixerProfile->name);
-        }
+    }
+
+    // Some UAC2 Pioneer models (notably DJM-S11) derive the capture clock from the active
+    // playback stream but do not use the UAC1 endpoint-rate request above. Keep their OUT
+    // traffic alive independently of the endpoint-rate initialization path.
+    if (mMixerProfile && mMixerProfile->requiresPlaybackTraffic && mPlaybackTransfers.empty() &&
+        !startPioneerPlaybackSilence(mOpenedSampleRate.load(std::memory_order_acquire))) {
+        LOGW("%s could not start playback traffic; continuing capture-only", mMixerProfile->name);
     }
 
     const std::string channelDescription = config.extractChannelOffset < 0

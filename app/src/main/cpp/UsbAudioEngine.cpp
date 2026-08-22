@@ -6,6 +6,7 @@
 #include <sstream>
 
 #include "MeterCalculator.h"
+#include "AudioGain.h"
 #include "writers/WavWriter.h"
 #include "writers/FlacWriter.h"
 
@@ -258,8 +259,15 @@ void UsbAudioEngine::onUsbIsoFrames(const int32_t* interleavedStereo, size_t fra
     // Mirrors the tail of onAudioReady() below -- meter update + optional ring-buffer write --
     // but always against a canonical, already-2-channel buffer (no per-format decode needed
     // here; UsbIsoAudioSource already produced left-justified, sign-extended int32 samples).
+    static thread_local std::vector<int32_t> amplified;
+    const size_t sampleCount = frameCount * 2;
+    if (amplified.size() < sampleCount) amplified.resize(sampleCount);
+    std::memcpy(amplified.data(), interleavedStereo, sampleCount * sizeof(int32_t));
+    applyRecordingGain(amplified.data(), sampleCount, kRecordingGainLinear);
+    const int32_t* processedStereo = amplified.data();
+
     const StereoMeterReading reading =
-        MeterCalculator::analyze(interleavedStereo, static_cast<int32_t>(frameCount), oboe::AudioFormat::I32);
+        MeterCalculator::analyze(processedStereo, static_cast<int32_t>(frameCount), oboe::AudioFormat::I32);
     mLeftPeakDb.store(reading.leftPeakDb, std::memory_order_relaxed);
     mLeftRmsDb.store(reading.leftRmsDb, std::memory_order_relaxed);
     mRightPeakDb.store(reading.rightPeakDb, std::memory_order_relaxed);
@@ -267,16 +275,16 @@ void UsbAudioEngine::onUsbIsoFrames(const int32_t* interleavedStereo, size_t fra
     mClipping.store(reading.clipping, std::memory_order_relaxed);
 
     if (mWaveformEnabled.load(std::memory_order_relaxed) && mWaveformAnalyzer) {
-        mWaveformAnalyzer->pushFrames(interleavedStereo, frameCount);
+        mWaveformAnalyzer->pushFrames(processedStereo, frameCount);
     }
-    writeLiveFrames(interleavedStereo, frameCount, 2);
+    writeLiveFrames(processedStereo, frameCount, 2);
 
     if (mRecording.load(std::memory_order_relaxed) &&
         !mPaused.load(std::memory_order_relaxed) &&
         mRingBuffer) {
         const size_t bytesToWrite = frameCount * 2 * sizeof(int32_t);
         const size_t written =
-            mRingBuffer->write(reinterpret_cast<const uint8_t*>(interleavedStereo), bytesToWrite);
+            mRingBuffer->write(reinterpret_cast<const uint8_t*>(processedStereo), bytesToWrite);
         if (written < bytesToWrite) {
             mXRunCount.fetch_add(1, std::memory_order_relaxed);
         }
@@ -331,6 +339,8 @@ oboe::DataCallbackResult UsbAudioEngine::onAudioReady(oboe::AudioStream* /*strea
             std::memcpy(canonical.data(), audioData, sampleCount * sizeof(int32_t));
             break;
     }
+
+    applyRecordingGain(canonical.data(), sampleCount, kRecordingGainLinear);
 
     writeLiveFrames(canonical.data(), static_cast<size_t>(numFrames), mChannelCount);
 
@@ -742,6 +752,5 @@ void UsbAudioEngine::getWaveformBins(float* outBins) const {
 void UsbAudioEngine::setWaveformEnabled(bool enabled) {
     mWaveformEnabled.store(enabled, std::memory_order_release);
 }
-
 
 } // namespace djmrec

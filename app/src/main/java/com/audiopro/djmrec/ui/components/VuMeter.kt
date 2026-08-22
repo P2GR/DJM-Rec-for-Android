@@ -22,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -132,17 +133,28 @@ private fun HorizontalChannelMeter(label: String, level: ChannelLevel) {
 @Composable
 private fun HorizontalDbScale() {
     val marks = listOf(-60, -48, -36, -24, -12, -6, 0, 3)
-    Row(
+    Layout(
         modifier = Modifier.fillMaxWidth().padding(start = 30.dp, end = 34.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        marks.forEach { db ->
-            Text(
-                text = if (db > 0) "+$db" else "$db",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
-                modifier = Modifier.width(24.dp)
-            )
+        content = {
+            marks.forEach { db ->
+                Text(
+                    text = if (db > 0) "+$db" else "$db",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+                )
+            }
+        }
+    ) { measurables, constraints ->
+        val placeables = measurables.map { it.measure(constraints.copy(minWidth = 0)) }
+        val height = placeables.maxOfOrNull { it.height } ?: 0
+        layout(constraints.maxWidth, height) {
+            placeables.forEachIndexed { index, placeable ->
+                val fraction = dbToFraction(marks[index].toFloat())
+                val centeredX = (constraints.maxWidth * fraction - placeable.width / 2f).toInt()
+                val maxX = (constraints.maxWidth - placeable.width).coerceAtLeast(0)
+                val x = centeredX.coerceIn(0, maxX)
+                placeable.placeRelative(x, 0)
+            }
         }
     }
 }
