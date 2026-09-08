@@ -43,8 +43,8 @@ fun SettingsScreen(viewModel: MainViewModel) {
         if (diagnosticsRestart) Text("Finish your set, then force-stop DJM Rec in Android app settings and reopen it. Until then, previously queued reports and SDK traffic may continue. Closing the screen alone does not restart the app.",
             style = MaterialTheme.typography.bodySmall, color = TextSecondary)
         Text("Display", style = MaterialTheme.typography.titleLarge)
-        PreferenceSwitch("Live waveform", "Show three frequency bands alongside the stereo meters.", waveform, viewModel::setWaveformEnabled)
-        PreferenceSwitch("Smooth waveform", "Animate between waveform updates. Turn off to reduce graphics work.", smooth, viewModel::setSmoothWaveform)
+        PreferenceSwitch("Live waveform", "RGB: red bass, green mids, blue highs. Mixed frequencies blend colors.", waveform, viewModel::setWaveformEnabled)
+        PreferenceSwitch("Smooth waveform", "Scroll at the display frame rate. Turn off to reduce graphics work.", smooth, viewModel::setSmoothWaveform)
         PreferenceSwitch("Keep recorder screen awake", "Applies while monitoring or recording. Capture also works with screen locked.", keepScreen, viewModel::setKeepScreenOn)
         Text("Background recording", style = MaterialTheme.typography.titleLarge)
         Text("Keep the persistent notification enabled. Allow background battery use in Android settings for long sets. Force-stop, reboot or disconnecting USB still ends capture.", color = TextSecondary)

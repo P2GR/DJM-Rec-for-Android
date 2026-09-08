@@ -44,7 +44,9 @@ USB1=-120.0dBFS(below threshold) ... USB9=-6.0dBFS(active) USB10=-8.2dBFS(active
 ```
 
 Raw USB channel activity uses approximate one-second peak windows, before gain and stereo
-extraction. `CaptureHealth` sends snapshots every ten seconds or on a health change. Check
+extraction. `CaptureHealth` sends a snapshot on connection/health changes and one settled snapshot
+after five seconds. Healthy sessions then stay quiet; payload summaries log only the first
+window and first signal. Measurements continue without repeated uploads. Check
 window age for stale data after a stall. Active means at least -60 dBFS; quieter audio may
 still exist, and activity alone does not prove correct master routing. Android-managed input
 provides its opened stream's stereo meters, not otherwise inaccessible mixer channels.

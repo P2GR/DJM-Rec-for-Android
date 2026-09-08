@@ -1,8 +1,5 @@
-﻿package com.audiopro.djmrec.ui.components
+package com.audiopro.djmrec.ui.components
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,76 +10,75 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import com.audiopro.djmrec.ui.theme.*
+import com.audiopro.djmrec.ui.theme.BackgroundDark
+import com.audiopro.djmrec.ui.theme.TextSecondary
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.StateFlow
 import kotlin.math.sqrt
 
-/** Continuous three-band envelope. Interpolation is visual only; captured samples are untouched. */
+/** Collect here so waveform updates do not recompose the entire recorder workspace. */
+@Composable
+fun LiveRgbWaveform(source: StateFlow<FloatArray>, modifier: Modifier = Modifier,
+                    smooth: Boolean = true, active: Boolean = true) {
+    val bins by source.collectAsState()
+    RgbWaveform(bins, modifier, smooth, active)
+}
+
+/** Fixed historical envelopes translate on the display frame clock, with additive RGB shading. */
 @Composable
 fun RgbWaveform(bins: FloatArray, modifier: Modifier = Modifier, smooth: Boolean = true, active: Boolean = true) {
-    var from by remember { mutableStateOf(FloatArray(2048)) }
-    var target by remember { mutableStateOf(FloatArray(2048)) }
-    val progress = remember { Animatable(1f) }
-    LaunchedEffect(bins, smooth, active) {
-        val fraction = progress.value
-        from = FloatArray(2048) { index ->
-            from.getOrElse(index) { 0f } * (1f - fraction) + target.getOrElse(index) { 0f } * fraction
+    val timeline = remember { WaveformTimeline() }
+    val heights = remember { FloatArray(512) }
+    val colors = remember { IntArray(512) }
+    val path = remember { Path() }
+    val frame = remember { mutableLongStateOf(0L) }
+    LaunchedEffect(bins) {
+        timeline.accept(bins)
+        for (i in 0 until 512) {
+            val base = i * 4
+            val peak = bins.getOrElse(base) { 0f }
+            heights[i] = sqrt(if (peak.isFinite()) peak.coerceIn(0f, 1f) else 0f)
+            colors[i] = waveformRgb(bins.getOrElse(base + 1) { 0f },
+                bins.getOrElse(base + 2) { 0f }, bins.getOrElse(base + 3) { 0f })
         }
-        target = bins
-        progress.snapTo(if (smooth && active) 0f else 1f)
-        if (smooth && active) progress.animateTo(1f, tween(45, easing = LinearEasing))
+        frame.longValue = System.nanoTime()
+    }
+    LaunchedEffect(active, smooth) {
+        if (active && smooth) while (isActive) withFrameNanos { frame.longValue = it }
     }
     Canvas(modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)).background(BackgroundDark)
-        .semantics { contentDescription = "Live stereo waveform. Red lows, green mids, blue highs. New audio enters at right." }) {
+        .semantics { contentDescription = "Live waveform. Red bass below 250 Hz, green mids to 2 kHz, blue highs. Mixed bands blend RGB. New audio enters at right." }) {
+        val lag = timeline.lag(frame.longValue, smooth && active)
         val center = size.height / 2f
         for (line in 1..5) {
             val x = size.width * line / 6f
             drawLine(TextSecondary.copy(alpha = 0.09f), Offset(x, 0f), Offset(x, size.height))
         }
-        for (level in listOf(0.25f, 0.5f, 0.75f)) {
-            val y = size.height * level
+        for (line in 1..3) {
+            val y = size.height * line / 4f
             drawLine(TextSecondary.copy(alpha = 0.09f), Offset(0f, y), Offset(size.width, y))
         }
-        val fraction = progress.value
-        fun value(index: Int): Float {
-            val a = from.getOrElse(index) { 0f }.let { if (it.isFinite()) it.coerceIn(0f, 1f) else 0f }
-            val b = target.getOrElse(index) { 0f }.let { if (it.isFinite()) it.coerceIn(0f, 1f) else 0f }
-            return a + (b - a) * fraction
-        }
-        val amplitudes = FloatArray(256)
-        val lows = FloatArray(256)
-        val mids = FloatArray(256)
-        for (column in 0 until 256) {
-            val base = column * 8
-            val peak = maxOf(value(base), value(base + 4))
-            val low = value(base + 1) + value(base + 5)
-            val mid = value(base + 2) + value(base + 6)
-            val high = value(base + 3) + value(base + 7)
-            val total = (low + mid + high).coerceAtLeast(0.000001f)
-            amplitudes[column] = sqrt(peak) * center * 0.91f
-            lows[column] = amplitudes[column] * sqrt(low / total)
-            mids[column] = amplitudes[column] * sqrt((low + mid) / total)
-            if (peak >= 0.999f) {
-                val x = column * size.width / 255f
-                drawLine(AccentRed, Offset(x, 2.dp.toPx()), Offset(x, 6.dp.toPx()), strokeWidth = 2.dp.toPx())
+        // Keep 24 bins outside the viewport for jitter recovery; never resample shifted peaks.
+        val step = size.width / 487f
+        if (timeline.bins.isNotEmpty()) clipRect {
+            for (i in 0 until 511) {
+                val x = (i - 24 + lag) * step
+                if (x + step < 0 || x > size.width) continue
+                val a = heights[i] * center * 0.91f
+                val b = heights[i + 1] * center * 0.91f
+                path.reset()
+                path.moveTo(x, center - a)
+                path.lineTo(x + step + 0.25f, center - b)
+                path.lineTo(x + step + 0.25f, center + b)
+                path.lineTo(x, center + a)
+                path.close()
+                drawPath(path, Color(colors[i]))
             }
         }
-        fun envelope(values: FloatArray): Path = Path().apply {
-            moveTo(0f, center)
-            for (i in values.indices) lineTo(i * size.width / 255f, center - values[i])
-            for (i in values.indices.reversed()) lineTo(i * size.width / 255f, center + values[i])
-            close()
-        }
-        val full = envelope(amplitudes)
-        drawPath(full, WaveformHigh)
-        drawPath(envelope(mids), WaveformMid.copy(alpha = 0.88f))
-        drawPath(envelope(lows), WaveformLow.copy(alpha = 0.92f))
-        drawPath(full, Color.White.copy(alpha = 0.4f), style = Stroke(0.7.dp.toPx()))
         drawLine(TextSecondary.copy(alpha = 0.3f), Offset(0f, center), Offset(size.width, center))
-        drawLine(AccentGreen.copy(alpha = 0.8f), Offset(size.width - 1.dp.toPx(), 0f),
-            Offset(size.width - 1.dp.toPx(), size.height), strokeWidth = 1.dp.toPx())
     }
 }

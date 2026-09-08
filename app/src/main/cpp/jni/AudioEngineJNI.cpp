@@ -219,7 +219,7 @@ Java_com_audiopro_djmrec_audio_AudioEngine_getDiagnosticSummary(JNIEnv* env, job
 
 JNIEXPORT jfloatArray JNICALL
 Java_com_audiopro_djmrec_audio_AudioEngine_getWaveformBins(JNIEnv* env, jobject /*thiz*/) {
-    constexpr int kFloats = UsbAudioEngine::kWaveformBinCount * 4;
+    constexpr int kFloats = UsbAudioEngine::kWaveformBinCount * 4 + 2;
     float bins[kFloats];
     UsbAudioEngine::instance().getWaveformBins(bins);
 

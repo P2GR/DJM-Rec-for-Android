@@ -72,12 +72,14 @@ fun MainScreen(viewModel: MainViewModel) {
     val application = context.applicationContext as DjmRecApplication
     val recoveryNotice by application.recoveryNotice.collectAsState()
     val recordingState by viewModel.recordingState.collectAsState()
+    val liveState by viewModel.liveStreamState.collectAsState()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var selectedDestination by rememberSaveable { mutableStateOf(Destination.RECORDING) }
     LaunchedEffect(selectedDestination) {
         com.audiopro.djmrec.diagnostics.RemoteDiagnostics.event("Navigation", selectedDestination.name)
     }
+    val cameraMode = selectedDestination == Destination.LIVE && liveState.isActive && liveState.usesCamera
     var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }
 
     LaunchedEffect(Unit) {
@@ -125,6 +127,7 @@ fun MainScreen(viewModel: MainViewModel) {
 
     ModalNavigationDrawer(
         drawerState = drawerState,
+        gesturesEnabled = !cameraMode,
         drawerContent = {
             ModalDrawerSheet(
                 drawerContainerColor = SurfaceDark
@@ -206,7 +209,7 @@ fun MainScreen(viewModel: MainViewModel) {
         Scaffold(
             containerColor = BackgroundDark,
             bottomBar = {
-                NavigationBar(containerColor = SurfaceDark) {
+                if (!cameraMode) NavigationBar(containerColor = SurfaceDark) {
                     listOf(Destination.RECORDING, Destination.LIVE, Destination.RECORDINGS, Destination.SETTINGS).forEach { dest ->
                         NavigationBarItem(selected = selectedDestination == dest, onClick = { selectedDestination = dest },
                             icon = { Icon(dest.icon, null) },
@@ -215,7 +218,7 @@ fun MainScreen(viewModel: MainViewModel) {
                 }
             },
             topBar = {
-                TopAppBar(
+                if (!cameraMode) TopAppBar(
                     title = {
                         Text(
                             text = if (selectedDestination == Destination.RECORDING) "DJM REC" else selectedDestination.label,

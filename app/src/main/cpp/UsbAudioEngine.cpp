@@ -430,7 +430,7 @@ bool UsbAudioEngine::startRecording(const std::string& path, ContainerFormat for
     mStopRequested.store(false, std::memory_order_relaxed);
     mPaused.store(false, std::memory_order_relaxed);
     mRingBuffer->reset();
-    if (mWaveformAnalyzer) mWaveformAnalyzer->reset();
+    // Keep live history: monitoring is already writing the analyzer on the audio thread.
     mRecording.store(true, std::memory_order_release);
 
     mEncoderThread = std::thread(&UsbAudioEngine::encoderThreadLoop, this);
@@ -457,7 +457,7 @@ bool UsbAudioEngine::startRecordingFd(int fd, ContainerFormat format) {
     mStopRequested.store(false, std::memory_order_relaxed);
     mPaused.store(false, std::memory_order_relaxed);
     mRingBuffer->reset();
-    if (mWaveformAnalyzer) mWaveformAnalyzer->reset();
+    // Keep live history: monitoring is already writing the analyzer on the audio thread.
     mRecording.store(true, std::memory_order_release);
     mEncoderThread = std::thread(&UsbAudioEngine::encoderThreadLoop, this);
     return true;
@@ -752,10 +752,14 @@ std::string UsbAudioEngine::getDiagnosticSummary() {
 }
 
 void UsbAudioEngine::getWaveformBins(float* outBins) const {
+    std::lock_guard<std::mutex> lock(mControlMutex);
     if (mWaveformAnalyzer) {
-        mWaveformAnalyzer->getBins(outBins);
+        uint32_t sequence = 0;
+        mWaveformAnalyzer->getBins(outBins, &sequence);
+        outBins[kWaveformBinCount * 4] = static_cast<float>(sequence % 1048576);
+        outBins[kWaveformBinCount * 4 + 1] = mWaveformAnalyzer->binDurationMillis();
     } else {
-        std::memset(outBins, 0, kWaveformBinCount * 4 * sizeof(float));
+        std::memset(outBins, 0, (kWaveformBinCount * 4 + 2) * sizeof(float));
     }
 }
 

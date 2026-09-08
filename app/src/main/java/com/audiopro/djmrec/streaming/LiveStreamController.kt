@@ -41,6 +41,8 @@ class LiveStreamController(context: Context) : ConnectChecker {
     private var previewView: SurfaceView? = null
     @Volatile
     private var validationFuture: ScheduledFuture<*>? = null
+    private var progressFuture: ScheduledFuture<*>? = null
+    private val progressWatchdog = MediaProgressWatchdog()
     private val cameraFramesCaptured = AtomicLong(0)
     @Volatile
     private var userStopping = false
@@ -201,6 +203,8 @@ class LiveStreamController(context: Context) : ConnectChecker {
     private fun stopInternal(finalState: LiveStreamState?, preservePreview: Boolean = false) {
         validationFuture?.cancel(false)
         validationFuture = null
+        progressFuture?.cancel(false)
+        progressFuture = null
         val active = stream
         stream = null
         runCatching {
@@ -265,6 +269,10 @@ class LiveStreamController(context: Context) : ConnectChecker {
     override fun onConnectionStarted(url: String) = Unit
 
     override fun onConnectionSuccess() {
+        executor.execute { connectionSucceeded() }
+    }
+
+    private fun connectionSucceeded() {
         val current = config ?: return
         Log.i(TAG, "Connected to ${current.platform.label}")
         _state.update { state ->
@@ -273,9 +281,21 @@ class LiveStreamController(context: Context) : ConnectChecker {
                 message = "RTMP connected; validating encoded media",
                 platform = current.platform,
                 videoMode = current.videoMode,
-                startedAtMillis = SystemClock.elapsedRealtime()
+                startedAtMillis = state.startedAtMillis.takeIf { it > 0 } ?: SystemClock.elapsedRealtime()
             )
         }
+        progressFuture?.cancel(false)
+        progressWatchdog.reset(SystemClock.elapsedRealtime())
+        progressFuture = executor.scheduleWithFixedDelay({
+            val active = stream ?: return@scheduleWithFixedDelay
+            val state = _state.value
+            if (state.status != LiveStreamStatus.LIVE) return@scheduleWithFixedDelay
+            val client = active.getStreamClient()
+            progressWatchdog.failure(SystemClock.elapsedRealtime(), state.audioPcmBytes,
+                client.getSentAudioFrames(), client.getSentVideoFrames())?.let { failure ->
+                stopInternal(state.copy(status = LiveStreamStatus.ERROR, message = failure))
+            }
+        }, 1, 1, TimeUnit.SECONDS)
         validationFuture?.cancel(false)
         validationFuture = executor.schedule({
             val state = _state.value
@@ -355,14 +375,13 @@ class LiveStreamController(context: Context) : ConnectChecker {
     override fun onDisconnect() {
         if (userStopping) {
             _state.value = LiveStreamState()
-        } else if (_state.value.isActive) {
-            val current = config
-            _state.value = LiveStreamState(
-                LiveStreamStatus.ERROR,
-                "Livestream disconnected",
-                current?.platform,
-                current?.videoMode ?: LiveVideoMode.ARTWORK
-            )
+        } else {
+            executor.execute {
+                val state = _state.value
+                if (state.isActive && !userStopping) {
+                    stopInternal(state.copy(status = LiveStreamStatus.ERROR, message = "Livestream disconnected"))
+                }
+            }
         }
     }
 

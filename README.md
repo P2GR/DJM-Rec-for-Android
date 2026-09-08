@@ -26,7 +26,7 @@ analog output.
 
 ## Start recording
 
-1. Connect your mixer?s **PC/Mac USB audio port** to your phone with a data cable. A USB storage
+1. Connect your mixer's **PC/Mac USB audio port** to your phone with a data cable. A USB storage
    port or Link Export connection does not provide recording audio.
 2. Open DJM Rec and allow USB access. Tap the source name to choose an input if several are connected.
 3. Play audio and check both meters. Automatic arming starts monitoring, not recording.
@@ -37,12 +37,14 @@ analog output.
 ## Features
 
 - Recorder controls and setup access without scrolling the recording page.
-- Smooth three-band waveform, stereo meters and clipping indication.
+- RGB waveform: red bass, green mids, blue highs, with blended colors and smooth scrolling.
+- Stereo meters and clipping indication.
 - WAV/FLAC recording, pause/resume and track markers.
 - Saved-set search, playback, sharing, export, rename and deletion.
 - Settings for automatic arming, waveform animation, screen wake and stop confirmation.
 - Background recording with a persistent notification. **Save & close** saves and ends capture.
 - Experimental livestreaming: YouTube with Google sign-in, Mixcloud and custom RTMP/RTMPS.
+  Camera streams open a full preview with local meters, timers, gain controls and confirmed stop.
   Provider setup and real broadcasts still need validation.
 
 Keep USB connected during a set. Force-stop, reboot, cable loss and some Android battery/call
@@ -52,7 +54,7 @@ independent multitrack recording is not implemented.
 ## Diagnostics and privacy
 
 Automatic Bugfender diagnostics help improve mixer compatibility. Enabled by default, they send
-USB configuration, channel activity, recording health and error reports?not your recorded audio.
+USB configuration, channel activity, recording health and error reports, not your recorded audio.
 
 Disable **Automatic diagnostics** in Settings to stop new diagnostic logs. Finish your set, then
 force-stop and reopen the app to fully stop SDK traffic; already queued reports may upload until

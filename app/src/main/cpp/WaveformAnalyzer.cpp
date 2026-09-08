@@ -59,6 +59,7 @@ void WaveformAnalyzer::designHighPass(BandFilter& f, float cutoffHz, float sampl
 WaveformAnalyzer::WaveformAnalyzer(int sampleRate) {
     const float sr = static_cast<float>(std::max(sampleRate, 8000));
     mFramesPerBin = std::max(1, static_cast<int>(sr / 163.0f));
+    mBinDurationMillis = 1000.0f * mFramesPerBin / sr;
 
     // Low band: 20–250 Hz → red
     for (auto& filter : mLowFilter) designLowPass(filter, 250.0f, sr);
@@ -113,7 +114,8 @@ void WaveformAnalyzer::accumulateSample(float left, float right) {
 }
 
 void WaveformAnalyzer::commitBin() {
-    const int index = mWriteIndex.load(std::memory_order_relaxed);
+    const uint32_t committed = mCommitted.load(std::memory_order_relaxed);
+    const int index = committed % kRingCount;
     const int base = index * 4;
     const float invN = mCurrent.sampleCount > 0
         ? 1.0f / static_cast<float>(mCurrent.sampleCount) : 0.0f;
@@ -121,7 +123,7 @@ void WaveformAnalyzer::commitBin() {
     mBins[base + 1].store(mCurrent.lowSum * invN, std::memory_order_relaxed);
     mBins[base + 2].store(mCurrent.midSum * invN, std::memory_order_relaxed);
     mBins[base + 3].store(mCurrent.highSum * invN, std::memory_order_release);
-    mWriteIndex.store((index + 1) % kBinCount, std::memory_order_release);
+    mCommitted.store(committed + 1, std::memory_order_release);
     mCurrent = {};
 }
 
@@ -129,16 +131,23 @@ void WaveformAnalyzer::commitBin() {
 // Reader — called from UI polling thread.
 // ---------------------------------------------------------------------------
 
-void WaveformAnalyzer::getBins(float* outBins) const {
-    const int start = mWriteIndex.load(std::memory_order_acquire);
-    for (int i = 0; i < kBinCount; ++i) {
-        const int sourceBase = ((start + i) % kBinCount) * 4;
-        const int targetBase = i * 4;
-        outBins[targetBase + 0] = mBins[sourceBase + 0].load(std::memory_order_relaxed);
-        outBins[targetBase + 1] = mBins[sourceBase + 1].load(std::memory_order_relaxed);
-        outBins[targetBase + 2] = mBins[sourceBase + 2].load(std::memory_order_relaxed);
-        outBins[targetBase + 3] = mBins[sourceBase + 3].load(std::memory_order_acquire);
+void WaveformAnalyzer::getBins(float* outBins, uint32_t* sequence) const {
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        const uint32_t end = mCommitted.load(std::memory_order_acquire);
+        for (int i = 0; i < kBinCount; ++i) {
+            const int sourceBase = ((end - kBinCount + i) % kRingCount) * 4;
+            for (int band = 0; band < 4; ++band) {
+                outBins[i * 4 + band] = mBins[sourceBase + band].load(std::memory_order_relaxed);
+            }
+        }
+        if (mCommitted.load(std::memory_order_acquire) - end < kBinCount) {
+            if (sequence) *sequence = end;
+            return;
+        }
     }
+    // A severely stalled reader must not display torn history.
+    std::fill(outBins, outBins + kBinCount * 4, 0.0f);
+    if (sequence) *sequence = mCommitted.load(std::memory_order_acquire);
 }
 
 void WaveformAnalyzer::reset() {
@@ -149,7 +158,7 @@ void WaveformAnalyzer::reset() {
 
     mCurrent = {};
     for (auto& value : mBins) value.store(0.0f, std::memory_order_relaxed);
-    mWriteIndex.store(0, std::memory_order_release);
+    mCommitted.store(0, std::memory_order_release);
 }
 
 } // namespace djmrec

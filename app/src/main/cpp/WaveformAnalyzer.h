@@ -21,7 +21,8 @@ namespace djmrec {
  * Thread safety: pushFrames() is called from the realtime audio callback
  * (must not allocate/block); getBins() is called from the UI polling thread.
  * Individual bin values are atomic, so UI reads never block audio writes.
- * A snapshot can span adjacent audio commits; it is for visualization only.
+ * The reader snapshots a published cursor; an extra 512 slots protect its history
+ * from concurrent writes. A bounded retry rejects a reader stalled for a full history.
  */
 class WaveformAnalyzer {
 public:
@@ -35,7 +36,7 @@ public:
 
     /**
      * Called from the realtime audio callback (or libusb event thread) for
-     * every captured frame batch. Mixes stereo → mono, runs the three IIR
+     * every captured frame batch. Analyzes stereo → mono, runs the three IIR
      * filters per-sample, and accumulates peak + band energy into the current
      * display bin. When kFramesPerBin samples have been accumulated the bin
      * is committed and the next bin begins.
@@ -52,11 +53,12 @@ public:
      *
      * Each value is normalized to [0, 1]. Safe to call from any thread.
      */
-    void getBins(float* outBins) const;
+    void getBins(float* outBins, uint32_t* sequence = nullptr) const;
 
     /** Resets all filter state and clears the bin buffer (e.g. on new session). */
     // Call only while the audio producer is stopped.
     void reset();
+    float binDurationMillis() const { return mBinDurationMillis; }
 
 private:
     /** 2nd-order Butterworth IIR filter (Direct Form I) for a single band. */
@@ -91,13 +93,13 @@ private:
      */
     static void designHighPass(BandFilter& f, float cutoffHz, float sampleRate);
 
-    /** Accumulates a single mono sample through all three bands into the current bin. */
+    /** Accumulates a stereo frame through all three bands into the current bin. */
     void accumulateSample(float left, float right);
 
     /** Commits the current bin and advances to the next. */
     void commitBin();
 
-    // Three IIR filters, designed at construction time (assumes 48 kHz).
+    // Three IIR filters, designed at construction time for the actual sample rate.
     BandFilter mLowFilter[2];   // 250 Hz low-pass  → red channel
     BandFilter mMidFilter1[2];  // 250 Hz high-pass  → (then subtract mid lpf2)
     BandFilter mMidFilter2[2];  // 2000 Hz low-pass → mid = midFilter2(midFilter1(x))
@@ -114,9 +116,11 @@ private:
 
     // Atomic rolling history, oldest bin first when read.
     BinAccum mCurrent;
-    std::atomic<float> mBins[kBinCount * 4];
-    std::atomic<int> mWriteIndex{0};
+    static constexpr int kRingCount = kBinCount * 2;
+    std::atomic<float> mBins[kRingCount * 4];
+    std::atomic<uint32_t> mCommitted{0};
     int mFramesPerBin = 294;
+    float mBinDurationMillis = 1000.0f / 163.0f;
 
     static constexpr float kMaxAmplitude = 2147483648.0f; // 2^31 for int32 → float norm
 };

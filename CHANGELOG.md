@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.40.2 (2026-09-08)
+
+- Stop repeating healthy Bugfender capture reports. Log connection/health changes,
+  one settled snapshot, and initial payload/signal detection; retain fault reporting.
+- Replace waveform morphing with cursor-based scrolling on the display frame clock.
+  Preserve historical peaks, protect concurrent snapshots, and keep live history when
+  recording starts. Waveform updates no longer recompose the full recording page.
+- Use additive RGB shading: red bass, green mids, blue highs; mixed bands produce
+  yellow, cyan, magenta, and white. Remove the flickering white waveform outline.
+- Open active camera streams in a full recording workspace with local stereo meters,
+  gain, stream/record timers, camera switching, framing guides, and confirmed stop.
+  These controls and overlays are not included in the video sent to viewers.
+- Give queued livestream PCM frames their own buffers and sample-based timestamps.
+  Detect stalled PCM and outgoing AAC/H.264, clean up unexpected disconnections,
+  and preserve the stream timer across reconnects.
+- Add regression coverage for quiet diagnostics, RGB colors, waveform timing and
+  concurrent history, PCM timestamps, and stalled media delivery.
+- Device rendering performance and end-to-end camera broadcasts still need physical
+  validation; livestreaming remains experimental.
+
 ## v0.40.1 (2026-09-08)
 
 - Add detailed Bugfender mixer connection reports: detected model, USB IDs, selected

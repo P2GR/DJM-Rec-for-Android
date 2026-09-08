@@ -26,8 +26,7 @@ object RemoteDiagnostics {
     @Volatile private var initialized = false
     private var sdkCrashHandler: Thread.UncaughtExceptionHandler? = null
     private var previousCrashHandler: Thread.UncaughtExceptionHandler? = null
-    private var lastHealth = 0L
-    private var lastHealthKey = ""
+    private val healthGate = CaptureHealthGate()
     private val issueTimes = mutableMapOf<String, Long>()
     private val connections = java.util.concurrent.ConcurrentHashMap<String, String>()
     @Volatile private var activeConnection = "no-active-input"
@@ -67,6 +66,7 @@ object RemoteDiagnostics {
         if (!value) app.getSharedPreferences("settings", 0).edit()
             .putBoolean("diagnostics_previous_launch_enabled", false).apply()
         if (value) {
+            healthGate.reset()
             _restartRequired.value = false
             safelyInitialize()
             sdkCrashHandler?.let { if (Thread.getDefaultUncaughtExceptionHandler() == previousCrashHandler)
@@ -177,10 +177,8 @@ object RemoteDiagnostics {
     @Synchronized fun health(key: String) {
         if (!_enabled.value || !initialized) return
         val now = android.os.SystemClock.elapsedRealtime()
-        if (key == lastHealthKey && now - lastHealth < 10_000) return
-        lastHealth = now
-        lastHealthKey = key
         val connection = activeConnection
+        if (!healthGate.shouldLog(connection, key, now)) return
         submit {
             if (connection != activeConnection) return@submit
             val summary = AudioEngine.getDiagnosticSummary()

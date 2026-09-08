@@ -292,6 +292,8 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
     mPioneerFallbackStage = 0;
     mResolvedChannelOffset = config.extractChannelOffset;
     mFramesSincePeakLog = 0;
+    mLoggedPayloadWindow = false;
+    mLoggedPayloadSignal = false;
     mChannelActivity.reset();
     mBytesSincePeakLog = 0;
     mNonZeroBytesSincePeakLog = 0;
@@ -1005,10 +1007,16 @@ void UsbIsoAudioSource::demuxAndEmit(const uint8_t* data, size_t length) {
         mFramesSincePeakLog += completeFrames;
         if (mFramesSincePeakLog >= static_cast<size_t>(
                 std::max(1, mOpenedSampleRate.load(std::memory_order_acquire)))) {
-            LOGI("USB raw payload nonzero bytes=%llu/%llu; decoded pair peaks: %s; selected ch %d-%d",
-                 static_cast<unsigned long long>(mNonZeroBytesSincePeakLog),
-                 static_cast<unsigned long long>(mBytesSincePeakLog),
-                 peakSummary(mPairPeaks).c_str(), selectedOffset + 1, selectedOffset + 2);
+            // Inventory once, then first signal if capture initially started silent.
+            // Peak windows still update every second for routing and diagnostics.
+            if (!mLoggedPayloadWindow || (!mLoggedPayloadSignal && mNonZeroBytesSincePeakLog > 0)) {
+                LOGI("USB raw payload nonzero bytes=%llu/%llu; decoded pair peaks: %s; selected ch %d-%d",
+                     static_cast<unsigned long long>(mNonZeroBytesSincePeakLog),
+                     static_cast<unsigned long long>(mBytesSincePeakLog),
+                     peakSummary(mPairPeaks).c_str(), selectedOffset + 1, selectedOffset + 2);
+                mLoggedPayloadWindow = true;
+                mLoggedPayloadSignal = mNonZeroBytesSincePeakLog > 0;
+            }
             if (mMixerProfile) {
                 const int fallbackStage = mPioneerFallbackStage.load(std::memory_order_relaxed);
                 // mNonZeroBytesReceived is cumulative for the whole session -- a single stray

@@ -9,7 +9,6 @@ import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.net.Uri
 import android.os.Build
-import android.view.SurfaceView
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -33,7 +32,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
-import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.OpenInBrowser
@@ -70,7 +68,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.audiopro.djmrec.BuildConfig
 import com.audiopro.djmrec.audio.RecordingState
@@ -258,8 +255,9 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
         }
     }
 
-    DisposableEffect(Unit) {
-        onDispose { viewModel.detachLivePreview() }
+    if (liveState.isActive && liveState.usesCamera) {
+        CameraLiveScreen(viewModel)
+        return
     }
 
     Column(
@@ -286,26 +284,6 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
             )
         }
 
-        if (liveState.isActive && liveState.usesCamera) {
-            Surface(
-                modifier = Modifier.fillMaxWidth().aspectRatio(if (portrait) 9f / 16f else 16f / 9f),
-                shape = RoundedCornerShape(22.dp),
-                color = Color.Black
-            ) {
-                AndroidView(
-                    factory = { SurfaceView(it).also(viewModel::attachLivePreview) },
-                    update = viewModel::attachLivePreview,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-            OutlinedButton(
-                onClick = viewModel::switchLiveCamera,
-                modifier = Modifier.align(Alignment.End)
-            ) {
-                Icon(Icons.Filled.Cameraswitch, contentDescription = null)
-                Text("Switch camera", modifier = Modifier.padding(start = 8.dp))
-            }
-        }
 
         Surface(
             modifier = Modifier.fillMaxWidth(),

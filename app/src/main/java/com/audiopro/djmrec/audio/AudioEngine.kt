@@ -121,7 +121,8 @@ object AudioEngine {
     /**
      * Instantaneous stereo meter reading, in the layout
      * `[leftPeakDb, leftRmsDb, rightPeakDb, rightRmsDb]`, already scaled to dBFS in
-     * [-60, 0]. Intended to be polled at UI frame rate (~30-60 Hz) from a coroutine.
+     * Trailing floats: committed cursor modulo 1048576, then bin duration in milliseconds.
+     * Polled by the monitoring thread; UI scrolling uses the display frame clock.
      */
     external fun getLevels(): FloatArray
 
@@ -139,10 +140,11 @@ object AudioEngine {
     external fun getDiagnosticSummary(): String
 
     /**
-     * RGB waveform snapshot: returns `kWaveformBinCount * 4` floats in the layout
+     * RGB waveform snapshot: returns `kWaveformBinCount * 4 + 2` floats in the layout
      * `[amp0, low0, mid0, high0, amp1, low1, mid1, high1, ...]`, each in [0, 1].
      * Low ≈ red, mid ≈ green, high ≈ blue — the CDJ-3000 color mapping.
-     * Intended to be polled at ~15–30 Hz from the UI thread.
+     * Trailing floats: committed cursor modulo 1048576, then bin duration in milliseconds.
+     * Polled by the monitoring thread; UI scrolling uses the display frame clock.
      */
     external fun getWaveformBins(): FloatArray
 

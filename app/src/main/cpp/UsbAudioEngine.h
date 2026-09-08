@@ -81,7 +81,7 @@ public:
     void getUsbIsoTransferStats(uint64_t outStats[7]) const;
     std::string getDiagnosticSummary();
 
-    /** Copies the RGB waveform snapshot into @p outBins (kBinCount * 4 floats).
+    /** Copies the RGB waveform snapshot into @p outBins (kBinCount * 4 + 2 floats: bins, cursor, bin duration ms).
      *  Safe to call from any thread. */
     void getWaveformBins(float* outBins) const;
     void setRecordingGainDb(int gainDb);
@@ -116,7 +116,7 @@ private:
     std::unique_ptr<WaveformAnalyzer> mWaveformAnalyzer;
     std::thread mEncoderThread;
 
-    std::mutex mControlMutex; // guards start/stop/pause transitions (not the realtime path)
+    mutable std::mutex mControlMutex; // guards start/stop/pause transitions (not the realtime path)
     mutable std::mutex mWriterMutex;
     std::atomic<bool> mStreamOpen{false};
     std::atomic<bool> mRecording{false};

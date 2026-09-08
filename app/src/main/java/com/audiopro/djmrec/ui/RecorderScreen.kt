@@ -38,7 +38,6 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
     val saving by viewModel.saving.collectAsState()
     val levels by viewModel.levels.collectAsState()
     val elapsed by viewModel.elapsedMillis.collectAsState()
-    val bins by viewModel.waveformBins.collectAsState()
     val waveform by viewModel.waveformEnabled.collectAsState()
     val smooth by viewModel.smoothWaveform.collectAsState()
     val keepScreenOn by viewModel.keepScreenOn.collectAsState()
@@ -121,9 +120,9 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
                             Text(status, color = if (active) AccentRed else AccentGreen,
                                 style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                         }
-                        Text(if (waveform) "3-BAND" else "METERS", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+                        Text(if (waveform) "RGB" else "METERS", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
                     }
-                    if (waveform && !compact) RgbWaveform(bins, Modifier.fillMaxWidth().weight(1f), smooth = smooth,
+                    if (waveform && !compact) LiveRgbWaveform(viewModel.waveformBins, Modifier.fillMaxWidth().weight(1f), smooth = smooth,
                         active = state is RecordingState.Monitoring || active)
                     else if (!compact) Spacer(Modifier.weight(1f))
                     StereoVuMeter(levels)
