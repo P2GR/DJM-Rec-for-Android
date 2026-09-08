@@ -12,4 +12,22 @@ class UpdateCheckerTest {
         assertFalse(UpdateChecker.isNewer("0.34", "0.34.0"))
         assertFalse(UpdateChecker.isNewer("0.33.9", "0.34.0"))
     }
+
+    @Test
+    fun trustsOnlyThisRepositoriesReleaseUrls() {
+        assertTrue(UpdateChecker.isTrustedReleaseUrl(
+            "https://github.com/P2GR/DJM-Rec-for-Android/releases/tag/v0.42.0"))
+        assertTrue(UpdateChecker.isTrustedAssetUrl(
+            "https://github.com/P2GR/DJM-Rec-for-Android/releases/download/v0.42.0/app-release.apk"))
+        assertFalse(UpdateChecker.isTrustedReleaseUrl("https://example.com/releases/tag/v0.42.0"))
+        assertFalse(UpdateChecker.isTrustedAssetUrl(
+            "https://github.com/other/repository/releases/download/v0.42.0/app-release.apk"))
+    }
+
+    @Test
+    fun acceptsOnlyVersionedReleaseApkNames() {
+        assertTrue(UpdateChecker.isReleaseApkName("DJM-Rec-for-Android-v0.42.0-release.apk"))
+        assertFalse(UpdateChecker.isReleaseApkName("DJM-Rec-for-Android-v0.42.0-debug.apk"))
+        assertFalse(UpdateChecker.isReleaseApkName("../DJM-Rec-for-Android-v0.42.0-release.apk"))
+    }
 }

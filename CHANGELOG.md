@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.41.3 (2026-09-08)
+
+- Show the installed app version in Settings and add a manual update check with clear current,
+  available, download, and error states.
+- Download the latest signed release APK from GitHub, verify its published SHA-256 checksum and
+  package identity, then open Android's installer for user confirmation.
+
 ## v0.41.2 (2026-09-08)
 
 - Fix stretched, square-looking portrait livestreams by keeping RootEncoder's video preparation

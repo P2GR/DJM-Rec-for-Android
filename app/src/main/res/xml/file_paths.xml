@@ -4,4 +4,5 @@
     <external-path name="public_recordings" path="Music/DJMRec/" />
     <external-files-path name="recordings" path="Music/DJMRec/" />
     <cache-path name="logs_cache" path="logs/" />
+    <cache-path name="updates" path="updates/" />
 </paths>
