@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.41.1 (2026-09-08)
+
+- Improve livestream setup UI with visible broadcast title input, clearer selected options,
+  simpler YouTube setup, and automatic USB mixer arming from the Go live flow.
+- Lock portrait livestream output to the selected orientation instead of allowing sensor
+  auto-rotation to produce landscape frames with side bars.
+- Rescan USB audio on Activity resume and from the input picker so detection and monitoring
+  no longer depend on opening the Mixer USB section first.
+
 ## v0.41.0 (2026-09-08)
 
 - Cap waveform drawing at 60 fps, reduce snapshots to about 30 Hz, and stop native

@@ -28,7 +28,7 @@ fun InputPicker(viewModel: MainViewModel, onDismiss: () -> Unit) {
     val live by viewModel.liveStreamState.collectAsState()
     val locked = saving || live.isActive || state is RecordingState.Recording ||
         state is RecordingState.Paused || state is RecordingState.Preparing
-    LaunchedEffect(Unit) { viewModel.refreshInputs() }
+    LaunchedEffect(Unit) { viewModel.rescanUsbDevices() }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         LazyColumn(Modifier.fillMaxWidth(), contentPadding = PaddingValues(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {

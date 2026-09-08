@@ -21,7 +21,6 @@ import com.audiopro.djmrec.ui.theme.TextSecondary
 fun SettingsScreen(viewModel: MainViewModel) {
     val waveform by viewModel.waveformEnabled.collectAsState()
     val smooth by viewModel.smoothWaveform.collectAsState()
-    val autoArm by viewModel.autoArm.collectAsState()
     val keepScreen by viewModel.keepScreenOn.collectAsState()
     val confirm by viewModel.confirmStop.collectAsState()
     val context = LocalContext.current
@@ -31,7 +30,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Capture", style = MaterialTheme.typography.titleLarge)
-        PreferenceSwitch("Automatic arming", "Open monitoring after USB connection and permission. Recording starts only when you press Record.", autoArm, viewModel::setAutoArm)
+        Text("Monitoring arms automatically after USB connection and permission. Recording starts only when you press Record.", color = TextSecondary)
         PreferenceSwitch("Confirm stop", "Ask before stopping from the recorder. Notification Save & close always acts immediately.", confirm, viewModel::setConfirmStop)
         Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 1.dp) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { RecordingSetupControls(viewModel) }

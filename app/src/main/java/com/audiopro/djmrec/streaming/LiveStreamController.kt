@@ -130,7 +130,9 @@ class LiveStreamController(context: Context) : ConnectChecker {
                 return true
             }
         })
-        candidate.getGlInterface().autoHandleOrientation = config.videoMode != LiveVideoMode.ARTWORK
+        // User-selected stream shape must stay fixed. Sensor auto-rotation can overwrite
+        // config.portrait and turn a portrait stream into a landscape frame with pillarboxing.
+        candidate.getGlInterface().autoHandleOrientation = false
         stream = candidate
         val preparation = runCatching {
             candidate.getStreamClient().apply {
@@ -157,8 +159,8 @@ class LiveStreamController(context: Context) : ConnectChecker {
             return
         }
         if (config.videoMode != LiveVideoMode.ARTWORK) {
-            // StreamBase's default only follows requested output shape. Camera texture rotation
-            // must start from current display orientation; sensor updates then keep it correct.
+            // Keep camera texture rotation aligned with the current display while preserving the
+            // explicit stream shape above.
             candidate.setOrientation(currentCameraTextureRotation())
         }
 

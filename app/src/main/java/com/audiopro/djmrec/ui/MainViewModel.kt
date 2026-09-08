@@ -100,12 +100,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val sessionEvents = (application as DjmRecApplication).sessionEvents
     val lastSaved = sessionEvents.lastSaved.asStateFlow()
     val markerCount = sessionEvents.markerCount.asStateFlow()
-    val autoArm = MutableStateFlow(prefs.getBoolean("auto_arm", true))
     val keepScreenOn = MutableStateFlow(prefs.getBoolean("keep_screen_on", false))
     val smoothWaveform = MutableStateFlow(prefs.getBoolean("smooth_waveform", true))
     val confirmStop = MutableStateFlow(prefs.getBoolean("confirm_stop", true))
 
-    fun setAutoArm(value: Boolean) { prefs.edit().putBoolean("auto_arm", value).apply(); autoArm.value = value; if (value) ensureLiveMonitoring() }
     fun setKeepScreenOn(value: Boolean) { prefs.edit().putBoolean("keep_screen_on", value).apply(); keepScreenOn.value = value }
     fun setSmoothWaveform(value: Boolean) { prefs.edit().putBoolean("smooth_waveform", value).apply(); smoothWaveform.value = value }
     fun setConfirmStop(value: Boolean) { prefs.edit().putBoolean("confirm_stop", value).apply(); confirmStop.value = value }
@@ -283,7 +281,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun ensureLiveMonitoring() {
-        if (!autoArm.value || sessionEvents.closeRequested.value || boundService == null) return
+        if (sessionEvents.closeRequested.value || boundService == null) return
         val context = getApplication<Application>()
         if (deviceState.value != null &&
             (_recordingState.value is RecordingState.Idle ||
@@ -620,25 +618,66 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun resumeRecording() = sendCommand(RecordingService.ACTION_RESUME)
     fun stopRecording() = sendCommand(RecordingService.ACTION_STOP)
 
+    private fun captureReady(state: RecordingState): Boolean =
+        state is RecordingState.Monitoring ||
+            state is RecordingState.Recording ||
+            state is RecordingState.Paused
+
     fun startLiveStream(config: LiveStreamConfig) {
         val context = getApplication<Application>()
         _liveStreamState.value = LiveStreamState(
             status = LiveStreamStatus.PREPARING,
-            message = "Starting ${config.platform.label} encoders",
+            message = "Arming USB mixer",
             platform = config.platform,
             videoMode = config.videoMode
         )
-        context.startService(
-            Intent(context, RecordingService::class.java)
-                .setAction(RecordingService.ACTION_START_LIVE)
-                .putExtra(RecordingService.EXTRA_LIVE_PLATFORM, config.platform.name)
-                .putExtra(RecordingService.EXTRA_LIVE_SERVER_URL, config.serverUrl)
-                .putExtra(RecordingService.EXTRA_LIVE_STREAM_KEY, config.streamKey)
-                .putExtra(RecordingService.EXTRA_LIVE_VIDEO_MODE, config.videoMode.name)
-                .putExtra(RecordingService.EXTRA_LIVE_PORTRAIT, config.portrait)
-                .putExtra(RecordingService.EXTRA_LIVE_ARTWORK_URI, config.artworkUri)
-                .putExtra(RecordingService.EXTRA_LIVE_AUDIO_BITRATE, config.audioBitrate)
-        )
+        viewModelScope.launch {
+            if (!captureReady(_recordingState.value)) {
+                if (deviceState.value == null) {
+                    _liveStreamState.value = LiveStreamState(
+                        status = LiveStreamStatus.ERROR,
+                        message = "Connect a USB mixer before going live",
+                        platform = config.platform,
+                        videoMode = config.videoMode
+                    )
+                    return@launch
+                }
+                startMonitoringDevice(context)
+                val readyState = withTimeoutOrNull(15_000L) {
+                    recordingState.first { state ->
+                        captureReady(state) || state is RecordingState.Error
+                    }
+                }
+                if (readyState == null || !captureReady(readyState)) {
+                    _liveStreamState.value = LiveStreamState(
+                        status = LiveStreamStatus.ERROR,
+                        message = (readyState as? RecordingState.Error)?.message
+                            ?: "USB mixer did not become ready. Reconnect and try again.",
+                        platform = config.platform,
+                        videoMode = config.videoMode
+                    )
+                    return@launch
+                }
+            }
+
+            _liveStreamState.value = LiveStreamState(
+                status = LiveStreamStatus.PREPARING,
+                message = "Starting ${config.platform.label} encoders",
+                platform = config.platform,
+                videoMode = config.videoMode
+            )
+            context.startService(
+                Intent(context, RecordingService::class.java)
+                    .setAction(RecordingService.ACTION_START_LIVE)
+                    .putExtra(RecordingService.EXTRA_LIVE_PLATFORM, config.platform.name)
+                    .putExtra(RecordingService.EXTRA_LIVE_SERVER_URL, config.serverUrl)
+                    .putExtra(RecordingService.EXTRA_LIVE_STREAM_KEY, config.streamKey)
+                    .putExtra(RecordingService.EXTRA_LIVE_VIDEO_MODE, config.videoMode.name)
+                    .putExtra(RecordingService.EXTRA_LIVE_PORTRAIT, config.portrait)
+                    .putExtra(RecordingService.EXTRA_LIVE_ARTWORK_URI, config.artworkUri)
+                    .putExtra(RecordingService.EXTRA_LIVE_AUDIO_BITRATE, config.audioBitrate)
+            )
+        }
     }
 
     fun stopLiveStream() {

@@ -48,7 +48,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        viewModel.ensureLiveMonitoring()
+        // USB attach can precede Activity creation/resume. Reconcile the framework device list
+        // here so monitoring does not depend on opening the Mixer USB picker first.
+        viewModel.rescanUsbDevices()
     }
 
     override fun onNewIntent(intent: Intent) {

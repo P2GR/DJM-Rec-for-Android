@@ -13,6 +13,7 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -109,7 +110,6 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
     var streamKey by viewModel.liveStreamKey
     var videoMode by rememberSaveable { mutableStateOf(LiveVideoMode.BACK_CAMERA) }
     var step by rememberSaveable { mutableStateOf(0) }
-    var showBroadcastOptions by rememberSaveable { mutableStateOf(false) }
     var confirmEnd by remember { mutableStateOf(false) }
     var authorizing by remember { mutableStateOf(false) }
     var portrait by rememberSaveable { mutableStateOf(false) }
@@ -313,7 +313,7 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                 }
             } else {
                 Text("Share your set", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text("Connect a destination, choose the picture, then check your mixer.",
+                Text("Choose a destination and picture, then go live. Your USB mixer arms automatically.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("Connect", "Picture", "Go live").forEachIndexed { index, label ->
@@ -326,34 +326,38 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                     0 -> {
                         Text("Where are you streaming?", style = MaterialTheme.typography.titleMedium)
                         LivePlatform.entries.forEach { option ->
-                            OutlinedButton(onClick = {
-                                if (platform != option) {
-                                    viewModel.cancelStreamSetup()
-                                    platform = option; serverUrl = option.defaultServerUrl
-                                    streamKey = ""; destinationUrl = null; localError = null
+                            LiveChoiceButton(
+                                label = option.label,
+                                selected = platform == option,
+                                enabled = !setupState.isBusy && !authorizing,
+                                onClick = {
+                                    if (platform != option) {
+                                        viewModel.cancelStreamSetup()
+                                        platform = option; serverUrl = option.defaultServerUrl
+                                        streamKey = ""; destinationUrl = null; localError = null
+                                    }
                                 }
-                            }, enabled = !setupState.isBusy && !authorizing, modifier = Modifier.fillMaxWidth()) {
-                                Text((if (platform == option) "Selected: " else "") + option.label)
-                            }
+                            )
                         }
                         when (platform) {
                             LivePlatform.YOUTUBE -> {
-                                Text("Sign in with Google. DJM Rec creates the broadcast and fills in the stream address for you.")
                                 if (destinationReady) {
                                     Text("YouTube destination ready", color = AccentGreen)
                                     destinationUrl?.let { url -> TextButton(onClick = { openUrl(url) }) { Text("Open broadcast") } }
                                 } else {
-                                    TextButton(onClick = { showBroadcastOptions = !showBroadcastOptions }, enabled = !setupState.isBusy && !authorizing) {
-                                        Text(if (showBroadcastOptions) "Hide broadcast details" else "$youtubeTitle / ${youtubePrivacy.name.lowercase().replaceFirstChar { it.uppercase() }}")
-                                    }
-                                    if (showBroadcastOptions) {
-                                        OutlinedTextField(youtubeTitle, { youtubeTitle = it }, enabled = !setupState.isBusy && !authorizing,
-                                            label = { Text("Broadcast title") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            YouTubePrivacy.entries.forEach { option ->
-                                                FilterChip(youtubePrivacy == option, { youtubePrivacy = option }, enabled = !setupState.isBusy && !authorizing,
-                                                    label = { Text(option.label) })
-                                            }
+                                    OutlinedTextField(
+                                        value = youtubeTitle,
+                                        onValueChange = { youtubeTitle = it },
+                                        enabled = !setupState.isBusy && !authorizing,
+                                        label = { Text("Broadcast title") },
+                                        supportingText = { Text("Shown on YouTube to viewers.") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        YouTubePrivacy.entries.forEach { option ->
+                                            FilterChip(youtubePrivacy == option, { youtubePrivacy = option }, enabled = !setupState.isBusy && !authorizing,
+                                                label = { Text(option.label) })
                                         }
                                     }
                                 }
@@ -382,9 +386,11 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                     1 -> {
                         Text("What will viewers see?", style = MaterialTheme.typography.titleMedium)
                         LiveVideoMode.entries.forEach { option ->
-                            OutlinedButton(onClick = { videoMode = option; localError = null }, modifier = Modifier.fillMaxWidth()) {
-                                Text((if (videoMode == option) "Selected: " else "") + option.label)
-                            }
+                            LiveChoiceButton(
+                                label = option.label,
+                                selected = videoMode == option,
+                                onClick = { videoMode = option; localError = null }
+                            )
                         }
                         if (videoMode == LiveVideoMode.ARTWORK) {
                             CustomArtworkPicker(artworkUri, true, { artworkPicker.launch(arrayOf("image/*")) }, {
@@ -406,8 +412,15 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                                 Text(platform.label, fontWeight = FontWeight.Bold)
                                 Text("${videoMode.label} / ${if (portrait) "Portrait" else "Landscape"}")
                                 Text(device?.productName ?: "No mixer selected")
-                                Text(if (captureReady) health.message else "Connect and arm your mixer on the Record page.",
-                                    color = if (captureReady && health.level == com.audiopro.djmrec.audio.RecordingHealthLevel.GOOD) AccentGreen else AccentAmber)
+                                Text(
+                                    when {
+                                        captureReady -> health.message
+                                        device == null -> "Connect a USB mixer before going live."
+                                        else -> "Mixer monitoring starts automatically when you go live."
+                                    },
+                                    color = if (captureReady && health.level == com.audiopro.djmrec.audio.RecordingHealthLevel.GOOD) AccentGreen
+                                    else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                                 StreamSetupMeters(viewModel)
                             }
                         }
@@ -434,11 +447,11 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                 }, enabled = liveState.isActive || when (step) {
                     0 -> !setupState.isBusy && !authorizing && (destinationReady || platform == LivePlatform.YOUTUBE && youtubeTitle.isNotBlank())
                     1 -> destinationReady && pictureReady
-                    else -> destinationReady && pictureReady && captureReady
+                    else -> destinationReady && pictureReady
                 }, modifier = Modifier.weight(1f).height(56.dp)) {
                     Text(if (liveState.isActive) "End stream" else when (step) {
-                        0 -> if (platform == LivePlatform.YOUTUBE && !destinationReady) "Connect with Google" else "Continue"
-                        1 -> "Check mixer"
+                        0 -> if (platform == LivePlatform.YOUTUBE && !destinationReady) "Connect YouTube" else "Continue"
+                        1 -> "Review stream"
                         else -> "Go live on ${platform.label}"
                     })
                 }
@@ -449,6 +462,33 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
         text = { Text("Viewers will disconnect. Any local recording continues.") },
         confirmButton = { TextButton(onClick = { confirmEnd = false; viewModel.stopLiveStream() }) { Text("End stream") } },
         dismissButton = { TextButton(onClick = { confirmEnd = false }) { Text("Keep streaming") } })
+}
+
+@Composable
+private fun LiveChoiceButton(
+    label: String,
+    selected: Boolean,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    OutlinedButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.fillMaxWidth().height(48.dp),
+        colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+            contentColor = if (selected) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.onSurface
+        ),
+        border = BorderStroke(
+            1.dp,
+            if (selected) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
+        )
+    ) {
+        Text(label)
+    }
 }
 
 @Composable
