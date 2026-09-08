@@ -61,11 +61,29 @@ class LiveStreamConfigTest {
     }
 
     @Test
-    fun cameraTextureTracksEveryDisplayRotation() {
-        assertEquals(270, cameraTextureRotation(0))
-        assertEquals(0, cameraTextureRotation(90))
-        assertEquals(90, cameraTextureRotation(180))
-        assertEquals(180, cameraTextureRotation(270))
+    fun portraitProfileProducesVerticalEncoderDimensions() {
+        val profile = liveVideoProfiles(LiveVideoMode.BACK_CAMERA, portrait = true).first()
+
+        assertEquals(1280, profile.sourceWidth)
+        assertEquals(720, profile.sourceHeight)
+        assertEquals(90, profile.rotation)
+        assertEquals(720, profile.encodedWidth)
+        assertEquals(1280, profile.encodedHeight)
+    }
+
+    @Test
+    fun landscapeProfileKeepsHorizontalEncoderDimensions() {
+        val profile = liveVideoProfiles(LiveVideoMode.BACK_CAMERA, portrait = false).first()
+
+        assertEquals(0, profile.rotation)
+        assertEquals(1280, profile.encodedWidth)
+        assertEquals(720, profile.encodedHeight)
+    }
+
+    @Test
+    fun youtubeLetsIngestDimensionsDetermineOrientation() {
+        assertEquals("variable", YOUTUBE_CDN_RESOLUTION)
+        assertEquals("variable", YOUTUBE_CDN_FRAME_RATE)
     }
 
     @Test

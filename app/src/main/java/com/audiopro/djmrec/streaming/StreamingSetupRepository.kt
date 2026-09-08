@@ -13,6 +13,9 @@ import java.nio.charset.StandardCharsets
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
+internal const val YOUTUBE_CDN_RESOLUTION = "variable"
+internal const val YOUTUBE_CDN_FRAME_RATE = "variable"
+
 object StreamingSetupRepository {
     private const val CONNECT_TIMEOUT_MS = 10_000
     private const val READ_TIMEOUT_MS = 15_000
@@ -57,9 +60,9 @@ object StreamingSetupRepository {
             val streamBody = JSONObject()
                 .put("snippet", JSONObject().put("title", "DJM REC - ${title.trim()}"))
                 .put("cdn", JSONObject()
-                    .put("frameRate", "30fps")
+                    .put("frameRate", YOUTUBE_CDN_FRAME_RATE)
                     .put("ingestionType", "rtmp")
-                    .put("resolution", "720p"))
+                    .put("resolution", YOUTUBE_CDN_RESOLUTION))
                 .put("contentDetails", JSONObject().put("isReusable", false))
             val stream = requestJson(
                 "POST",

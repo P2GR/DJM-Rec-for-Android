@@ -130,8 +130,8 @@ class LiveStreamController(context: Context) : ConnectChecker {
                 return true
             }
         })
-        // User-selected stream shape must stay fixed. Sensor auto-rotation can overwrite
-        // config.portrait and turn a portrait stream into a landscape frame with pillarboxing.
+        // prepareVideo owns both encoder shape and camera transform. Letting the sensor or a
+        // later setOrientation call change only the transform stretches it inside the fixed frame.
         candidate.getGlInterface().autoHandleOrientation = false
         stream = candidate
         val preparation = runCatching {
@@ -158,12 +158,6 @@ class LiveStreamController(context: Context) : ConnectChecker {
                 config.platform, config.videoMode))
             return
         }
-        if (config.videoMode != LiveVideoMode.ARTWORK) {
-            // Keep camera texture rotation aligned with the current display while preserving the
-            // explicit stream shape above.
-            candidate.setOrientation(currentCameraTextureRotation())
-        }
-
         _state.value = LiveStreamState(
             LiveStreamStatus.CONNECTING,
             "Connecting securely to ${config.platform.label}",
@@ -266,7 +260,6 @@ class LiveStreamController(context: Context) : ConnectChecker {
         if (!usesCamera || active.isOnPreview) return
         runCatching {
             active.startPreview(surfaceView, autoHandle = true)
-            active.setOrientation(currentCameraTextureRotation())
         }.onFailure { Log.e(TAG, "Camera preview failed", it) }
     }
 
@@ -456,35 +449,50 @@ class LiveStreamController(context: Context) : ConnectChecker {
             })
         }
 
-    private fun currentCameraTextureRotation(): Int {
-        val displayRotation = CameraHelper.getCameraOrientation(appContext)
-        return cameraTextureRotation(displayRotation)
-    }
-
     private fun prepareVideo(candidate: RtmpStream, config: LiveStreamConfig): Boolean {
-        val rotation = if (config.portrait) 90 else 0
-        val sizes = if (config.videoMode == LiveVideoMode.ARTWORK) {
-            listOf(1280 to 720)
-        } else {
-            listOf(1280 to 720, 640 to 480)
-        }
-        return sizes.any { (width, height) ->
-            runCatching {
+        return liveVideoProfiles(config.videoMode, config.portrait).any { profile ->
+            val prepared = runCatching {
                 candidate.prepareVideo(
-                    width = width,
-                    height = height,
+                    width = profile.sourceWidth,
+                    height = profile.sourceHeight,
                     bitrate = config.videoBitrate,
                     fps = if (config.videoMode == LiveVideoMode.ARTWORK) 15 else 30,
                     iFrameInterval = 2,
-                    rotation = rotation
+                    rotation = profile.rotation
                 )
             }.getOrDefault(false)
+            if (prepared) {
+                Log.i(
+                    TAG,
+                    "H.264 output ${profile.encodedWidth}x${profile.encodedHeight} " +
+                        "at ${if (config.videoMode == LiveVideoMode.ARTWORK) 15 else 30}fps"
+                )
+            }
+            prepared
         }
     }
 }
 
-internal fun cameraTextureRotation(displayCameraOrientation: Int): Int =
-    if (displayCameraOrientation == 0) 270 else displayCameraOrientation - 90
+internal data class LiveVideoProfile(
+    val sourceWidth: Int,
+    val sourceHeight: Int,
+    val rotation: Int
+) {
+    val encodedWidth: Int
+        get() = if (rotation == 90 || rotation == 270) sourceHeight else sourceWidth
+    val encodedHeight: Int
+        get() = if (rotation == 90 || rotation == 270) sourceWidth else sourceHeight
+}
+
+internal fun liveVideoProfiles(videoMode: LiveVideoMode, portrait: Boolean): List<LiveVideoProfile> {
+    val rotation = if (portrait) 90 else 0
+    val sizes = if (videoMode == LiveVideoMode.ARTWORK) {
+        listOf(1280 to 720)
+    } else {
+        listOf(1280 to 720, 640 to 480)
+    }
+    return sizes.map { (width, height) -> LiveVideoProfile(width, height, rotation) }
+}
 
 internal fun mediaValidationFailure(state: LiveStreamState): String = when {
     state.audioPcmBytes == 0L -> "No mixer PCM reached livestream encoder"

@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.41.2 (2026-09-08)
+
+- Fix stretched, square-looking portrait livestreams by keeping RootEncoder's video preparation
+  as the single owner of encoder dimensions and camera rotation. Portrait output is now 720x1280.
+- Let YouTube automatically detect ingest resolution and frame rate so 9:16 streams are recognized
+  as vertical instead of being constrained by a fixed 720p landscape declaration.
+
 ## v0.41.1 (2026-09-08)
 
 - Improve livestream setup UI with visible broadcast title input, clearer selected options,
