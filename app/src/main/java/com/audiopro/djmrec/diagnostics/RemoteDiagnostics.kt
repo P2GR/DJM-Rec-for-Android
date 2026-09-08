@@ -29,6 +29,20 @@ object RemoteDiagnostics {
     private var lastHealth = 0L
     private var lastHealthKey = ""
     private val issueTimes = mutableMapOf<String, Long>()
+    private val connections = java.util.concurrent.ConcurrentHashMap<String, String>()
+    @Volatile private var activeConnection = "no-active-input"
+
+    fun usbEvent(path: String, name: String, vendor: Int, product: Int, stage: String, detail: String = "") {
+        if (!_enabled.value) return
+        val id = connections.computeIfAbsent(path) { java.util.UUID.randomUUID().toString().take(8) }
+        event("MixerConnection", "connection=$id; stage=$stage; source=UsbAudioManager.$stage; " +
+            MixerDiagnosticReport.identity(name, vendor, product) + "; $detail")
+    }
+
+    fun usbDetached(path: String) {
+        val id = connections.remove(path) ?: return
+        event("MixerConnection", "connection=$id; stage=detached; source=UsbAudioManager.usbDeviceReceiver")
+    }
 
     fun start(application: Application) {
         app = application
@@ -109,53 +123,69 @@ object RemoteDiagnostics {
         if (_enabled.value && initialized) queue.trySend(work)
     }
 
-    fun event(tag: String, message: String) = submit {
-        Bugfender.i(tag, DiagnosticPrivacy.redact(message))
+    fun event(tag: String, message: String) {
+        val context = activeConnection
+        submit { Bugfender.i(tag, DiagnosticPrivacy.redact("capture_connection=$context; $message")) }
     }
 
-    fun issue(category: String, detail: String) = submit {
-        val now = android.os.SystemClock.elapsedRealtime()
-        if (now - (issueTimes[category] ?: -600_000L) >= 600_000L) {
-            issueTimes[category] = now
-            Bugfender.sendIssue(category, DiagnosticPrivacy.redact(detail))
+    fun issue(category: String, detail: String) {
+        val connection = activeConnection
+        submit {
+            val now = android.os.SystemClock.elapsedRealtime()
+            val issueKey = "$connection/$category"
+            if (now - (issueTimes[issueKey] ?: -600_000L) >= 600_000L) {
+                if (issueTimes.size >= 64) issueTimes.minByOrNull { it.value }?.key?.let(issueTimes::remove)
+                issueTimes[issueKey] = now
+                Bugfender.sendIssue(category, DiagnosticPrivacy.redact("capture_connection=$connection; $detail"))
+            }
         }
     }
 
-    fun descriptors(vendor: Int, product: Int, raw: ByteArray) {
+    fun descriptors(vendor: Int, product: Int, raw: ByteArray, path: String? = null) {
         if (!_enabled.value) return
         val copy = raw.copyOf()
+        val connection = path?.let { connections[it] } ?: activeConnection
         submit {
-            val prefix = "usb=%04x:%04x".format(vendor, product)
+            val prefix = "connection=$connection; usb=%04x:%04x; source=UsbAudioManager.inspectAndPublish".format(vendor, product)
+            MixerDiagnosticReport.capabilities(copy).forEach { Bugfender.i("MixerCapabilities", "$prefix; $it") }
             DiagnosticPrivacy.descriptorHex(copy).chunked(3000).forEachIndexed { index, chunk ->
                 Bugfender.i("UsbDescriptors", "$prefix chunk=$index $chunk")
             }
         }
     }
 
-    fun device(device: UsbAudioDeviceInfo?) = submit {
+    fun device(device: UsbAudioDeviceInfo?) {
+        val connection = device?.let { connections.computeIfAbsent(it.deviceName) { java.util.UUID.randomUUID().toString().take(8) } }
+            ?: activeConnection // Keep disconnect/error reports linked to the input that just closed.
+        activeConnection = connection
+        submit {
         Bugfender.setDeviceBoolean("mixer.connected", device != null)
         if (device == null) {
-            listOf("mixer.usb_id", "mixer.profile", "mixer.channels").forEach(Bugfender::removeDeviceKey)
-            Bugfender.i("Mixer", "USB input disconnected or no input selected")
+            listOf("mixer.usb_id", "mixer.profile", "mixer.channels", "mixer.name", "mixer.connection").forEach(Bugfender::removeDeviceKey)
+            Bugfender.i("Mixer", "connection=$connection; USB input disconnected or no input selected")
         } else {
+            Bugfender.setDeviceString("mixer.name", DiagnosticPrivacy.redact(device.productName))
+            Bugfender.setDeviceString("mixer.connection", connection)
             Bugfender.setDeviceString("mixer.usb_id", "%04x:%04x".format(device.vendorId, device.productId))
             Bugfender.setDeviceString("mixer.profile", device.pioneerMixerProfile?.name ?: device.allInOneProfile?.name ?: "generic_pcm")
             Bugfender.setDeviceInteger("mixer.channels", device.channelCount)
-            Bugfender.i("Mixer", "${device.profileDescription}; if=${device.streamingInterfaceNumber} alt=${device.activeAlternateSetting} " +
-                "ep=${device.isochronousInEndpointAddress} packet=${device.isochronousInMaxPacketSize} " +
-                "channels=${device.channelCount} bits=${device.bitResolution} subframe=${device.subframeSize} " +
-                "rates=${device.supportedSampleRates} raw=${device.requiresIsoCapture}")
+            Bugfender.i("Mixer", DiagnosticPrivacy.redact("connection=$connection; source=UsbAudioManager.inspectAndPublish\n${MixerDiagnosticReport.selected(device)}"))
+        }
         }
     }
 
     @Synchronized fun health(key: String) {
         if (!_enabled.value || !initialized) return
         val now = android.os.SystemClock.elapsedRealtime()
-        if (key == lastHealthKey && now - lastHealth < 30_000) return
+        if (key == lastHealthKey && now - lastHealth < 10_000) return
         lastHealth = now
         lastHealthKey = key
+        val connection = activeConnection
         submit {
-            Bugfender.i("CaptureHealth", DiagnosticPrivacy.redact("$key\n${AudioEngine.getDiagnosticSummary()}"))
+            if (connection != activeConnection) return@submit
+            val summary = AudioEngine.getDiagnosticSummary()
+            if (connection != activeConnection) return@submit
+            Bugfender.i("CaptureHealth", DiagnosticPrivacy.redact("capture_connection=$connection; source=RecordingService.healthRunnable / UsbIsoAudioSource::diagnosticSummary\n$key\n$summary"))
         }
     }
 }

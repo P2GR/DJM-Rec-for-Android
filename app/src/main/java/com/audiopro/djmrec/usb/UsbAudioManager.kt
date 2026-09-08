@@ -51,8 +51,26 @@ class UsbAudioManager(private val context: Context) {
     private val _connectionNotice = MutableStateFlow<String?>(null)
     val connectionNotice = _connectionNotice.asStateFlow()
     private var requestedDeviceName: String? = null
+    private val diagnosticDevices = mutableSetOf<String>()
+
+    private fun trace(device: UsbDevice, stage: String, detail: String = "") =
+        com.audiopro.djmrec.diagnostics.RemoteDiagnostics.usbEvent(device.deviceName,
+            device.productName ?: "Unknown USB device", device.vendorId, device.productId, stage, detail)
 
     fun refreshInputs() {
+        val connected = usbManager.deviceList.values
+        diagnosticDevices.retainAll(connected.map { it.deviceName }.toSet())
+        connected.filter { diagnosticDevices.add(it.deviceName) }.forEach { device ->
+            trace(device, "refreshInputs", "permission=${usbManager.hasPermission(device)}; capture candidate=${isCaptureCandidate(device)}; " +
+                (0 until device.interfaceCount).joinToString { index ->
+                    val intf = device.getInterface(index)
+                    "if${intf.id}/alt${intf.alternateSetting} class=${intf.interfaceClass}/${intf.interfaceSubclass} protocol=${intf.interfaceProtocol} " +
+                        (0 until intf.endpointCount).joinToString { epIndex ->
+                            val ep = intf.getEndpoint(epIndex)
+                            "ep=${ep.address} direction=${ep.direction} type=${ep.type} packet=${ep.maxPacketSize} interval=${ep.interval}"
+                        }
+                })
+        }
         _inputs.value = usbManager.deviceList.values.map { device ->
             UsbInputOption(device.deviceName, device.productName ?: "USB ${device.vendorId.toString(16)}:${device.productId.toString(16)}",
                 usbManager.hasPermission(device), isCaptureCandidate(device))
@@ -100,6 +118,7 @@ class UsbAudioManager(private val context: Context) {
 
                 UsbManager.ACTION_USB_DEVICE_DETACHED -> {
                     val device = getIntentDevice(intent) ?: return
+                    com.audiopro.djmrec.diagnostics.RemoteDiagnostics.usbDetached(device.deviceName)
                     if (_deviceState.value?.deviceName == device.deviceName) {
                         Log.i(TAG, "Mixer detached: ${device.deviceName}")
                         _deviceState.value = null
@@ -222,6 +241,7 @@ class UsbAudioManager(private val context: Context) {
             .firstOrNull()
 
     private fun onDeviceAttached(device: UsbDevice) {
+        trace(device, "onDeviceAttached", "permission=${usbManager.hasPermission(device)}; capture candidate=${isCaptureCandidate(device)}")
         _deviceState.value?.let { active ->
             // Refresh Android's delayed input registration without reopening a live USB connection.
             if (active.deviceName == device.deviceName && active.audioManagerDeviceId < 0) {
@@ -252,6 +272,7 @@ class UsbAudioManager(private val context: Context) {
     }
 
     private fun requestPermission(device: UsbDevice) {
+        trace(device, "requestPermission", "Requesting USB permission; descriptors unavailable until allowed")
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         val intent = Intent(ACTION_USB_PERMISSION).setPackage(context.packageName)
         val permissionIntent = PendingIntent.getBroadcast(
@@ -264,6 +285,7 @@ class UsbAudioManager(private val context: Context) {
         val device = getIntentDevice(intent) ?: return
         if (requestedDeviceName != device.deviceName) return
         val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
+        trace(device, "handlePermissionResult", "granted=$granted")
         Log.i(TAG, "Permission result for ${device.deviceName}: granted=$granted")
         if (granted) {
             if (_deviceState.value == null && usbManager.deviceList.containsKey(device.deviceName)) {
@@ -283,6 +305,7 @@ class UsbAudioManager(private val context: Context) {
     private fun inspectAndPublish(device: UsbDevice) {
         val connection = usbManager.openDevice(device)
         if (connection == null) {
+            trace(device, "inspectAndPublish", "FAILED: Android could not open USB control connection")
             Log.e(TAG, "Failed to open control connection to ${device.deviceName}")
             _connectionNotice.value = "Could not open USB input. Check permission and reconnect."
             return
@@ -295,7 +318,7 @@ class UsbAudioManager(private val context: Context) {
         var mixerProfile: PioneerMixerProfile? = null
         val bestInterface = try {
             rawDescriptors = connection.rawDescriptors ?: ByteArray(0)
-            com.audiopro.djmrec.diagnostics.RemoteDiagnostics.descriptors(device.vendorId, device.productId, rawDescriptors)
+            com.audiopro.djmrec.diagnostics.RemoteDiagnostics.descriptors(device.vendorId, device.productId, rawDescriptors, device.deviceName)
             Log.i(TAG, "${device.deviceName}: read ${rawDescriptors.size} bytes of raw descriptors")
             streamingInterfaces = UsbAudioDescriptorParser.findAudioStreamingInterfaces(rawDescriptors)
             topology = UsbAudioDescriptorParser.parseTopology(rawDescriptors)
@@ -375,6 +398,7 @@ class UsbAudioManager(private val context: Context) {
         }
 
         if (bestInterface == null) {
+            trace(device, "inspectAndPublish", "FAILED: no supported capture format; configuration logged under MixerCapabilities and UsbDescriptors")
             Log.w(TAG, "${device.deviceName} exposes no usable isochronous IN audio streaming interface")
             _deviceState.value = null
             _connectionNotice.value = AllInOneProfile.find(device.vendorId, device.productId)?.takeIf { it == AllInOneProfile.XDJ_RX3 }?.setupHint

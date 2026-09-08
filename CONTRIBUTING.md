@@ -25,6 +25,49 @@ JDK 17, Android SDK, NDK 26.1, CMake 3.22.1 required. Open in Android Studio or 
 - C++: C++17, `.clang-format` is project-standard
 - Commit messages: [Conventional Commits](https://www.conventionalcommits.org/)
 
+## Mixer diagnostics
+
+In Bugfender, filter `MixerConnection`, `MixerCapabilities`, `Mixer`, `UsbDescriptors` and
+`CaptureHealth`. The connection ID links detection, permission, profile selection and failures.
+Source class/method hints identify the relevant code; build type/version identify the APK.
+`mixer.name` and `mixer.connection` are searchable device attributes.
+
+Example format (illustrative values, not a hardware certification):
+
+```text
+connection=8f21ab90; stage=onDeviceAttached; source=UsbAudioManager.onDeviceAttached
+Detected: DJM-A9; USB=2B73:003C; profile=DJM-A9
+Selected total channels=12; PCM=24bit/3bytes; available rates=48.0 kHz, 96.0 kHz
+sample_rate=requested:48000 opened:48000
+channel_offset=requested:8 resolved:8
+USB1=-120.0dBFS(below threshold) ... USB9=-6.0dBFS(active) USB10=-8.2dBFS(active)
+```
+
+Raw USB channel activity uses approximate one-second peak windows, before gain and stereo
+extraction. `CaptureHealth` sends snapshots every ten seconds or on a health change. Check
+window age for stale data after a stall. Active means at least -60 dBFS; quieter audio may
+still exist, and activity alone does not prove correct master routing. Android-managed input
+provides its opened stream's stereo meters, not otherwise inaccessible mixer channels.
+
+Advertised rates, profile contract rates, queried/Android-derived choices and actual opened
+rates are labeled separately. Unknown values remain unknown. Unrecognized devices receive
+interface/endpoint inventory logs; configuration dumps require USB permission. Logging does
+not request extra permissions for arbitrary non-audio devices or probe new vendor controls.
+Recorded audio and raw audio packet dumps remain excluded; the existing Settings opt-out applies.
+
+For new profiles, collect the connection ID, descriptor chunks, selected format/rate/pair,
+channel peaks and failure events. Test stereo separation and saved timing on physical hardware.
+
+Standalone channel-measurement regression:
+
+```sh
+c++ -std=c++17 -Iapp/src/main/cpp app/src/test/cpp/ChannelActivityTest.cpp -o channel-test
+./channel-test
+```
+
+When testing a modified release without a version bump, exclude `:app:bfUploadMappingRelease`
+from Gradle tasks so local test mappings cannot overwrite a published release's mappings.
+
 ## License
 
 By contributing, you agree that your contributions will be licensed under the MIT License.

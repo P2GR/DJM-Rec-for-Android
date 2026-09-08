@@ -1,4 +1,5 @@
 #pragma once
+#include "ChannelActivity.h"
 
 #include <atomic>
 #include <array>
@@ -160,6 +161,7 @@ private:
     std::vector<uint8_t> mWorking;   // scratch: carryover + newest packet, reused per call
     std::vector<int32_t> mScratch;   // reusable decode buffer, grown as needed
     std::vector<uint32_t> mPairPeaks;
+    ChannelActivity mChannelActivity;
     std::atomic<int> mResolvedChannelOffset{-1};
     size_t mFramesSincePeakLog = 0;
     uint64_t mBytesSincePeakLog = 0;

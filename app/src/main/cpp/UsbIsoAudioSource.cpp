@@ -292,6 +292,7 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
     mPioneerFallbackStage = 0;
     mResolvedChannelOffset = config.extractChannelOffset;
     mFramesSincePeakLog = 0;
+    mChannelActivity.reset();
     mBytesSincePeakLog = 0;
     mNonZeroBytesSincePeakLog = 0;
     mRawPacketDumpsLogged = 0;
@@ -777,6 +778,7 @@ std::string UsbIsoAudioSource::diagnosticSummary() const {
         << " bytes:" << stats.bytesReceived
         << " nonzero_bytes:" << stats.nonZeroBytesReceived
         << " resubmit_failures:" << stats.resubmitFailures;
+    out << '\n' << mChannelActivity.summary(mConfig.totalChannels);
     return out.str();
 }
 
@@ -974,16 +976,10 @@ void UsbIsoAudioSource::demuxAndEmit(const uint8_t* data, size_t length) {
         }
 
         const int subframe = mConfig.subframeSize;
+        mChannelActivity.observe(mWorking.data(), completeFrames, mConfig.totalChannels, subframe,
+            mMixerProfile && mConfig.bitResolution <= 24);
         for (int offset = 0; offset + 1 < mConfig.totalChannels; offset += 2) {
-            uint32_t pairMagnitude = 0;
-            const int offsetBytes = offset * subframe;
-            for (size_t f = 0; f < completeFrames; ++f) {
-                const uint8_t* frameBase = mWorking.data() + f * frameSize + offsetBytes;
-                const int32_t left = decodeUsbPcm(frameBase, subframe, mMixerProfile && mConfig.bitResolution <= 24);
-                const int32_t right = decodeUsbPcm(frameBase + subframe, subframe, mMixerProfile && mConfig.bitResolution <= 24);
-                pairMagnitude = std::max(pairMagnitude, sampleMagnitude(left));
-                pairMagnitude = std::max(pairMagnitude, sampleMagnitude(right));
-            }
+            const auto pairMagnitude = std::max(mChannelActivity.peak(offset), mChannelActivity.peak(offset + 1));
             const size_t pairIndex = static_cast<size_t>(offset / 2);
             if (pairIndex < mPairPeaks.size()) {
                 mPairPeaks[pairIndex] = std::max(mPairPeaks[pairIndex], pairMagnitude);
@@ -1066,6 +1062,7 @@ void UsbIsoAudioSource::demuxAndEmit(const uint8_t* data, size_t length) {
                 }
             }
             std::fill(mPairPeaks.begin(), mPairPeaks.end(), 0);
+            mChannelActivity.publish();
             mFramesSincePeakLog = 0;
             mBytesSincePeakLog = 0;
             mNonZeroBytesSincePeakLog = 0;

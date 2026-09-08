@@ -28,6 +28,27 @@ jobs:
             exit 1
           }
 
+      - name: Prepare release notes from changelog
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import re
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          changelog = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
+          section = re.search(
+              rf"^## {re.escape(tag)}(?:[ \t]+[^\n]*)?\n(.*?)(?=^## |\Z)",
+              changelog, re.MULTILINE | re.DOTALL,
+          )
+          if section is None or not section.group(1).strip():
+              raise SystemExit(f"Missing changelog entry for {tag}")
+          pathlib.Path(os.environ["RUNNER_TEMP"], "release-notes.md").write_text(
+              section.group(1).strip() + "\n", encoding="utf-8",
+          )
+          PY
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -93,4 +114,4 @@ jobs:
           gh release create "$GITHUB_REF_NAME"
           "$APK_RELEASE" "$APK_RELEASE.sha256"
           "$APK_DEBUG" "$APK_DEBUG.sha256"
-          --verify-tag --notes-file "docs/releases/${GITHUB_REF_NAME#v}.md" --title "$GITHUB_REF_NAME"
+          --verify-tag --notes-file "$RUNNER_TEMP/release-notes.md" --title "$GITHUB_REF_NAME"

@@ -21,6 +21,7 @@ release/
 
 # Gradle files
 .gradle/
+.kotlin/
 build/
 
 # Signing files (keep keystores/passwords out of version control!)
