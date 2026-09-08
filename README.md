@@ -22,7 +22,7 @@ Choose the **release APK** for everyday use. The debug APK is for testing.
 Experimental support is not a guarantee. All-in-one units must expose a compatible USB audio
 input to Android; some vendor-specific modes still need further work. RX/RX2/RR have no dedicated
 profiles. For RX3, use onboard USB recording or an external USB audio interface connected to its
-analog output. See the [device details](docs/DRIVER_PROFILE_AUDIT.md) for current limitations.
+analog output.
 
 ## Start recording
 
@@ -56,13 +56,8 @@ USB configuration, channel activity, recording health and error reports?not your
 
 Disable **Automatic diagnostics** in Settings to stop new diagnostic logs. Finish your set, then
 force-stop and reopen the app to fully stop SDK traffic; already queued reports may upload until
-then. See [diagnostics and privacy details](docs/BUGFENDER.md).
-
-## Development
-
-See [build instructions](docs/BUILDING.md), [hardware testing](docs/HARDWARE_VALIDATION.md) and
-[planned improvements](RECOMMENDATIONS.md). Please identify your mixer, Android version, cable/port
-and what happened when reporting a problem.
+then. Please identify your mixer, Android version, cable/port and what happened when reporting a
+problem.
 
 ## License
 
