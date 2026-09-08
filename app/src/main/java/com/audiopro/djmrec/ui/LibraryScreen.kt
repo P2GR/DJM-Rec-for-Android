@@ -1,394 +1,199 @@
-package com.audiopro.djmrec.ui
+﻿package com.audiopro.djmrec.ui
 
 import android.content.Intent
-import android.media.MediaScannerConnection
-import android.media.MediaMetadataRetriever
-import android.widget.Toast
+import android.database.ContentObserver
+import android.media.MediaPlayer
+import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import android.provider.MediaStore
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.core.content.FileProvider
-import com.audiopro.djmrec.ui.theme.AccentGreen
-import com.audiopro.djmrec.ui.theme.BackgroundDark
-import com.audiopro.djmrec.ui.theme.SurfaceDark
-import com.audiopro.djmrec.ui.theme.SurfaceVariantDark
-import com.audiopro.djmrec.ui.theme.TextPrimary
-import com.audiopro.djmrec.ui.theme.TextSecondary
-import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
+import com.audiopro.djmrec.storage.*
+import com.audiopro.djmrec.ui.theme.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
 
-// ---------------------------------------------------------------------------
-// Data
-// ---------------------------------------------------------------------------
-
-private data class RecordingInfo(
-    val file: File,
-    val name: String,
-    val format: String,
-    val sizeBytes: Long,
-    val lastModified: Long,
-    val durationMs: Long
-)
-
-private val dateFormat = SimpleDateFormat("yyyy-MM-dd  HH:mm", Locale.US)
-
-private fun formatSize(bytes: Long): String {
-    val mb = bytes / (1024.0 * 1024.0)
-    return if (mb >= 1.0) String.format(Locale.US, "%.1f MB", mb)
-    else String.format(Locale.US, "%d KB", bytes / 1024)
-}
-
-private fun formatDuration(ms: Long): String {
-    val totalSec = ms / 1000
-    val min = totalSec / 60
-    val sec = totalSec % 60
-    return "%d:%02d".format(min, sec)
-}
-
-// ---------------------------------------------------------------------------
-// Screen
-// ---------------------------------------------------------------------------
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LibraryScreen(onBack: (() -> Unit)?) {
+fun LibraryScreen(onBack: (() -> Unit)? = null) {
     val context = LocalContext.current
-    val dir = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC), "DJMRec")
-    var refreshKey by remember { mutableIntStateOf(0) }
-    val recordings = remember(dir, refreshKey) {
-        dir.mkdirs()
-        // Migrate any recordings from the old app-private location to the new public folder.
-        val oldDir = File(context.getExternalFilesDir(android.os.Environment.DIRECTORY_MUSIC), "DJMRec")
-        if (oldDir.isDirectory) {
-            oldDir.listFiles()?.forEach { oldFile ->
-                val newFile = File(dir, oldFile.name)
-                if (!newFile.exists()) {
-                    oldFile.copyTo(newFile)
-                    oldFile.delete()
-                }
-            }
-        }
-        dir.listFiles()
-            ?.filter { it.extension.lowercase() in listOf("wav", "flac") }
-            ?.sortedByDescending { it.lastModified() }
-            ?.map { file ->
-                val dur = try {
-                    val mmr = MediaMetadataRetriever()
-                    mmr.setDataSource(file.absolutePath)
-                    val durStr = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-                    mmr.release()
-                    durStr?.toLongOrNull() ?: 0L
-                } catch (_: Exception) { 0L }
-
-                RecordingInfo(
-                    file = file,
-                    name = file.nameWithoutExtension,
-                    format = file.extension.uppercase(),
-                    sizeBytes = file.length(),
-                    lastModified = file.lastModified(),
-                    durationMs = dur
-                )
-            }
-            ?: emptyList()
-    }
-
-    var deleteTarget by remember { mutableStateOf<RecordingInfo?>(null) }
-    var renameTarget by remember { mutableStateOf<RecordingInfo?>(null) }
+    val scope = rememberCoroutineScope()
+    var refresh by remember { mutableIntStateOf(0) }
+    var query by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var recordings by remember { mutableStateOf<List<LibraryRecording>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var selected by remember { mutableStateOf<LibraryRecording?>(null) }
+    var rename by remember { mutableStateOf<LibraryRecording?>(null) }
     var renameText by remember { mutableStateOf("") }
-
-    Scaffold(
-        containerColor = BackgroundDark,
-        topBar = {
-            if (onBack != null) {
-                TopAppBar(
-                    title = { Text("Recordings", color = TextPrimary) },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = TextPrimary)
+    var delete by remember { mutableStateOf<LibraryRecording?>(null) }
+    var markerTarget by remember { mutableStateOf<LibraryRecording?>(null) }
+    var markers by remember { mutableStateOf<List<TrackMarker>>(emptyList()) }
+    var exportTarget by remember { mutableStateOf<LibraryRecording?>(null) }
+    val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        val target = exportTarget
+        if (uri != null && target != null) scope.launch {
+            busy = true
+            withContext(Dispatchers.IO) { runCatching { RecordingLibrary.export(context, target, uri) } }
+                .onFailure { error = it.message ?: "Export failed" }
+            busy = false
+        }
+        exportTarget = null
+    }
+    fun share(recording: LibraryRecording) {
+        runCatching { context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+            type = recording.mimeType
+            putExtra(Intent.EXTRA_STREAM, recording.uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            clipData = android.content.ClipData.newRawUri(recording.displayName, recording.uri)
+        }, "Share set")) }.onFailure { error = "No sharing app is available" }
+    }
+    LaunchedEffect(refresh) {
+        withContext(Dispatchers.IO) { runCatching { RecordingLibrary.list(context) } }
+            .onSuccess { recordings = it }.onFailure { error = it.message ?: "Could not load recordings" }
+        loading = false
+    }
+    DisposableEffect(Unit) {
+        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) { refresh++ }
+        }
+        context.contentResolver.registerContentObserver(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, true, observer)
+        onDispose { context.contentResolver.unregisterContentObserver(observer) }
+    }
+    LaunchedEffect(markerTarget) {
+        markers = markerTarget?.let { withContext(Dispatchers.IO) { TrackMarkerStore.read(context, it.uri) } } ?: emptyList()
+    }
+    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Your sets", style = MaterialTheme.typography.headlineSmall)
+                Text("${recordings.size} recordings / ${sizeLabel(recordings.sumOf { it.size })}", color = TextSecondary,
+                    style = MaterialTheme.typography.bodySmall)
+            }
+            IconButton(onClick = { refresh++ }) { Icon(Icons.Default.Refresh, "Refresh sets") }
+        }
+        OutlinedTextField(query, { query = it }, modifier = Modifier.fillMaxWidth(), singleLine = true,
+            placeholder = { Text("Search recordings") }, leadingIcon = { Icon(Icons.Default.Search, null) })
+        if (busy || loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+        val visible = recordings.filter { it.displayName.contains(query, ignoreCase = true) }
+        if (visible.isEmpty() && !loading) {
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Text(if (query.isBlank()) "Your saved sets will appear here.\nRecordings in progress stay hidden."
+                    else "No matching sets", color = TextSecondary)
+            }
+        } else LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 8.dp)) {
+            items(visible, key = { it.uri.toString() }) { recording ->
+                var menu by remember { mutableStateOf(false) }
+                Surface(shape = RoundedCornerShape(16.dp), color = SurfaceDark) {
+                    Row(Modifier.fillMaxWidth().clickable { selected = recording }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.GraphicEq, null, Modifier.size(28.dp), tint = AccentGreen)
+                        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                            Text(recording.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("${recording.extension.uppercase()} / ${elapsedText(recording.duration)} / ${sizeLabel(recording.size)}",
+                                style = MaterialTheme.typography.bodySmall, color = TextSecondary)
                         }
-                    },
-                    actions = {
-                        IconButton(onClick = { refreshKey++ }) {
-                            Icon(Icons.Filled.Refresh, "Refresh recordings", tint = TextPrimary)
+                        Box {
+                            IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "Actions for ${recording.title}") }
+                            DropdownMenu(menu, { menu = false }) {
+                                DropdownMenuItem(text = { Text("Play") }, onClick = { menu = false; selected = recording })
+                                DropdownMenuItem(text = { Text("Share") }, onClick = { menu = false; share(recording) })
+                                DropdownMenuItem(text = { Text("Export a copy") }, enabled = !busy, onClick = { menu = false; exportTarget = recording; export.launch(recording.displayName) })
+                                DropdownMenuItem(text = { Text("Track markers") }, onClick = { menu = false; markerTarget = recording })
+                                DropdownMenuItem(text = { Text("Rename") }, enabled = !busy, onClick = { menu = false; rename = recording; renameText = recording.title })
+                                DropdownMenuItem(text = { Text("Delete", color = AccentRed) }, enabled = !busy, onClick = { menu = false; delete = recording })
+                            }
                         }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = SurfaceDark)
-                )
+                    }
+                }
             }
         }
-    ) { padding ->
-        if (recordings.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Filled.MusicNote, contentDescription = null,
-                        modifier = Modifier.size(64.dp), tint = TextSecondary
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Text("No recordings yet", color = TextSecondary)
-                    TextButton(onClick = { refreshKey++ }) { Text("Refresh") }
-                }
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("${recordings.size} recordings", color = TextSecondary)
-                            Text(
-                                formatSize(recordings.sumOf { it.sizeBytes }),
-                                color = AccentGreen,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-                        IconButton(onClick = { refreshKey++ }) {
-                            Icon(Icons.Filled.Refresh, "Refresh recordings", tint = TextSecondary)
-                        }
-                    }
-                }
-                items(recordings, key = { it.file.absolutePath }) { rec ->
-                    RecordingCard(
-                        info = rec,
-                        onPlay = {
-                            try {
-                                val uri = FileProvider.getUriForFile(
-                                    context, "${context.packageName}.fileprovider", rec.file)
-                                val intent = Intent(Intent.ACTION_VIEW).apply {
-                                    setDataAndType(uri, mimeType(rec.format))
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                }
-                                context.startActivity(intent)
-                            } catch (error: Exception) {
-                                Toast.makeText(context, "Could not open recording: ${error.message}", Toast.LENGTH_LONG).show()
-                            }
-                        },
-                        onShare = {
-                            try {
-                                val uri = FileProvider.getUriForFile(
-                                    context, "${context.packageName}.fileprovider", rec.file)
-                                val intent = Intent(Intent.ACTION_SEND).apply {
-                                    type = mimeType(rec.format)
-                                    putExtra(Intent.EXTRA_STREAM, uri)
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                }
-                                context.startActivity(Intent.createChooser(intent, "Share recording"))
-                            } catch (error: Exception) {
-                                Toast.makeText(context, "Could not share recording: ${error.message}", Toast.LENGTH_LONG).show()
-                            }
-                        },
-                        onDelete = { deleteTarget = rec },
-                        onRename = {
-                            renameTarget = rec
-                            renameText = rec.name
-                        }
-                    )
-                }
-                item { Spacer(Modifier.height(80.dp)) } // FAB clearance
-            }
-        }
+        selected?.let { recording -> SetPlayer(recording, onClose = { selected = null }, onError = { error = it }) }
     }
-
-    // Delete confirmation dialog
-    deleteTarget?.let { rec ->
-        AlertDialog(
-            onDismissRequest = { deleteTarget = null },
-            title = { Text("Delete recording?") },
-            text = { Text("${rec.name}.${rec.format.lowercase()} will be permanently deleted.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (!rec.file.delete()) {
-                        Toast.makeText(context, "Could not delete recording", Toast.LENGTH_SHORT).show()
-                    }
-                    MediaScannerConnection.scanFile(context, arrayOf(rec.file.absolutePath), null, null)
-                    refreshKey++
-                    deleteTarget = null
-                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = {
-                TextButton(onClick = { deleteTarget = null }) { Text("Cancel") }
+    rename?.let { recording -> AlertDialog(onDismissRequest = { if (!busy) rename = null }, title = { Text("Rename set") },
+        text = { OutlinedTextField(renameText, { renameText = it }, label = { Text("Recording name") }, singleLine = true) },
+        confirmButton = { TextButton(enabled = !busy, onClick = {
+            scope.launch {
+                busy = true
+                val requestedName = renameText
+                selected = selected?.takeUnless { it.uri == recording.uri }
+                withContext(Dispatchers.IO) { runCatching { RecordingLibrary.rename(context, recording, requestedName) } }
+                    .onSuccess { rename = null; refresh++ }.onFailure { error = it.message ?: "File action failed" }
+                busy = false
             }
-        )
-    }
-
-    // Rename dialog
-    renameTarget?.let { rec ->
-        AlertDialog(
-            onDismissRequest = { renameTarget = null },
-            title = { Text("Rename") },
-            text = {
-                Column {
-                    OutlinedTextField(
-                        value = renameText,
-                        onValueChange = { renameText = it },
-                        singleLine = true,
-                        label = { Text("Name") }
-                    )
-                    Text(
-                        ".${rec.format.lowercase()}",
-                        color = TextSecondary,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(start = 4.dp, top = 4.dp)
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val newName = renameText.trim()
-                    if (newName.isNotEmpty() && '/' !in newName && '\\' !in newName && newName != rec.name) {
-                        val newFile = File(rec.file.parent, "$newName.${rec.format.lowercase()}")
-                        if (!newFile.exists()) {
-                            if (rec.file.renameTo(newFile)) {
-                                MediaScannerConnection.scanFile(
-                                    context,
-                                    arrayOf(rec.file.absolutePath, newFile.absolutePath),
-                                    null,
-                                    null
-                                )
-                                refreshKey++
-                            } else {
-                                Toast.makeText(context, "Could not rename recording", Toast.LENGTH_SHORT).show()
-                            }
-                        } else {
-                            Toast.makeText(context, "A file with that name already exists", Toast.LENGTH_SHORT).show()
-                        }
-                    } else if ('/' in newName || '\\' in newName) {
-                        Toast.makeText(context, "Name cannot contain / or \\", Toast.LENGTH_SHORT).show()
-                    }
-                    renameTarget = null
-                }) { Text("Save", color = AccentGreen) }
-            },
-            dismissButton = {
-                TextButton(onClick = { renameTarget = null }) { Text("Cancel") }
+        }) { Text("Save") } }, dismissButton = { TextButton(onClick = { rename = null }, enabled = !busy) { Text("Cancel") } }) }
+    delete?.let { recording -> AlertDialog(onDismissRequest = { if (!busy) delete = null }, title = { Text("Delete this set?") },
+        text = { Text("${recording.displayName}\nThis permanently deletes the recording.") },
+        confirmButton = { TextButton(enabled = !busy, onClick = {
+            selected = selected?.takeUnless { it.uri == recording.uri }
+            scope.launch {
+                busy = true
+                withContext(Dispatchers.IO) { runCatching { RecordingLibrary.delete(context, recording) } }
+                    .onSuccess { delete = null; refresh++ }.onFailure { error = it.message ?: "File action failed" }
+                busy = false
             }
-        )
-    }
+        }) { Text("Delete", color = AccentRed) } }, dismissButton = { TextButton(onClick = { delete = null }, enabled = !busy) { Text("Keep") } }) }
+    markerTarget?.let { recording -> AlertDialog(onDismissRequest = { markerTarget = null }, title = { Text("Track markers") },
+        text = { LazyColumn { if (markers.isEmpty()) item { Text("No markers. Tap Mark while recording your next set.") }
+            items(markers) { Text("${elapsedText(it.positionMillis)}  ${it.label}", Modifier.padding(vertical = 6.dp)) } } },
+        confirmButton = { TextButton(enabled = markers.isNotEmpty(), onClick = {
+            val text = recording.title + "\n" + markers.joinToString("\n") { "${elapsedText(it.positionMillis)} ${it.label}" }
+            runCatching { context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"; putExtra(Intent.EXTRA_TEXT, text)
+            }, "Export track list")) }.onFailure { error = "No sharing app is available" }
+        }) { Text("Export track list") } }, dismissButton = { TextButton(onClick = { markerTarget = null }) { Text("Close") } }) }
+    error?.let { message -> AlertDialog(onDismissRequest = { error = null }, title = { Text("Could not complete action") },
+        text = { Text(message) }, confirmButton = { TextButton(onClick = { error = null }) { Text("OK") } }) }
 }
-
-private fun mimeType(format: String): String = when (format.lowercase()) {
-    "wav" -> "audio/wav"
-    "flac" -> "audio/flac"
-    else -> "audio/*"
-}
-
-// ---------------------------------------------------------------------------
-// Card
-// ---------------------------------------------------------------------------
 
 @Composable
-private fun RecordingCard(
-    info: RecordingInfo,
-    onPlay: () -> Unit,
-    onShare: () -> Unit,
-    onDelete: () -> Unit,
-    onRename: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-        shape = RoundedCornerShape(10.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onPlay)
-                .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                Icons.Filled.MusicNote, contentDescription = null,
-                tint = AccentGreen, modifier = Modifier.size(28.dp)
-            )
-            Spacer(Modifier.width(12.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = info.name,
-                    color = TextPrimary,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(Modifier.height(2.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(info.format, color = AccentGreen, style = MaterialTheme.typography.labelSmall)
-                    Text(formatDuration(info.durationMs), color = TextSecondary, style = MaterialTheme.typography.labelSmall)
-                    Text(formatSize(info.sizeBytes), color = TextSecondary, style = MaterialTheme.typography.labelSmall)
+private fun SetPlayer(recording: LibraryRecording, onClose: () -> Unit, onError: (String) -> Unit) {
+    val context = LocalContext.current
+    val player = remember(recording.uri) { MediaPlayer() }
+    var ready by remember(recording.uri) { mutableStateOf(false) }
+    var playing by remember(recording.uri) { mutableStateOf(false) }
+    var position by remember(recording.uri) { mutableLongStateOf(0L) }
+    var duration by remember(recording.uri) { mutableLongStateOf(recording.duration) }
+    DisposableEffect(player) {
+        player.setOnPreparedListener { ready = true; duration = it.duration.toLong(); it.start(); playing = true }
+        player.setOnCompletionListener { playing = false; position = duration }
+        player.setOnErrorListener { _, _, _ -> playing = false; ready = false; onError("This recording could not be played"); true }
+        runCatching { player.setDataSource(context, recording.uri); player.prepareAsync() }.onFailure { onError("Could not open recording") }
+        onDispose { player.release() }
+    }
+    LaunchedEffect(player, playing) { while (playing) { position = runCatching { player.currentPosition.toLong() }.getOrDefault(position); delay(200) } }
+    Surface(shape = RoundedCornerShape(16.dp), color = SurfaceVariantDark) {
+        Column(Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(enabled = ready, onClick = { if (playing) player.pause() else player.start(); playing = !playing }) {
+                    Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, if (playing) "Pause playback" else "Play recording")
                 }
-                Text(
-                    dateFormat.format(Date(info.lastModified)),
-                    color = TextSecondary,
-                    style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
+                Text(recording.title, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                IconButton(onClick = onClose) { Icon(Icons.Default.Close, "Close player") }
             }
-
-            IconButton(onClick = onRename, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Outlined.Edit, "Rename", tint = TextSecondary, modifier = Modifier.size(18.dp))
-            }
-            IconButton(onClick = onShare, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Filled.Share, "Share", tint = TextSecondary, modifier = Modifier.size(18.dp))
-            }
-            IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Filled.Delete, "Delete", tint = TextSecondary, modifier = Modifier.size(18.dp))
-            }
+            Slider(position.toFloat().coerceIn(0f, duration.coerceAtLeast(1).toFloat()),
+                { position = it.toLong(); player.seekTo(it.toInt()) }, enabled = ready,
+                valueRange = 0f..duration.coerceAtLeast(1).toFloat())
+            Text("${elapsedText(position)} / ${elapsedText(duration)}", style = MaterialTheme.typography.labelSmall)
         }
     }
 }
+
+private fun sizeLabel(bytes: Long): String = String.format(Locale.US, "%.1f MB", bytes / 1_048_576.0)

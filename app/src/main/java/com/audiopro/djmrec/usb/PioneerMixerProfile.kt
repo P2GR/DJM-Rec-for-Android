@@ -66,9 +66,7 @@ enum class PioneerMixerProfile(
      * up front means the app's own USB-channel-pair picker (and the auto-pick-loudest-pair
      * fallback) can land on either without a second round of vendor requests.
      */
-    val additionalMixOutputs: List<Int> = emptyList(),
-    /** Whether the Android-side Pioneer vendor route SET is known to be valid for this model. */
-    val allowRouteWrites: Boolean = true
+    val additionalMixOutputs: List<Int> = emptyList()
 ) {
     DJM_A9(
         "DJM-A9", setOf(0x003C), 8, 5, RouteReadMode.SINGLE_OUTPUT_ZERO_BASED,
@@ -104,6 +102,15 @@ enum class PioneerMixerProfile(
         vendorCaptureChannelCount = 12, vendorCaptureSubframeSize = 3,
         vendorCaptureBitResolution = 24, vendorCaptureSampleRates = listOf(96_000)
     ),
+    // ALSA DJM-S11 contract: capture if2, playback if1, MIX REC OUT on USB5/6 only.
+    DJM_S11(
+        "DJM-S11", setOf(0x0037), 4, 3, RouteReadMode.NONE,
+        listOf(-1, -1, 0x0A),
+        requiresPlaybackTraffic = true, playbackInterface = 1, playbackAlternateSetting = 1,
+        vendorCaptureInterface = 2, vendorCaptureAlternateSetting = 1,
+        vendorCaptureChannelCount = 10, vendorCaptureSubframeSize = 3,
+        vendorCaptureBitResolution = 24, vendorCaptureSampleRates = listOf(48_000)
+    ),
     DJM_450(
         "DJM-450", setOf(0x0013), 0, 3, RouteReadMode.NONE,
         listOf(0x0A, 0x0A, 0x0A),
@@ -111,22 +118,12 @@ enum class PioneerMixerProfile(
         vendorCaptureInterface = 0, vendorCaptureAlternateSetting = 1,
         vendorCaptureChannelCount = 8, vendorCaptureSubframeSize = 3,
         vendorCaptureBitResolution = 24, vendorCaptureSampleRates = listOf(48_000)
-    ),
-    // Linux's matching Pioneer quirk confirms vendor-class if1/alt1 playback (14ch) and
-    // if2/alt1 capture (10ch, packed 24-bit), both fixed at 48 kHz; capture needs OUT traffic
-    // to keep the mixer clock running. USB 5/6 is output 3 and MIX uses source 0x0A.
-    DJM_S11(
-        "DJM-S11", setOf(0x0037), 4, 5, RouteReadMode.NONE,
-        List(5) { 0x0A },
-        requiresPlaybackTraffic = true, playbackInterface = 1, playbackAlternateSetting = 1,
-        vendorCaptureInterface = 2, vendorCaptureAlternateSetting = 1,
-        vendorCaptureChannelCount = 10, vendorCaptureSubframeSize = 3,
-        vendorCaptureBitResolution = 24,
-        vendorCaptureSampleRates = listOf(48_000),
-        allowRouteWrites = true
     );
 
     val hasVendorCaptureOverride: Boolean get() = vendorCaptureInterface >= 0
+
+    /** Recording confirmed by the project owner; other profiles still need physical testing. */
+    val isHardwareConfirmed: Boolean get() = this == DJM_A9 || this == DJM_750MK2
 
     enum class RouteReadMode(val responseLength: Int) {
         NONE(0),

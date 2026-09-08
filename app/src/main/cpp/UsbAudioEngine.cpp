@@ -73,6 +73,10 @@ int UsbAudioEngine::open(int32_t audioManagerDeviceId, int32_t sampleRateHint, i
         ->setDataCallback(this)
         ->setErrorCallback(this);
 
+    if (audioManagerDeviceId <= 0) {
+        LOGE("Refusing default Android input: a specific USB device is required");
+        return -1;
+    }
     std::shared_ptr<oboe::AudioStream> stream;
     oboe::Result result = builder.openStream(stream);
 
@@ -103,6 +107,12 @@ int UsbAudioEngine::open(int32_t audioManagerDeviceId, int32_t sampleRateHint, i
         return -1;
     }
 
+    if (stream->getDeviceId() != audioManagerDeviceId) {
+        LOGE("Android opened device %d instead of requested USB input %d",
+             stream->getDeviceId(), audioManagerDeviceId);
+        stream->close();
+        return -1;
+    }
     mStream = stream;
     mFormat.sampleRate = mStream->getSampleRate();
     mFormat.channelCount = mStream->getChannelCount();
@@ -263,7 +273,7 @@ void UsbAudioEngine::onUsbIsoFrames(const int32_t* interleavedStereo, size_t fra
     const size_t sampleCount = frameCount * 2;
     if (amplified.size() < sampleCount) amplified.resize(sampleCount);
     std::memcpy(amplified.data(), interleavedStereo, sampleCount * sizeof(int32_t));
-    applyRecordingGain(amplified.data(), sampleCount, kRecordingGainLinear);
+    applyRecordingGain(amplified.data(), sampleCount, mRecordingGainLinear.load(std::memory_order_relaxed));
     const int32_t* processedStereo = amplified.data();
 
     const StereoMeterReading reading =
@@ -340,7 +350,7 @@ oboe::DataCallbackResult UsbAudioEngine::onAudioReady(oboe::AudioStream* /*strea
             break;
     }
 
-    applyRecordingGain(canonical.data(), sampleCount, kRecordingGainLinear);
+    applyRecordingGain(canonical.data(), sampleCount, mRecordingGainLinear.load(std::memory_order_relaxed));
 
     writeLiveFrames(canonical.data(), static_cast<size_t>(numFrames), mChannelCount);
 
@@ -754,3 +764,8 @@ void UsbAudioEngine::setWaveformEnabled(bool enabled) {
 }
 
 } // namespace djmrec
+
+void djmrec::UsbAudioEngine::setRecordingGainDb(int gainDb) {
+    mRecordingGainLinear.store(std::pow(10.0f, std::clamp(gainDb, -12, 24) / 20.0f),
+                               std::memory_order_relaxed);
+}

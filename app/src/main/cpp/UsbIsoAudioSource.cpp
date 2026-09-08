@@ -1,4 +1,5 @@
 #include "UsbIsoAudioSource.h"
+#include "UsbPcmFormat.h"
 
 #include <android/log.h>
 #include <libusb.h>
@@ -20,31 +21,6 @@ namespace djmrec {
 namespace {
 std::string libusbErrorString(const char* what, int code) {
     return std::string(what) + " failed: " + libusb_error_name(code);
-}
-
-int32_t decodeCanonicalSample(const uint8_t* sample, int subframeSize, int bitResolution) {
-    switch (subframeSize) {
-        case 1:
-            return static_cast<int32_t>(static_cast<int8_t>(sample[0])) << 24;
-        case 2: {
-            auto v = static_cast<int16_t>(sample[0] | (sample[1] << 8));
-            return static_cast<int32_t>(v) << 16;
-        }
-        case 3: {
-            int32_t v = sample[0] | (sample[1] << 8) | (sample[2] << 16);
-            if (v & 0x00800000) {
-                v |= static_cast<int32_t>(0xFF000000);
-            }
-            return v << 8;
-        }
-        case 4:
-        default: {
-            auto v = static_cast<int32_t>(
-                static_cast<uint32_t>(sample[0]) | (static_cast<uint32_t>(sample[1]) << 8) |
-                (static_cast<uint32_t>(sample[2]) << 16) | (static_cast<uint32_t>(sample[3]) << 24));
-            return (bitResolution > 0 && bitResolution <= 24) ? (v << 8) : v;
-        }
-    }
 }
 
 uint32_t sampleMagnitude(int32_t sample) {
@@ -304,7 +280,7 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
     if (config.fd < 0 || config.endpointAddress < 0 || config.maxPacketSize <= 0 ||
         config.totalChannels < 1 || config.subframeSize < 1 ||
         config.requestedSampleRate <= 0 ||
-        (config.extractChannelOffset >= 0 && config.extractChannelOffset + 2 > config.totalChannels)) {
+        (config.extractChannelOffset >= 0 && config.extractChannelOffset + std::min(2, config.totalChannels) > config.totalChannels)) {
         return "invalid capture configuration";
     }
 
@@ -483,6 +459,13 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
                  mMixerProfile->name, config.interfaceNumber);
             configurePioneerRecordingRoute();
         }
+    }
+
+    if (!mMixerProfile && hasEndpointFrequencyControl(config.rawDescriptors, config.interfaceNumber,
+            config.alternateSetting, config.endpointAddress)) {
+        setPioneerCaptureSampleRate(mHandle, config.endpointAddress, config.requestedSampleRate, "USB Audio Class 1");
+        const int endpointRate = readPioneerEndpointSampleRate(mHandle, config.endpointAddress, "USB Audio Class 1");
+        if (endpointRate > 0) mOpenedSampleRate.store(endpointRate, std::memory_order_release);
     }
 
     if (mMixerProfile && mMixerProfile->usesEndpointSampleRate) {
@@ -812,12 +795,15 @@ void UsbIsoAudioSource::configurePioneerRecordingRoute() {
         if (requestedOutput < mMixerProfile->outputCount) {
             output = requestedOutput;
         } else {
-            mResolvedChannelOffset.store(mMixerProfile->defaultOutput * 2, std::memory_order_relaxed);
-            const int resolvedOffset = mResolvedChannelOffset.load(std::memory_order_relaxed);
-            LOGW("%s does not expose configurable USB output %d; using output %d/channels %d-%d",
-                 mMixerProfile->name, requestedOutput + 1, mMixerProfile->defaultOutput + 1,
-                 resolvedOffset + 1, resolvedOffset + 2);
+            // A valid wire pair may be fixed rather than vendor-configurable.
+            // Honor explicit selection instead of silently recording another pair.
+            LOGI("%s USB output %d uses its existing fixed route",
+                 mMixerProfile->name, requestedOutput + 1);
+            return;
         }
+    } else if (mMixerProfile == &kDjmS11Profile) {
+        // Never auto-select a deck input instead of S11's dedicated REC OUT pair.
+        mResolvedChannelOffset.store(mMixerProfile->defaultOutput * 2, std::memory_order_relaxed);
     }
     routePioneerOutputToMix(output);
     mPioneerFallbackStage = 1;
@@ -993,8 +979,8 @@ void UsbIsoAudioSource::demuxAndEmit(const uint8_t* data, size_t length) {
             const int offsetBytes = offset * subframe;
             for (size_t f = 0; f < completeFrames; ++f) {
                 const uint8_t* frameBase = mWorking.data() + f * frameSize + offsetBytes;
-                const int32_t left = decodeCanonicalSample(frameBase, subframe, mConfig.bitResolution);
-                const int32_t right = decodeCanonicalSample(frameBase + subframe, subframe, mConfig.bitResolution);
+                const int32_t left = decodeUsbPcm(frameBase, subframe, mMixerProfile && mConfig.bitResolution <= 24);
+                const int32_t right = decodeUsbPcm(frameBase + subframe, subframe, mMixerProfile && mConfig.bitResolution <= 24);
                 pairMagnitude = std::max(pairMagnitude, sampleMagnitude(left));
                 pairMagnitude = std::max(pairMagnitude, sampleMagnitude(right));
             }
@@ -1011,8 +997,8 @@ void UsbIsoAudioSource::demuxAndEmit(const uint8_t* data, size_t length) {
         for (size_t f = 0; f < completeFrames; ++f) {
             const uint8_t* frameBase = mWorking.data() + f * frameSize + offsetBytes;
             for (int ch = 0; ch < 2; ++ch) {
-                const uint8_t* s = frameBase + static_cast<size_t>(ch) * subframe;
-                mScratch[f * 2 + ch] = decodeCanonicalSample(s, subframe, mConfig.bitResolution);
+                const uint8_t* s = frameBase + static_cast<size_t>(mConfig.totalChannels == 1 ? 0 : ch) * subframe;
+                mScratch[f * 2 + ch] = decodeUsbPcm(s, subframe, mMixerProfile && mConfig.bitResolution <= 24);
             }
         }
 

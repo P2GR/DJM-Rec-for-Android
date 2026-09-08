@@ -4,6 +4,11 @@
     Fine-grained interface/endpoint validation still happens in UsbAudioManager.
 -->
 <resources>
+    <usb-device vendor-id="11123" product-id="45" />  <!-- XDJ-XZ -->
+    <usb-device vendor-id="11123" product-id="61" />  <!-- XDJ-RX3: detect and explain capture limitations -->
+    <usb-device vendor-id="11123" product-id="67" />  <!-- OPUS-QUAD -->
+    <usb-device vendor-id="11123" product-id="72" />  <!-- OMNIS-DUO -->
+    <usb-device vendor-id="11123" product-id="74" />  <!-- XDJ-AZ -->
     <usb-device class="1" />
     <usb-device vendor-id="11123" product-id="10" />  <!-- DJM-900NXS2 -->
     <usb-device vendor-id="11123" product-id="19" />  <!-- DJM-450 -->

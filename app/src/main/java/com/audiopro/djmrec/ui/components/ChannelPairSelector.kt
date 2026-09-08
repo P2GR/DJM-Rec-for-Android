@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -65,7 +66,7 @@ private fun ChannelPairTile(
     onClick: () -> Unit
 ) {
     Surface(
-        modifier = Modifier.selectable(
+        modifier = Modifier.heightIn(min = 48.dp).selectable(
             selected = selected,
             enabled = enabled,
             role = Role.RadioButton,

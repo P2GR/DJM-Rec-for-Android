@@ -147,5 +147,7 @@ object AudioEngine {
     external fun getWaveformBins(): FloatArray
 
     /** Enables native frequency analysis for the optional live waveform. */
+    external fun setRecordingGainDb(gainDb: Int)
+
     external fun setWaveformEnabled(enabled: Boolean)
 }

@@ -104,9 +104,9 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
     val liveState by viewModel.liveStreamState.collectAsState()
     val setupState by viewModel.streamSetupState.collectAsState()
     val youtubeBroadcast by viewModel.youtubeBroadcastState.collectAsState()
-    var platform by rememberSaveable { mutableStateOf(LivePlatform.MIXCLOUD) }
-    var serverUrl by rememberSaveable { mutableStateOf(LivePlatform.MIXCLOUD.defaultServerUrl) }
-    var streamKey by remember { mutableStateOf("") }
+    var platform by rememberSaveable { mutableStateOf(LivePlatform.YOUTUBE) }
+    var serverUrl by rememberSaveable { mutableStateOf(LivePlatform.YOUTUBE.defaultServerUrl) }
+    var streamKey by viewModel.liveStreamKey
     var videoMode by rememberSaveable { mutableStateOf(LiveVideoMode.ARTWORK) }
     var portrait by rememberSaveable { mutableStateOf(false) }
     val artworkPreferences = remember(context) {
@@ -121,7 +121,7 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
         mutableStateOf("DJ Set ${SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())}")
     }
     var youtubePrivacy by rememberSaveable { mutableStateOf(YouTubePrivacy.UNLISTED) }
-    var destinationUrl by remember { mutableStateOf<String?>(null) }
+    var destinationUrl by rememberSaveable { mutableStateOf<String?>(null) }
     var openedVerificationUrl by remember { mutableStateOf<String?>(null) }
 
     fun openUrl(url: String) {
@@ -376,7 +376,7 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Icon(Icons.Filled.Link, contentDescription = null)
-                            Text("Connect YouTube", modifier = Modifier.padding(start = 8.dp))
+                            Text("Continue with Google", modifier = Modifier.padding(start = 8.dp))
                         }
                     }
                     LivePlatform.MIXCLOUD -> OutlinedButton(
@@ -455,6 +455,7 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                     }
                 }
 
+                if (platform != LivePlatform.YOUTUBE) {
                 OutlinedTextField(
                     value = serverUrl,
                     onValueChange = { serverUrl = it; localError = null },
@@ -478,6 +479,7 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                }
                 destinationUrl?.let { url ->
                     OutlinedButton(onClick = { openUrl(url) }) {
                         Icon(Icons.Filled.OpenInBrowser, contentDescription = null)

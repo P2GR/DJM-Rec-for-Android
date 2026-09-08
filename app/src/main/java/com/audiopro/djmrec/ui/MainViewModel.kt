@@ -69,9 +69,54 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val usbAudioManager = (application as DjmRecApplication).usbAudioManager
     private val prefs = application.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     val deviceState: StateFlow<UsbAudioDeviceInfo?> = usbAudioManager.deviceState
+    val usbInputs = usbAudioManager.inputs
+    val connectionNotice = usbAudioManager.connectionNotice
+    fun refreshInputs() = usbAudioManager.refreshInputs()
+
+    fun selectInput(deviceName: String) {
+        if (saving.value || liveStreamState.value.isActive ||
+            _recordingState.value is RecordingState.Recording || _recordingState.value is RecordingState.Paused ||
+            _recordingState.value is RecordingState.Preparing || deviceState.value?.deviceName == deviceName) return
+        val service = boundService ?: return
+        _recordingState.value = RecordingState.Preparing
+        viewModelScope.launch {
+            if (service.state.value is RecordingState.Monitoring || service.state.value is RecordingState.Error) {
+                sendCommand(RecordingService.ACTION_STOP)
+                if (withTimeoutOrNull(5_000L) { service.state.first { it is RecordingState.Idle } } == null) {
+                    _recordingState.value = RecordingState.Error("Input change timed out. Reconnect your device.")
+                    return@launch
+                }
+            }
+            _recordingState.value = RecordingState.Idle
+            if (!usbAudioManager.selectDevice(deviceName))
+                _recordingState.value = RecordingState.Error("Input unavailable. Refresh the device list.")
+        }
+    }
+
+    private fun captureChannelOffset(device: UsbAudioDeviceInfo): Int =
+        _usbChannelOffset.value.takeIf { it >= 0 }
+            ?: device.allInOneProfile?.recordChannelOffset
+            ?: if (device.pioneerMixerProfile != null) UsbAudioManager.AUTO_CHANNEL_OFFSET else 0
+    private val sessionEvents = (application as DjmRecApplication).sessionEvents
+    val lastSaved = sessionEvents.lastSaved.asStateFlow()
+    val markerCount = sessionEvents.markerCount.asStateFlow()
+    val autoArm = MutableStateFlow(prefs.getBoolean("auto_arm", true))
+    val keepScreenOn = MutableStateFlow(prefs.getBoolean("keep_screen_on", false))
+    val smoothWaveform = MutableStateFlow(prefs.getBoolean("smooth_waveform", true))
+    val confirmStop = MutableStateFlow(prefs.getBoolean("confirm_stop", true))
+
+    fun setAutoArm(value: Boolean) { prefs.edit().putBoolean("auto_arm", value).apply(); autoArm.value = value; if (value) ensureLiveMonitoring() }
+    fun setKeepScreenOn(value: Boolean) { prefs.edit().putBoolean("keep_screen_on", value).apply(); keepScreenOn.value = value }
+    fun setSmoothWaveform(value: Boolean) { prefs.edit().putBoolean("smooth_waveform", value).apply(); smoothWaveform.value = value }
+    fun setConfirmStop(value: Boolean) { prefs.edit().putBoolean("confirm_stop", value).apply(); confirmStop.value = value }
+    fun dismissSavedRecording() { sessionEvents.lastSaved.value = null }
+    fun addTrackMarker() = sendCommand(RecordingService.ACTION_MARK_TRACK)
+    fun stopAndClose() = sendCommand(RecordingService.ACTION_STOP_ALL)
+
 
     private val floorLevel = ChannelLevel(peakDb = -60f, rmsDb = -60f, isClipping = false)
 
+    val saving = MutableStateFlow(false)
     private val _recordingState = MutableStateFlow<RecordingState>(RecordingState.Idle)
     val recordingState: StateFlow<RecordingState> = _recordingState.asStateFlow()
 
@@ -91,22 +136,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _liveStreamState = MutableStateFlow(LiveStreamState())
     val liveStreamState: StateFlow<LiveStreamState> = _liveStreamState.asStateFlow()
 
-    private val _streamSetupState = MutableStateFlow(StreamSetupState())
-    val streamSetupState: StateFlow<StreamSetupState> = _streamSetupState.asStateFlow()
-    private val _youtubeBroadcastState = MutableStateFlow(YouTubeBroadcastState())
-    val youtubeBroadcastState: StateFlow<YouTubeBroadcastState> =
-        _youtubeBroadcastState.asStateFlow()
-    private var streamSetupJob: Job? = null
-    private var youtubeLifecycleJob: Job? = null
-    private var youtubeCompletionJob: Job? = null
-    private var youtubeLiveSession: YouTubeLiveSession? = null
+    private val youtubeCoordinator = (application as DjmRecApplication).youtubeCoordinator
+    val streamSetupState = youtubeCoordinator.streamSetupState
+    val youtubeBroadcastState = youtubeCoordinator.youtubeBroadcastState
+    val liveStreamKey = androidx.compose.runtime.mutableStateOf("")
 
     private val _waveformEnabled = MutableStateFlow(
         prefs.getBoolean(KEY_WAVEFORM_ENABLED, true)
     )
     val waveformEnabled: StateFlow<Boolean> = _waveformEnabled.asStateFlow()
 
-    private val _selectedFormat = MutableStateFlow(RecordingFormat.WAV)
+    private val _recordingGainDb = MutableStateFlow(prefs.getInt("recording_gain_db", 12).coerceIn(-12, 24))
+    val recordingGainDb: StateFlow<Int> = _recordingGainDb.asStateFlow()
+
+    private val _selectedFormat = MutableStateFlow(
+        RecordingFormat.entries.firstOrNull { it.name == prefs.getString("recording_format", "WAV") } ?: RecordingFormat.WAV)
     val selectedFormat: StateFlow<RecordingFormat> = _selectedFormat.asStateFlow()
     val availableFormats: List<RecordingFormat> = RecordingFormat.entries
 
@@ -134,24 +178,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val service = (binder as RecordingService.LocalBinder).getService()
             boundService = service
             isBound = true
+            _recordingState.value = service.state.value
             service.setWaveformEnabled(_waveformEnabled.value)
+            service.setRecordingGainDb(_recordingGainDb.value)
+            viewModelScope.launch { service.saving.collect { saving.value = it } }
             viewModelScope.launch { service.state.collect { _recordingState.value = it } }
             viewModelScope.launch { service.levels.collect { _levels.value = it } }
             viewModelScope.launch { service.elapsedMillis.collect { _elapsedMillis.value = it } }
             viewModelScope.launch { service.waveformBins.collect { _waveformBins.value = it } }
             viewModelScope.launch { service.health.collect { _recordingHealth.value = it } }
-            viewModelScope.launch {
-                var previous = _liveStreamState.value
-                service.liveState.collect { current ->
-                    _liveStreamState.value = current
-                    if (previous.platform == LivePlatform.YOUTUBE &&
-                        previous.isActive && !current.isActive) {
-                        finishYouTubeSession()
-                    }
-                    previous = current
-                }
-            }
+            viewModelScope.launch { service.liveState.collect { _liveStreamState.value = it } }
             livePreview?.let(service::attachLivePreview)
+            ensureLiveMonitoring()
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -175,19 +213,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             var activeDeviceKey: String? = null
             deviceState.collect { device ->
                 if (device == null) {
-                    if (activeDeviceKey != null) {
-                        sendCommand(RecordingService.ACTION_DEVICE_DETACHED)
-                    }
                     activeDeviceKey = null
                     return@collect
                 }
                 val key = "${device.deviceName}:${device.vendorId}:${device.productId}"
                 if (key == activeDeviceKey) return@collect
                 activeDeviceKey = key
+                val pairKey = "channel_pair_${device.vendorId}_${device.productId}"
+                val storedPair = prefs.getInt(pairKey, UsbAudioManager.AUTO_CHANNEL_OFFSET)
+                _usbChannelOffset.value = storedPair.takeIf { it >= 0 && it % 2 == 0 && it + 1 < device.channelCount }
+                    ?: UsbAudioManager.AUTO_CHANNEL_OFFSET
                 delay(250L)
                 if (_recordingState.value is RecordingState.Idle ||
                     _recordingState.value is RecordingState.Error) {
-                    startMonitoringDevice(context)
+                    ensureLiveMonitoring()
                 }
             }
         }
@@ -199,7 +238,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _recordingState.value is RecordingState.Error) &&
             format in availableFormats) {
             _selectedFormat.value = format
+            prefs.edit().putString("recording_format", format.name).apply()
         }
+    }
+
+    fun setRecordingGainDb(gainDb: Int) {
+        if (saving.value) return
+        if (_recordingState.value is RecordingState.Recording ||
+            _recordingState.value is RecordingState.Paused ||
+            _recordingState.value is RecordingState.Preparing) return
+        val value = gainDb.coerceIn(-12, 24)
+        _recordingGainDb.value = value
+        prefs.edit().putInt("recording_gain_db", value).apply()
+        boundService?.setRecordingGainDb(value)
     }
 
     fun setWaveformEnabled(enabled: Boolean) {
@@ -210,10 +261,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun rescanUsbDevices() {
+        if (saving.value) return
+        if (_recordingState.value is RecordingState.Recording ||
+            _recordingState.value is RecordingState.Paused ||
+            _recordingState.value is RecordingState.Preparing) return
         usbAudioManager.scanForConnectedMixer()
+        ensureLiveMonitoring()
     }
 
     fun ensureLiveMonitoring() {
+        if (!autoArm.value || sessionEvents.closeRequested.value || boundService == null) return
         val context = getApplication<Application>()
         if (deviceState.value != null &&
             (_recordingState.value is RecordingState.Idle ||
@@ -232,9 +289,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setUsbChannelOffset(offset: Int) {
+        if (saving.value || liveStreamState.value.isActive) return
+        if (_recordingState.value is RecordingState.Recording ||
+            _recordingState.value is RecordingState.Paused ||
+            _recordingState.value is RecordingState.Preparing) return
+        val channels = deviceState.value?.channelCount ?: return
+        if (offset >= 0 && (offset % 2 != 0 || offset + 1 >= channels)) return
         val sanitized = if (offset < 0) UsbAudioManager.AUTO_CHANNEL_OFFSET else offset
         if (sanitized == _usbChannelOffset.value) return
-        prefs.edit().putInt(KEY_USB_CHANNEL_OFFSET, sanitized).apply()
+        val device = deviceState.value ?: return
+        prefs.edit().putInt("channel_pair_${device.vendorId}_${device.productId}", sanitized).apply()
         _usbChannelOffset.value = sanitized
 
         // The offset is only read when the native capture session opens (baked into the
@@ -245,10 +309,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // levels move. Never auto-restart out of Recording/Paused -- that would kill a take.
         if (_recordingState.value is RecordingState.Monitoring) {
             val context = getApplication<Application>()
+            _recordingState.value = RecordingState.Preparing
             viewModelScope.launch {
                 sendCommand(RecordingService.ACTION_STOP)
-                delay(250L)
-                startMonitoringDevice(context)
+                val stopped = withTimeoutOrNull(5_000L) {
+                    boundService?.state?.first { it is RecordingState.Idle || it is RecordingState.Error }
+                }
+                if (stopped == null) {
+                    _recordingState.value = RecordingState.Error("Could not change the USB pair. Stop capture and reconnect the mixer.")
+                } else {
+                    _recordingState.value = stopped
+                    startMonitoringDevice(context)
+                }
             }
         }
     }
@@ -352,11 +424,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        val sampleRate = when {
-            device.negotiatedSampleRate > 0 -> device.negotiatedSampleRate
-            48000 in device.supportedSampleRates -> 48000
-            else -> device.supportedSampleRates.firstOrNull() ?: 48000
-        }
+        val sampleRate = device.preferredSampleRate
 
         val intent = Intent(context, RecordingService::class.java).apply {
             action = RecordingService.ACTION_START
@@ -371,6 +439,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 null
             }
+            if (handle == null && ((device.requiresIsoCapture && !androidCapture) || device.audioManagerDeviceId < 0)) {
+                _recordingState.value = RecordingState.Error("Cannot open this USB input. Reconnect the mixer and rescan; check USB permission.")
+                return
+            }
             if (handle != null) {
                 putExtra(RecordingService.EXTRA_CAPTURE_MODE, RecordingService.CAPTURE_MODE_USB_ISO)
                 putExtra(RecordingService.EXTRA_USB_FD, handle.fd)
@@ -380,7 +452,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 putExtra(RecordingService.EXTRA_USB_MAX_PACKET_SIZE, handle.maxPacketSize)
                 putExtra(RecordingService.EXTRA_USB_TOTAL_CHANNELS, handle.totalChannels)
                 putExtra(RecordingService.EXTRA_USB_SUBFRAME_SIZE, handle.subframeSize)
-                putExtra(RecordingService.EXTRA_USB_CHANNEL_OFFSET, _usbChannelOffset.value)
+                putExtra(RecordingService.EXTRA_USB_CHANNEL_OFFSET, device?.let(::captureChannelOffset) ?: 0)
                 putExtra(RecordingService.EXTRA_USB_CLOCK_CONTROL_INTERFACE, handle.clockControlInterfaceNumber)
                 putExtra(RecordingService.EXTRA_USB_CLOCK_SOURCE_ID, handle.clockSourceId)
                 putExtra(RecordingService.EXTRA_USB_CLOCK_FREQUENCY_SETTABLE, handle.clockSupportsFrequencySet)
@@ -403,21 +475,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Opens the audio stream for live monitoring (meters + waveform) without writing a file. */
     private fun startMonitoringDevice(context: Context) {
+        if (sessionEvents.closeRequested.value) return
+        if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) return
+        if (_recordingState.value !is RecordingState.Idle && _recordingState.value !is RecordingState.Error) return
         val device = deviceState.value ?: return
-        val sampleRate = when {
-            device.negotiatedSampleRate > 0 -> device.negotiatedSampleRate
-            48000 in device.supportedSampleRates -> 48000
-            else -> device.supportedSampleRates.firstOrNull() ?: 48000
-        }
+        _recordingState.value = RecordingState.Preparing
+        val sampleRate = device.preferredSampleRate
         val intent = Intent(context, RecordingService::class.java).apply {
             action = RecordingService.ACTION_MONITOR
+            val androidCapture = device.requiresIsoCapture && _forceAndroidCapture.value
             putExtra(RecordingService.EXTRA_SAMPLE_RATE, sampleRate)
-            putExtra(RecordingService.EXTRA_BIT_DEPTH, device.bitResolution)
+            putExtra(RecordingService.EXTRA_BIT_DEPTH, if (androidCapture) 16 else device.bitResolution)
 
-            val handle = if (device.requiresIsoCapture) {
+            val handle = if (device.requiresIsoCapture && !androidCapture) {
                 usbAudioManager.openIsoCaptureHandle()
             } else {
                 null
+            }
+            if (handle == null && ((device.requiresIsoCapture && !androidCapture) || device.audioManagerDeviceId < 0)) {
+                _recordingState.value = RecordingState.Error("Cannot open this USB input. Reconnect the mixer and rescan; check USB permission.")
+                return
             }
             if (handle != null) {
                 putExtra(RecordingService.EXTRA_CAPTURE_MODE, RecordingService.CAPTURE_MODE_USB_ISO)
@@ -428,7 +505,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 putExtra(RecordingService.EXTRA_USB_MAX_PACKET_SIZE, handle.maxPacketSize)
                 putExtra(RecordingService.EXTRA_USB_TOTAL_CHANNELS, handle.totalChannels)
                 putExtra(RecordingService.EXTRA_USB_SUBFRAME_SIZE, handle.subframeSize)
-                putExtra(RecordingService.EXTRA_USB_CHANNEL_OFFSET, _usbChannelOffset.value)
+                putExtra(RecordingService.EXTRA_USB_CHANNEL_OFFSET, device?.let(::captureChannelOffset) ?: 0)
                 putExtra(RecordingService.EXTRA_USB_CLOCK_CONTROL_INTERFACE, handle.clockControlInterfaceNumber)
                 putExtra(RecordingService.EXTRA_USB_CLOCK_SOURCE_ID, handle.clockSourceId)
                 putExtra(RecordingService.EXTRA_USB_CLOCK_FREQUENCY_SETTABLE, handle.clockSupportsFrequencySet)
@@ -483,7 +560,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             putExtra(RecordingService.EXTRA_BIT_DEPTH, bitDepth)
             putExtra(RecordingService.EXTRA_FORMAT, _selectedFormat.value.nativeValue)
             putExtra(RecordingService.EXTRA_USB_TOTAL_CHANNELS, totalChannels)
-            putExtra(RecordingService.EXTRA_USB_CHANNEL_OFFSET, _usbChannelOffset.value)
+            putExtra(RecordingService.EXTRA_USB_CHANNEL_OFFSET, device?.let(::captureChannelOffset) ?: 0)
         }
         if (!startForegroundServiceSafely(context, intent)) return false
         boundService?.setDeviceLabel("Root ALSA ${rootAlsaDevice.description}")
@@ -509,7 +586,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _recordingState.value = RecordingState.Error("No USB audio input found on the top DJM-REC port")
             return false
         }
-        val sampleRate = if (48000 in usbDevice.sampleRates.toList()) 48000 else usbDevice.sampleRates[0]
+        val sampleRate = usbDevice.sampleRates.firstOrNull { it == 48000 }
+            ?: usbDevice.sampleRates.firstOrNull() ?: 48000
         val intent = Intent(context, RecordingService::class.java).apply {
             action = RecordingService.ACTION_START
             putExtra(RecordingService.EXTRA_CAPTURE_MODE, RecordingService.CAPTURE_MODE_AAUDIO)
@@ -548,145 +626,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 .putExtra(RecordingService.EXTRA_LIVE_ARTWORK_URI, config.artworkUri)
                 .putExtra(RecordingService.EXTRA_LIVE_AUDIO_BITRATE, config.audioBitrate)
         )
-        if (config.platform == LivePlatform.YOUTUBE) startYouTubeLifecycle()
     }
 
     fun stopLiveStream() {
         sendCommand(RecordingService.ACTION_STOP_LIVE)
-        finishYouTubeSession()
+        youtubeCoordinator.finishYouTubeSession()
     }
 
-    fun prepareYouTubeDestination(accessToken: String, title: String, privacy: YouTubePrivacy) {
-        streamSetupJob?.cancel()
-        streamSetupJob = viewModelScope.launch {
-            _streamSetupState.value = StreamSetupState(
-                LivePlatform.YOUTUBE,
-                StreamSetupStatus.CONNECTING,
-                "Creating YouTube broadcast"
-            )
-            try {
-                youtubeLifecycleJob?.cancel()
-                youtubeCompletionJob?.cancel()
-                youtubeLiveSession?.let { previous ->
-                    runCatching { StreamingSetupRepository.finishYouTubeBroadcast(previous) }
-                }
-                val prepared = StreamingSetupRepository.prepareYouTubeLive(accessToken, title, privacy)
-                youtubeLiveSession = prepared.session
-                _youtubeBroadcastState.value = YouTubeBroadcastState(
-                    status = YouTubeBroadcastStatus.PLANNED,
-                    message = "Broadcast planned. Start streaming to go live.",
-                    watchUrl = prepared.session.watchUrl,
-                    studioUrl = prepared.session.studioUrl
-                )
-                _streamSetupState.value = StreamSetupState(
-                    LivePlatform.YOUTUBE,
-                    StreamSetupStatus.READY,
-                    "YouTube broadcast ready",
-                    credentials = prepared.credentials
-                )
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                _streamSetupState.value = StreamSetupState(
-                    LivePlatform.YOUTUBE,
-                    StreamSetupStatus.ERROR,
-                    error.message ?: "YouTube setup failed"
-                )
-            }
-        }
-    }
-
-    private fun startYouTubeLifecycle() {
-        val session = youtubeLiveSession ?: return
-        youtubeLifecycleJob?.cancel()
-        youtubeLifecycleJob = viewModelScope.launch {
-            _youtubeBroadcastState.value = YouTubeBroadcastState(
-                YouTubeBroadcastStatus.WAITING_FOR_INGEST,
-                "Connecting RTMP feed to YouTube",
-                session.watchUrl,
-                session.studioUrl
-            )
-            try {
-                val rtmpState = withTimeoutOrNull(30_000L) {
-                    liveStreamState.first { state ->
-                        state.platform == LivePlatform.YOUTUBE &&
-                            (state.status == LiveStreamStatus.LIVE ||
-                                state.status == LiveStreamStatus.ERROR)
-                    }
-                } ?: throw IOException("YouTube RTMP connection timed out")
-                if (rtmpState.status != LiveStreamStatus.LIVE) {
-                    throw IOException(rtmpState.message)
-                }
-                _youtubeBroadcastState.value = _youtubeBroadcastState.value.copy(
-                    status = YouTubeBroadcastStatus.STARTING,
-                    message = "YouTube detected RTMP. Starting broadcast..."
-                )
-                StreamingSetupRepository.startYouTubeBroadcast(session)
-                _youtubeBroadcastState.value = _youtubeBroadcastState.value.copy(
-                    status = YouTubeBroadcastStatus.LIVE,
-                    message = "Broadcast is live and ready to share"
-                )
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                _youtubeBroadcastState.value = _youtubeBroadcastState.value.copy(
-                    status = YouTubeBroadcastStatus.ERROR,
-                    message = error.message ?: "YouTube could not start the broadcast"
-                )
-            }
-        }
-    }
-
-    private fun finishYouTubeSession() {
-        val session = youtubeLiveSession ?: return
-        youtubeLiveSession = null
-        youtubeLifecycleJob?.cancel()
-        youtubeLifecycleJob = null
-        youtubeCompletionJob?.cancel()
-        youtubeCompletionJob = viewModelScope.launch {
-            _youtubeBroadcastState.value = _youtubeBroadcastState.value.copy(
-                status = YouTubeBroadcastStatus.COMPLETING,
-                message = "Finishing YouTube broadcast..."
-            )
-            try {
-                when (StreamingSetupRepository.finishYouTubeBroadcast(session)) {
-                    YouTubeFinishResult.COMPLETED -> {
-                        _youtubeBroadcastState.value = _youtubeBroadcastState.value.copy(
-                            status = YouTubeBroadcastStatus.COMPLETE,
-                            message = "YouTube broadcast finished"
-                        )
-                    }
-                    YouTubeFinishResult.DELETED -> {
-                        _youtubeBroadcastState.value = YouTubeBroadcastState(
-                            status = YouTubeBroadcastStatus.COMPLETE,
-                            message = "Unused planned broadcast removed"
-                        )
-                    }
-                }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                _youtubeBroadcastState.value = _youtubeBroadcastState.value.copy(
-                    status = YouTubeBroadcastStatus.ERROR,
-                    message = error.message ?: "YouTube broadcast could not be finalized"
-                )
-            }
-        }
-    }
-
-    fun setStreamSetupError(platform: LivePlatform, message: String) {
-        _streamSetupState.value = StreamSetupState(platform, StreamSetupStatus.ERROR, message)
-    }
-
-    fun consumeStreamCredentials() {
-        _streamSetupState.value = StreamSetupState()
-    }
-
-    fun cancelStreamSetup() {
-        streamSetupJob?.cancel()
-        streamSetupJob = null
-        _streamSetupState.value = StreamSetupState()
-    }
+    fun prepareYouTubeDestination(accessToken: String, title: String, privacy: YouTubePrivacy) =
+        youtubeCoordinator.prepareYouTubeDestination(accessToken, title, privacy)
+    fun setStreamSetupError(platform: LivePlatform, message: String) = youtubeCoordinator.setStreamSetupError(platform, message)
+    fun consumeStreamCredentials() = youtubeCoordinator.consumeStreamCredentials()
+    fun cancelStreamSetup() = youtubeCoordinator.cancelStreamSetup()
 
     fun attachLivePreview(surfaceView: SurfaceView) {
         livePreview = surfaceView
@@ -752,9 +703,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     override fun onCleared() {
-        streamSetupJob?.cancel()
-        youtubeLifecycleJob?.cancel()
-        youtubeCompletionJob?.cancel()
         detachLivePreview()
         if (isBound) {
             getApplication<Application>().unbindService(connection)

@@ -3,6 +3,9 @@ package com.audiopro.djmrec
 import android.Manifest
 import android.os.Build
 import android.os.Bundle
+import android.content.Intent
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -17,12 +20,13 @@ class MainActivity : ComponentActivity() {
 
     private val requestPermissions = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { /* Permission results are read reactively via UsbAudioManager/AudioEngine calls that
-           will simply fail with a clear log line if RECORD_AUDIO / POST_NOTIFICATIONS were
-           denied — no extra state needed here. */ }
+    ) { viewModel.ensureLiveMonitoring() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val events = (application as DjmRecApplication).sessionEvents
+        events.closeRequested.value = false
+        lifecycleScope.launch { events.closeRequested.collect { if (it) finishAndRemoveTask() } }
         requestRuntimePermissions()
 
         setContent {
@@ -30,6 +34,17 @@ class MainActivity : ComponentActivity() {
                 MainScreen(viewModel = viewModel)
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        viewModel.ensureLiveMonitoring()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        viewModel.rescanUsbDevices()
     }
 
     private fun requestRuntimePermissions() {

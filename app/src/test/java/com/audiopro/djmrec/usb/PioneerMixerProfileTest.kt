@@ -6,6 +6,18 @@ import org.junit.Test
 
 class PioneerMixerProfileTest {
     @Test
+    fun `S11 uses separate interfaces and routes only the record pair`() {
+        val profile = PioneerMixerProfile.find(0x2B73, 0x0037)!!
+        assertEquals(2, profile.vendorCaptureInterface)
+        assertEquals(1, profile.playbackInterface)
+        assertEquals(10, profile.vendorCaptureChannelCount)
+        assertEquals(listOf(48_000), profile.vendorCaptureSampleRates)
+        assertEquals(4, profile.defaultCaptureChannelOffset)
+        assertEquals(listOf(-1, -1, 0x0A), profile.mixWithoutMicSources)
+        assertEquals(false, profile.isHardwareConfirmed)
+    }
+
+    @Test
     fun `recognizes all supported mixer product ids`() {
         val vendor = PioneerMixerProfile.ALPHATHETA_VENDOR_ID
 
@@ -14,7 +26,6 @@ class PioneerMixerProfileTest {
         assertEquals(PioneerMixerProfile.DJM_900NXS2, PioneerMixerProfile.find(vendor, 0x000A))
         assertEquals(PioneerMixerProfile.DJM_750MK2, PioneerMixerProfile.find(vendor, 0x001B))
         assertEquals(PioneerMixerProfile.DJM_450, PioneerMixerProfile.find(vendor, 0x0013))
-        assertEquals(PioneerMixerProfile.DJM_S11, PioneerMixerProfile.find(vendor, 0x0037))
         listOf(0x0058, 0x0059, 0x005A, 0x005B).forEach { productId ->
             assertEquals(PioneerMixerProfile.DJM_V5, PioneerMixerProfile.find(vendor, productId))
         }
@@ -34,7 +45,6 @@ class PioneerMixerProfileTest {
         assertEquals(0, PioneerMixerProfile.DJM_900NXS2.defaultCaptureChannelOffset)
         assertEquals(0, PioneerMixerProfile.DJM_750MK2.defaultCaptureChannelOffset)
         assertEquals(0, PioneerMixerProfile.DJM_450.defaultCaptureChannelOffset)
-        assertEquals(4, PioneerMixerProfile.DJM_S11.defaultCaptureChannelOffset)
     }
 
     @Test
@@ -68,19 +78,6 @@ class PioneerMixerProfileTest {
         assertEquals(listOf(0x0A, 0x0A, 0x0A), PioneerMixerProfile.DJM_450.mixWithoutMicSources)
         assertEquals(PioneerMixerProfile.RouteReadMode.NONE, PioneerMixerProfile.DJM_450.routeReadMode)
         assertEquals(false, PioneerMixerProfile.DJM_450.requiresPlaybackTraffic)
-        assertEquals(5, PioneerMixerProfile.DJM_S11.outputCount)
-        assertEquals(List(5) { 0x0A }, PioneerMixerProfile.DJM_S11.mixWithoutMicSources)
-        assertEquals(PioneerMixerProfile.RouteReadMode.NONE, PioneerMixerProfile.DJM_S11.routeReadMode)
-        assertEquals(true, PioneerMixerProfile.DJM_S11.allowRouteWrites)
-        assertEquals(listOf(48_000), PioneerMixerProfile.DJM_S11.vendorCaptureSampleRates)
-        assertEquals(true, PioneerMixerProfile.DJM_S11.requiresPlaybackTraffic)
-        assertEquals(1, PioneerMixerProfile.DJM_S11.playbackInterface)
-        assertEquals(1, PioneerMixerProfile.DJM_S11.playbackAlternateSetting)
-        assertEquals(2, PioneerMixerProfile.DJM_S11.vendorCaptureInterface)
-        assertEquals(1, PioneerMixerProfile.DJM_S11.vendorCaptureAlternateSetting)
-        assertEquals(10, PioneerMixerProfile.DJM_S11.vendorCaptureChannelCount)
-        assertEquals(3, PioneerMixerProfile.DJM_S11.vendorCaptureSubframeSize)
-        assertEquals(24, PioneerMixerProfile.DJM_S11.vendorCaptureBitResolution)
     }
 
     @Test

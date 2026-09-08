@@ -216,10 +216,10 @@ object UsbAudioDescriptorParser {
                         }
                     } else if (currentSubclass == SUBCLASS_AUDIOSTREAMING && subtype == AS_DESCRIPTOR_SUBTYPE_FORMAT_TYPE) {
                         val formatType = byteAt(rawDescriptors, offset + 3)
-                        val rateCount = byteAt(rawDescriptors, offset + 6)
-                        if (formatType == 0x01 && length >= 8 && rateCount > 0) {
-                            for (index in 0 until rateCount) {
-                                val rate = le24(rawDescriptors, offset + 7 + index * 3)
+                        val rateCount = byteAt(rawDescriptors, offset + 7)
+                        if (currentAudioClassVersion < 0x0200 && formatType == 0x01 && length >= 8 && rateCount > 0) {
+                            for (index in 0 until minOf(rateCount, (length - 8) / 3)) {
+                                val rate = le24(rawDescriptors, offset + 8 + index * 3)
                                 if (rate > 0) descriptorRates += rate
                             }
                         }
@@ -256,6 +256,8 @@ object UsbAudioDescriptorParser {
         var currentInterfaceNumber = -1
         var currentAlternateSetting = -1
         var currentIsAudioStreaming = false
+        var isUac2 = false
+        var isPcm = false
         var currentChannelCount = 0
         var currentTerminalLink = -1
         var pendingBitResolution = 0
@@ -264,9 +266,10 @@ object UsbAudioDescriptorParser {
         var pendingIsoInMaxPacketSize: Int? = null
         var pendingIsoFeedbackEndpoint: Int? = null
         var pendingIsoFeedbackMaxPacketSize: Int? = null
+        var pendingSampleRates: List<Int> = emptyList()
 
         fun flushInterfaceIfComplete() {
-            if (currentIsAudioStreaming && currentInterfaceNumber >= 0 && pendingSubframeSize > 0) {
+            if (currentIsAudioStreaming && isPcm && currentInterfaceNumber >= 0 && pendingSubframeSize > 0) {
                 results.add(
                     AudioStreamingInterfaceInfo(
                         interfaceNumber = currentInterfaceNumber,
@@ -278,7 +281,8 @@ object UsbAudioDescriptorParser {
                         isochronousInEndpointAddress = pendingIsoInEndpoint,
                         isochronousInMaxPacketSize = pendingIsoInMaxPacketSize,
                         isochronousFeedbackEndpointAddress = pendingIsoFeedbackEndpoint,
-                        isochronousFeedbackMaxPacketSize = pendingIsoFeedbackMaxPacketSize
+                        isochronousFeedbackMaxPacketSize = pendingIsoFeedbackMaxPacketSize,
+                        sampleRates = pendingSampleRates
                     )
                 )
             }
@@ -288,6 +292,9 @@ object UsbAudioDescriptorParser {
             val bLength = rawDescriptors[offset].toInt() and 0xFF
             if (bLength < 2 || offset + bLength > rawDescriptors.size) break
             val bDescriptorType = rawDescriptors[offset + 1].toInt() and 0xFF
+            if ((bDescriptorType == DT_INTERFACE && bLength < 9) ||
+                (bDescriptorType == DT_ENDPOINT && bLength < 7) ||
+                (bDescriptorType == DT_CS_INTERFACE && bLength < 3)) break
 
             when (bDescriptorType) {
                 DT_INTERFACE -> {
@@ -300,10 +307,12 @@ object UsbAudioDescriptorParser {
                     currentAlternateSetting = rawDescriptors[offset + 3].toInt() and 0xFF
                     val interfaceClass = rawDescriptors[offset + 5].toInt() and 0xFF
                     val interfaceSubClass = rawDescriptors[offset + 6].toInt() and 0xFF
+                    isUac2 = (rawDescriptors[offset + 7].toInt() and 0xFF) == 0x20
                     currentIsAudioStreaming =
                         interfaceClass == USB_CLASS_AUDIO && interfaceSubClass == SUBCLASS_AUDIOSTREAMING
 
                     currentChannelCount = 0
+                    isPcm = false
                     currentTerminalLink = -1
                     pendingBitResolution = 0
                     pendingSubframeSize = 0
@@ -311,6 +320,7 @@ object UsbAudioDescriptorParser {
                     pendingIsoInMaxPacketSize = null
                     pendingIsoFeedbackEndpoint = null
                     pendingIsoFeedbackMaxPacketSize = null
+                    pendingSampleRates = emptyList()
                 }
 
                 DT_CS_INTERFACE -> if (currentIsAudioStreaming) {
@@ -319,18 +329,32 @@ object UsbAudioDescriptorParser {
                         AS_DESCRIPTOR_SUBTYPE_GENERAL -> {
                             // UAC2 Class-Specific AS Interface Descriptor:
                             // ... 4 bmControls,5 bFormatType,6..9 bmFormats,10 bNrChannels
-                            if (offset + 10 < rawDescriptors.size) {
+                            if (isUac2 && bLength >= 16) {
+                                isPcm = (le32(rawDescriptors, offset + 6) and 1L) != 0L
                                 currentTerminalLink = rawDescriptors[offset + 3].toInt() and 0xFF
                                 currentChannelCount = rawDescriptors[offset + 10].toInt() and 0xFF
+                            } else if (!isUac2 && bLength >= 7) {
+                                isPcm = le16(rawDescriptors, offset + 5) == 1
+                                currentTerminalLink = byteAt(rawDescriptors, offset + 3)
                             }
                         }
 
                         AS_DESCRIPTOR_SUBTYPE_FORMAT_TYPE -> {
                             // UAC2 Format Type I Descriptor:
                             // 3 bFormatType, 4 bSubslotSize, 5 bBitResolution
-                            if (offset + 5 < rawDescriptors.size) {
+                            if (isUac2 && bLength >= 6 && byteAt(rawDescriptors, offset + 3) == 1) {
                                 pendingSubframeSize = rawDescriptors[offset + 4].toInt() and 0xFF
                                 pendingBitResolution = rawDescriptors[offset + 5].toInt() and 0xFF
+                            } else if (!isUac2 && bLength >= 8 && byteAt(rawDescriptors, offset + 3) == 1) {
+                                currentChannelCount = byteAt(rawDescriptors, offset + 4)
+                                pendingSubframeSize = byteAt(rawDescriptors, offset + 5)
+                                pendingBitResolution = byteAt(rawDescriptors, offset + 6)
+                                val count = byteAt(rawDescriptors, offset + 7)
+                                pendingSampleRates = if (count == 0 && bLength >= 14) {
+                                    CaptureFormatPolicy.ratesInRange(le24(rawDescriptors, offset + 8), le24(rawDescriptors, offset + 11), 0)
+                                } else if (count > 0 && bLength >= 8 + count * 3) {
+                                    List(count) { le24(rawDescriptors, offset + 8 + it * 3) }.filter { it in 1..384_000 }
+                                } else emptyList()
                             }
                         }
                     }
@@ -347,7 +371,7 @@ object UsbAudioDescriptorParser {
                     val isIn = (address and ENDPOINT_DIR_IN_MASK) != 0
                     val isIsochronous =
                         (attributes and ENDPOINT_ATTR_TRANSFER_TYPE_MASK) == ENDPOINT_ATTR_TRANSFER_TYPE_ISOCHRONOUS
-                    if (isIn && isIsochronous) {
+                    if (isIn && isIsochronous && ((attributes shr 4) and 0x03) != 0x01) {
                         pendingIsoInEndpoint = address
                         if (offset + 5 < rawDescriptors.size) {
                             val wMaxPacketSizeRaw =
@@ -401,6 +425,9 @@ object UsbAudioDescriptorParser {
             val bLength = rawDescriptors[offset].toInt() and 0xFF
             if (bLength < 2 || offset + bLength > rawDescriptors.size) break
             val bDescriptorType = rawDescriptors[offset + 1].toInt() and 0xFF
+            if ((bDescriptorType == DT_INTERFACE && bLength < 9) ||
+                (bDescriptorType == DT_ENDPOINT && bLength < 7) ||
+                (bDescriptorType == DT_CS_INTERFACE && bLength < 3)) break
 
             when (bDescriptorType) {
                 DT_INTERFACE -> {
@@ -421,7 +448,7 @@ object UsbAudioDescriptorParser {
                             (rawDescriptors[offset + 4].toInt() and 0xFF) or
                                 ((rawDescriptors[offset + 5].toInt() and 0xFF) shl 8)
                         val maxPacketSize = wMaxPacketSizeRaw and 0x7FF
-                        if (isIn && isIsochronous) {
+                        if (isIn && isIsochronous && ((attributes shr 4) and 0x03) != 0x01) {
                             isoInEndpoint = address
                             isoInMaxPacketSize = maxPacketSize
                         } else if (isIsochronous && ((attributes shr 4) and 0x03) == 0x01) {
@@ -468,7 +495,8 @@ object UsbAudioDescriptorParser {
         interfaces: List<AudioStreamingInterfaceInfo>
     ): AudioStreamingInterfaceInfo? {
         val candidates = interfaces.filter {
-            it.channelCount >= 1 && it.isochronousInEndpointAddress != null
+            CaptureFormatPolicy.isSupported(it.channelCount, it.subframeSize, it.bitResolution) &&
+                it.isochronousInEndpointAddress != null && it.alternateSetting > 0
         }
         val exactStereo = candidates.filter { it.channelCount == 2 }
         val pool = exactStereo.ifEmpty { candidates }

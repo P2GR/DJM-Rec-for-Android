@@ -33,7 +33,8 @@ import com.audiopro.djmrec.usb.UsbAudioDeviceInfo
 fun DeviceStatusCard(
     device: UsbAudioDeviceInfo?,
     onRescan: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    rescanEnabled: Boolean = true
 ) {
     Row(
         modifier = modifier
@@ -62,19 +63,33 @@ fun DeviceStatusCard(
                 color = MaterialTheme.colorScheme.onSurface
             )
             if (device != null) {
-                val rate = if (device.negotiatedSampleRate > 0) device.negotiatedSampleRate
-                else device.supportedSampleRates.maxOrNull() ?: 0
+                val rateLabel = if (device.negotiatedSampleRate > 0) "${device.negotiatedSampleRate} Hz"
+                    else "${device.preferredSampleRate} Hz requested"
                 Text(
-                    text = "USB mixer connected  \u2022  ${rate} Hz  \u2022  ${device.bitResolution}-bit  \u2022  ${device.channelCount}ch",
-                    style = MaterialTheme.typography.bodyMedium,
+                    text = "$rateLabel | ${device.bitResolution}-bit | ${device.channelCount} USB channels",
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                val profile = device.pioneerMixerProfile
+                Text(
+                    text = when {
+                        profile?.isHardwareConfirmed == true -> "Recording confirmed on this model"
+                        profile != null -> "Experimental profile | verify signal before recording"
+                        else -> "Class-compliant USB input | verify signal before recording"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Text("Connect the mixer's USB audio port with a data / OTG cable, then scan.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
 
         Spacer(modifier = Modifier.width(8.dp))
 
-        IconButton(onClick = onRescan) {
+        IconButton(onClick = onRescan, enabled = rescanEnabled) {
             Icon(
                 imageVector = Icons.Filled.Refresh,
                 contentDescription = "Rescan USB devices",

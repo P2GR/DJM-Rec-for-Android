@@ -13,16 +13,15 @@ namespace djmrec {
  * CDJ-3000-style RGB waveform analyzer.
  *
  * Rather than an expensive full FFT, this uses three 2nd-order IIR filters
- * (low-pass ~250Hz, band-pass ~250–2000Hz, high-pass ~2000Hz) — the same
- * approach Pioneer's hardware uses — to split the stereo-mixed mono signal
+ * (low-pass ~250Hz, band-pass ~250–2000Hz, high-pass ~2000Hz) — a lightweight visualization filter bank — to split the left and right signals independently
  * into three frequency bands. Band energies are accumulated into fixed-width
  * display bins (~6ms each at 48kHz), producing a rolling 512-bin waveform
  * where each bin carries [amplitude, lowEnergy, midEnergy, highEnergy].
  *
  * Thread safety: pushFrames() is called from the realtime audio callback
  * (must not allocate/block); getBins() is called from the UI polling thread.
- * The output buffer is double-buffered via an atomic swap pointer so reads
- * never block writes.
+ * Individual bin values are atomic, so UI reads never block audio writes.
+ * A snapshot can span adjacent audio commits; it is for visualization only.
  */
 class WaveformAnalyzer {
 public:
@@ -56,6 +55,7 @@ public:
     void getBins(float* outBins) const;
 
     /** Resets all filter state and clears the bin buffer (e.g. on new session). */
+    // Call only while the audio producer is stopped.
     void reset();
 
 private:
@@ -92,16 +92,16 @@ private:
     static void designHighPass(BandFilter& f, float cutoffHz, float sampleRate);
 
     /** Accumulates a single mono sample through all three bands into the current bin. */
-    void accumulateSample(float mono);
+    void accumulateSample(float left, float right);
 
     /** Commits the current bin and advances to the next. */
     void commitBin();
 
     // Three IIR filters, designed at construction time (assumes 48 kHz).
-    BandFilter mLowFilter;   // 250 Hz low-pass  → red channel
-    BandFilter mMidFilter1;  // 250 Hz high-pass  → (then subtract mid lpf2)
-    BandFilter mMidFilter2;  // 2000 Hz low-pass → mid = midFilter2(midFilter1(x))
-    BandFilter mHighFilter;  // 2000 Hz high-pass → blue channel
+    BandFilter mLowFilter[2];   // 250 Hz low-pass  → red channel
+    BandFilter mMidFilter1[2];  // 250 Hz high-pass  → (then subtract mid lpf2)
+    BandFilter mMidFilter2[2];  // 2000 Hz low-pass → mid = midFilter2(midFilter1(x))
+    BandFilter mHighFilter[2];  // 2000 Hz high-pass → blue channel
 
     // Per-bin accumulators (written by realtime thread, swapped atomically).
     struct BinAccum {
@@ -112,8 +112,7 @@ private:
         int sampleCount = 0;
     };
 
-    // Double-buffered bin arrays: one being written, one available for reading.
-    // The "front" buffer (pointed to by mReadBuffer) is always consistent.
+    // Atomic rolling history, oldest bin first when read.
     BinAccum mCurrent;
     std::atomic<float> mBins[kBinCount * 4];
     std::atomic<int> mWriteIndex{0};

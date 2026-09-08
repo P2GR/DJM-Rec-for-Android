@@ -2,9 +2,9 @@ package com.audiopro.djmrec.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-val BackgroundDark = Color(0xFF0F1117)
-val SurfaceDark = Color(0xFF1B1E2B)
-val SurfaceVariantDark = Color(0xFF262B3D)
+val BackgroundDark = Color(0xFF101416)
+val SurfaceDark = Color(0xFF1B2125)
+val SurfaceVariantDark = Color(0xFF293238)
 val AccentGreen = Color(0xFF00E5A0)
 val AccentAmber = Color(0xFFFFC93C)
 val AccentRed = Color(0xFFFF4D4D)

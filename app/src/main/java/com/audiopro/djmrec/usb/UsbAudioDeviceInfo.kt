@@ -38,18 +38,36 @@ data class UsbAudioDeviceInfo(
     /** True if [vendorId] matches a known Pioneer/AlphaTheta USB vendor ID. */
     val isPioneer: Boolean = false
 ) {
+    val preferredSampleRate: Int
+        get() = negotiatedSampleRate.takeIf { it > 0 }
+            ?: supportedSampleRates.firstOrNull { it == 48_000 }
+            ?: supportedSampleRates.firstOrNull { it > 0 }
+            ?: 48_000
+
     /** Proprietary routing profile, or null for generic USB Audio devices. */
     val pioneerMixerProfile: PioneerMixerProfile?
         get() = PioneerMixerProfile.find(vendorId, productId)
 
+    val allInOneProfile: AllInOneProfile? get() = AllInOneProfile.find(vendorId, productId)
+    val profileDescription: String get() = when {
+        pioneerMixerProfile?.isHardwareConfirmed == true -> "Hardware confirmed"
+        pioneerMixerProfile != null -> "Driver profile · validation pending"
+        allInOneProfile != null -> "${allInOneProfile!!.displayName} · USB descriptor profile"
+        else -> "Automatic USB PCM profile"
+    }
+
     /**
      * Whether this device should be captured via the raw libusb isochronous path
-     * ([com.audiopro.djmrec.audio.AudioEngine.openUsbIso]) rather than AAudio -- true only for
-     * Pioneer mixers exposing more than 2 channels (i.e. exactly the case AAudio can't target
-     * the right channel pair for) and only when we actually parsed a usable max packet size.
+     * ([com.audiopro.djmrec.audio.AudioEngine.openUsbIso]) rather than AAudio. Multichannel
+     * inputs need explicit pair extraction; recognized all-in-ones use their master return.
+     * Unrouted standard PCM inputs can also use raw capture. All require a supported format
+     * and a usable endpoint packet size.
      */
     val requiresIsoCapture: Boolean
-        get() = pioneerMixerProfile != null && channelCount > 2 && isochronousInMaxPacketSize > 0
+        get() = isochronousInMaxPacketSize > 0 &&
+            CaptureFormatPolicy.isSupported(channelCount, subframeSize, bitResolution) &&
+            ((pioneerMixerProfile != null && channelCount > 2) || allInOneProfile != null ||
+                channelCount > 2 || audioManagerDeviceId < 0)
 }
 
 /** Raw result of walking a single USB Audio Streaming interface's descriptor block. */
@@ -63,7 +81,8 @@ data class AudioStreamingInterfaceInfo(
     val isochronousInEndpointAddress: Int?,
     val isochronousInMaxPacketSize: Int? = null,
     val isochronousFeedbackEndpointAddress: Int? = null,
-    val isochronousFeedbackMaxPacketSize: Int? = null
+    val isochronousFeedbackMaxPacketSize: Int? = null,
+    val sampleRates: List<Int> = emptyList()
 )
 
 /**

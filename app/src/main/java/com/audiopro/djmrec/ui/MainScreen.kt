@@ -9,12 +9,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FiberManualRecord
-import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Coffee
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -60,13 +61,13 @@ private enum class Destination(val label: String, val icon: ImageVector) {
     RECORDING("Recording", Icons.Filled.FiberManualRecord),
     LIVE("Go Live", Icons.Filled.LiveTv),
     RECORDINGS("My Recordings", Icons.Filled.LibraryMusic),
-    SETTINGS("Settings", Icons.Filled.Settings),
-    DIAGNOSTICS("Diagnostics", Icons.Filled.BugReport)
+    SETTINGS("Settings", Icons.Filled.Settings)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(viewModel: MainViewModel) {
+    val destinationState = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
     val context = LocalContext.current
     val application = context.applicationContext as DjmRecApplication
     val recoveryNotice by application.recoveryNotice.collectAsState()
@@ -74,6 +75,9 @@ fun MainScreen(viewModel: MainViewModel) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var selectedDestination by rememberSaveable { mutableStateOf(Destination.RECORDING) }
+    LaunchedEffect(selectedDestination) {
+        com.audiopro.djmrec.diagnostics.RemoteDiagnostics.event("Navigation", selectedDestination.name)
+    }
     var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }
 
     LaunchedEffect(Unit) {
@@ -91,7 +95,7 @@ fun MainScreen(viewModel: MainViewModel) {
         )
     }
 
-    val mayPromptForUpdate = recoveryNotice == null &&
+    val mayPromptForUpdate = selectedDestination == Destination.SETTINGS && recoveryNotice == null &&
         recordingState !is RecordingState.Recording &&
         recordingState !is RecordingState.Paused &&
         recordingState !is RecordingState.Preparing
@@ -201,11 +205,20 @@ fun MainScreen(viewModel: MainViewModel) {
     ) {
         Scaffold(
             containerColor = BackgroundDark,
+            bottomBar = {
+                NavigationBar(containerColor = SurfaceDark) {
+                    listOf(Destination.RECORDING, Destination.LIVE, Destination.RECORDINGS, Destination.SETTINGS).forEach { dest ->
+                        NavigationBarItem(selected = selectedDestination == dest, onClick = { selectedDestination = dest },
+                            icon = { Icon(dest.icon, null) },
+                            label = { Text(when (dest) { Destination.RECORDING -> "Record"; Destination.LIVE -> "Live"; Destination.RECORDINGS -> "Sets"; else -> "Settings" }) })
+                    }
+                }
+            },
             topBar = {
                 TopAppBar(
                     title = {
                         Text(
-                            text = selectedDestination.label,
+                            text = if (selectedDestination == Destination.RECORDING) "DJM REC" else selectedDestination.label,
                             color = TextPrimary
                         )
                     },
@@ -223,12 +236,13 @@ fun MainScreen(viewModel: MainViewModel) {
             }
         ) { padding ->
             Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+                destinationState.SaveableStateProvider(selectedDestination.name) {
                 when (selectedDestination) {
-                    Destination.RECORDING -> RecorderScreen(viewModel = viewModel)
+                    Destination.RECORDING -> RecorderScreen(viewModel = viewModel, onOpenLibrary = { selectedDestination = Destination.RECORDINGS })
                     Destination.LIVE -> LiveStreamScreen(viewModel = viewModel)
                     Destination.RECORDINGS -> LibraryScreen(onBack = null)
                     Destination.SETTINGS -> SettingsScreen(viewModel = viewModel)
-                    Destination.DIAGNOSTICS -> DiagnosticsScreen()
+                }
                 }
             }
         }

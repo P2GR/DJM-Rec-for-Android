@@ -29,6 +29,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import com.audiopro.djmrec.audio.ChannelLevel
 import com.audiopro.djmrec.audio.StereoLevels
 import com.audiopro.djmrec.ui.theme.MeterAmber
@@ -72,6 +74,7 @@ private fun HorizontalChannelMeter(label: String, level: ChannelLevel) {
     LaunchedEffect(level.isClipping) {
         if (level.isClipping) {
             clipLatched = true
+        } else {
             delay(CLIP_LATCH_MS)
             clipLatched = false
         }
@@ -86,7 +89,10 @@ private fun HorizontalChannelMeter(label: String, level: ChannelLevel) {
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {
+            contentDescription = "$label input, peak ${level.peakDb.toInt()} dBFS" +
+                if (clipLatched) ", clipping" else ""
+        }
     ) {
         // Channel label
         Text(

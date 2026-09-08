@@ -20,6 +20,13 @@ std::string jstringToStdString(JNIEnv* env, jstring jStr) {
 
 extern "C" {
 
+JNIEXPORT void JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_setRecordingGainDb(
+    JNIEnv*, jobject, jint gainDb) {
+    UsbAudioEngine::instance().setRecordingGainDb(gainDb);
+}
+
+
 JNIEXPORT jint JNICALL
 Java_com_audiopro_djmrec_audio_AudioEngine_open(
     JNIEnv* /*env*/, jobject /*thiz*/,

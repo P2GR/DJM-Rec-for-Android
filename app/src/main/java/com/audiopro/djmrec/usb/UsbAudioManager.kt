@@ -26,6 +26,8 @@ import kotlinx.coroutines.flow.asStateFlow
  * This class deliberately never opens a bulk/iso transfer itself — see class doc on
  * [UsbAudioDescriptorParser] for why.
  */
+data class UsbInputOption(val deviceName: String, val label: String, val hasPermission: Boolean, val captureCandidate: Boolean)
+
 class UsbAudioManager(private val context: Context) {
 
     companion object {
@@ -44,6 +46,29 @@ class UsbAudioManager(private val context: Context) {
 
     private val _deviceState = MutableStateFlow<UsbAudioDeviceInfo?>(null)
     val deviceState: StateFlow<UsbAudioDeviceInfo?> = _deviceState.asStateFlow()
+    private val _inputs = MutableStateFlow<List<UsbInputOption>>(emptyList())
+    val inputs = _inputs.asStateFlow()
+    private val _connectionNotice = MutableStateFlow<String?>(null)
+    val connectionNotice = _connectionNotice.asStateFlow()
+    private var requestedDeviceName: String? = null
+
+    fun refreshInputs() {
+        _inputs.value = usbManager.deviceList.values.map { device ->
+            UsbInputOption(device.deviceName, device.productName ?: "USB ${device.vendorId.toString(16)}:${device.productId.toString(16)}",
+                usbManager.hasPermission(device), isCaptureCandidate(device))
+        }.sortedBy { it.label }
+    }
+
+    /** Caller must stop monitoring first. Never close an active raw capture here. */
+    fun selectDevice(deviceName: String): Boolean {
+        if (activeIsoConnection != null) return false
+        val device = usbManager.deviceList[deviceName] ?: return false
+        if (!isCaptureCandidate(device)) return false
+        requestedDeviceName = deviceName
+        _deviceState.value = null
+        onDeviceAttached(device)
+        return true
+    }
 
     private var registered = false
     private var rootModeEnabled = false
@@ -70,16 +95,17 @@ class UsbAudioManager(private val context: Context) {
                     val device = getIntentDevice(intent) ?: return
                     Log.i(TAG, "Attach broadcast received for ${device.deviceName}")
                     onDeviceAttached(device)
+                    refreshInputs()
                 }
 
                 UsbManager.ACTION_USB_DEVICE_DETACHED -> {
                     val device = getIntentDevice(intent) ?: return
-                    if (_deviceState.value?.vendorId == device.vendorId &&
-                        _deviceState.value?.productId == device.productId
-                    ) {
+                    if (_deviceState.value?.deviceName == device.deviceName) {
                         Log.i(TAG, "Mixer detached: ${device.deviceName}")
                         _deviceState.value = null
+                        _connectionNotice.value = "USB input disconnected. Reconnect to continue."
                     }
+                    refreshInputs()
                 }
             }
         }
@@ -124,6 +150,7 @@ class UsbAudioManager(private val context: Context) {
 
     /** Explicit UI-triggered scan. If Android exposes the mixer in UsbManager, this requests permission/opens it. */
     fun scanForConnectedMixer(reason: String = "manual-rescan"): Boolean {
+        refreshInputs()
         if (rootModeEnabled) {
             // Persistent host-mode + kernel USB scan for the DJM REC port.
             val hostResult = RootUsbHostController.forcePersistentHostMode()
@@ -135,7 +162,7 @@ class UsbAudioManager(private val context: Context) {
         logEnumeratedDevices(reason)
         val device = findConnectedAudioClassDevice()
         if (device == null) {
-            Log.w(TAG, "$reason: no connected device exposes a USB_CLASS_AUDIO interface")
+            Log.w(TAG, "$reason: no connected device exposes a supported audio capture interface")
             if (rootModeEnabled) {
                 // The framework says nothing is attached -- ask the kernel directly whether it
                 // ever even saw the mixer negotiate, independent of what UsbManager reports.
@@ -147,6 +174,8 @@ class UsbAudioManager(private val context: Context) {
                 )
             }
             _deviceState.value = null
+            _connectionNotice.value = if (_inputs.value.isEmpty()) "Connect a mixer or USB audio interface using a data cable."
+                else "Connected USB devices expose no audio capture input. Use the PC/Mac audio port, not a storage or Link Export connection."
             return false
         }
         Log.i(TAG, "$reason: found USB audio class device ${device.deviceName}; connecting")
@@ -171,28 +200,52 @@ class UsbAudioManager(private val context: Context) {
         }
     }
 
-    private fun findConnectedAudioClassDevice(): UsbDevice? =
-        usbManager.deviceList.values.firstOrNull { device ->
+    private fun isCaptureCandidate(device: UsbDevice): Boolean =
+        PioneerMixerProfile.find(device.vendorId, device.productId) != null ||
+            AllInOneProfile.find(device.vendorId, device.productId) != null ||
             (0 until device.interfaceCount).any { i ->
-                device.getInterface(i).interfaceClass == UsbConstants.USB_CLASS_AUDIO
+                val intf = device.getInterface(i)
+                intf.interfaceClass == UsbConstants.USB_CLASS_AUDIO &&
+                    intf.interfaceSubclass == 2 &&
+                    (0 until intf.endpointCount).any { endpointIndex ->
+                        val endpoint = intf.getEndpoint(endpointIndex)
+                        endpoint.direction == UsbConstants.USB_DIR_IN &&
+                            endpoint.type == UsbConstants.USB_ENDPOINT_XFER_ISOC
+                    }
             }
-        }
+
+    private fun findConnectedAudioClassDevice(): UsbDevice? =
+        usbManager.deviceList.values.filter(::isCaptureCandidate)
+            .sortedWith(compareByDescending<UsbDevice> { it.deviceName == _deviceState.value?.deviceName }
+                .thenByDescending { PioneerMixerProfile.find(it.vendorId, it.productId) != null }
+                .thenBy { it.deviceName })
+            .firstOrNull()
 
     private fun onDeviceAttached(device: UsbDevice) {
-        val isAudioClass = (0 until device.interfaceCount).any { i ->
-            device.getInterface(i).interfaceClass == UsbConstants.USB_CLASS_AUDIO
+        _deviceState.value?.let { active ->
+            // Refresh Android's delayed input registration without reopening a live USB connection.
+            if (active.deviceName == device.deviceName && active.audioManagerDeviceId < 0) {
+                resolveAudioManagerDeviceId(device)?.let { (id, rates) ->
+                    _deviceState.value = active.copy(audioManagerDeviceId = id,
+                        supportedSampleRates = (active.supportedSampleRates + rates).distinct())
+                }
+            }
+            return // Never replace a live source on another attach/rescan.
         }
-        if (!isAudioClass) {
+        if (!isCaptureCandidate(device)) {
             Log.w(TAG, "Attached device ${device.deviceName} (${device.vendorId}:${device.productId}) has no USB_CLASS_AUDIO interface; ignoring")
             return
         }
 
         Log.i(TAG, "UAC candidate attached: ${device.deviceName} (${device.vendorId}:${device.productId})")
+        requestedDeviceName = device.deviceName
+        _connectionNotice.value = "Checking ${device.productName ?: "USB input"}..."
 
         if (usbManager.hasPermission(device)) {
             Log.i(TAG, "Already have permission for ${device.deviceName}; inspecting descriptors")
             inspectAndPublish(device)
         } else {
+            _connectionNotice.value = "Allow USB access to ${device.productName ?: "your input"}."
             Log.i(TAG, "No permission yet for ${device.deviceName}; requesting")
             requestPermission(device)
         }
@@ -209,14 +262,18 @@ class UsbAudioManager(private val context: Context) {
 
     private fun handlePermissionResult(intent: Intent) {
         val device = getIntentDevice(intent) ?: return
+        if (requestedDeviceName != device.deviceName) return
         val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
         Log.i(TAG, "Permission result for ${device.deviceName}: granted=$granted")
         if (granted) {
-            inspectAndPublish(device)
+            if (_deviceState.value == null && usbManager.deviceList.containsKey(device.deviceName)) {
+                inspectAndPublish(device)
+            }
         } else {
             Log.w(TAG, "USB permission denied for ${device.deviceName}")
-            _deviceState.value = null
+            _connectionNotice.value = "USB access denied. Open Inputs and select the device to retry."
         }
+        refreshInputs()
     }
 
     /**
@@ -227,6 +284,7 @@ class UsbAudioManager(private val context: Context) {
         val connection = usbManager.openDevice(device)
         if (connection == null) {
             Log.e(TAG, "Failed to open control connection to ${device.deviceName}")
+            _connectionNotice.value = "Could not open USB input. Check permission and reconnect."
             return
         }
 
@@ -237,6 +295,7 @@ class UsbAudioManager(private val context: Context) {
         var mixerProfile: PioneerMixerProfile? = null
         val bestInterface = try {
             rawDescriptors = connection.rawDescriptors ?: ByteArray(0)
+            com.audiopro.djmrec.diagnostics.RemoteDiagnostics.descriptors(device.vendorId, device.productId, rawDescriptors)
             Log.i(TAG, "${device.deviceName}: read ${rawDescriptors.size} bytes of raw descriptors")
             streamingInterfaces = UsbAudioDescriptorParser.findAudioStreamingInterfaces(rawDescriptors)
             topology = UsbAudioDescriptorParser.parseTopology(rawDescriptors)
@@ -266,8 +325,20 @@ class UsbAudioManager(private val context: Context) {
                         "terminals=${topology.inputTerminals.size}/${topology.outputTerminals.size} " +
                             "descriptorRates=${topology.descriptorSampleRates} clockRates=$clockSampleRates"
                     )
-            val standardBest = UsbAudioDescriptorParser.selectBestStereoInterface(streamingInterfaces)
+            val recordOffset = AllInOneProfile.find(device.vendorId, device.productId)?.recordChannelOffset ?: 0
+            val standardBest = UsbAudioDescriptorParser.selectBestStereoInterface(streamingInterfaces.filter {
+                it.channelCount >= recordOffset + (if (recordOffset == 0) 1 else 2) &&
+                    (mixerProfile?.hasVendorCaptureOverride != true ||
+                    (it.interfaceNumber == mixerProfile.vendorCaptureInterface &&
+                        it.alternateSetting == mixerProfile.vendorCaptureAlternateSetting &&
+                        it.channelCount == mixerProfile.vendorCaptureChannelCount &&
+                        it.subframeSize == mixerProfile.vendorCaptureSubframeSize &&
+                        it.bitResolution == mixerProfile.vendorCaptureBitResolution))
+            })
             standardBest ?: mixerProfile?.takeIf { it.hasVendorCaptureOverride }?.let { profile ->
+                // Never replace an explicit, conflicting PCM descriptor with guessed bytes.
+                if (streamingInterfaces.any { it.interfaceNumber == profile.vendorCaptureInterface &&
+                        it.alternateSetting == profile.vendorCaptureAlternateSetting }) return@let null
                 Log.i(
                     TAG,
                     "${device.deviceName}: no standard AudioStreaming interface; trying " +
@@ -291,10 +362,9 @@ class UsbAudioManager(private val context: Context) {
                     } else {
                         Log.w(
                             TAG,
-                            "${device.deviceName}: using UNVERIFIED vendor capture format " +
-                                "(${it.channelCount}ch/${it.bitResolution}bit) -- not confirmed on " +
-                                "real hardware; if the resulting recording is noise/silence, this " +
-                                "format guess is what to revisit first"
+                            "${device.deviceName}: using ${profile.displayName} vendor capture format " +
+                                "(${it.channelCount}ch/${it.bitResolution}bit); " +
+                                "hardwareConfirmed=${profile.isHardwareConfirmed}"
                         )
                     }
                 }
@@ -307,6 +377,8 @@ class UsbAudioManager(private val context: Context) {
         if (bestInterface == null) {
             Log.w(TAG, "${device.deviceName} exposes no usable isochronous IN audio streaming interface")
             _deviceState.value = null
+            _connectionNotice.value = AllInOneProfile.find(device.vendorId, device.productId)?.takeIf { it == AllInOneProfile.XDJ_RX3 }?.setupHint
+                ?: "${device.productName ?: "This device"} exposes no supported PCM capture format. Try its PC/Mac audio mode. A vendor-specific format needs a verified driver profile."
             return
         }
         Log.i(
@@ -333,7 +405,8 @@ class UsbAudioManager(private val context: Context) {
             bitResolution = bestInterface.bitResolution,
             subframeSize = bestInterface.subframeSize,
             supportedSampleRates = mixerProfile?.vendorCaptureSampleRates?.takeIf { it.isNotEmpty() }
-                ?: (topology.descriptorSampleRates + clockSampleRates +
+                ?: bestInterface.sampleRates.takeIf { it.isNotEmpty() }
+                ?: (clockSampleRates +
                     (routedDeviceId?.second ?: emptyList())).distinct(),
             audioManagerDeviceId = routedDeviceId?.first ?: -1,
             hasPermission = true,
@@ -341,6 +414,8 @@ class UsbAudioManager(private val context: Context) {
             rawDescriptors = rawDescriptors,
             topology = topology
         )
+        _connectionNotice.value = null
+        refreshInputs()
     }
 
     private fun queryClockSampleRates(
@@ -349,7 +424,12 @@ class UsbAudioManager(private val context: Context) {
         topology: UacTopology
     ): List<Int> {
         val rates = linkedSetOf<Int>()
-        topology.clockSources.filter { it.supportsFrequencyControl }.forEach { clock ->
+        val recordOffset = AllInOneProfile.find(device.vendorId, device.productId)?.recordChannelOffset ?: 0
+        val selected = UsbAudioDescriptorParser.selectBestStereoInterface(topology.audioStreamingInterfaces.filter {
+            it.channelCount >= recordOffset + (if (recordOffset == 0) 1 else 2)
+        })
+        val selectedClock = selected?.let { clockFor(it, topology) }
+        topology.clockSources.filter { it.supportsFrequencyControl && it == selectedClock }.forEach { clock ->
             val controlInterface = (0 until device.interfaceCount)
                 .map { device.getInterface(it) }
                 .firstOrNull { it.id == clock.interfaceNumber }
@@ -381,8 +461,7 @@ class UsbAudioManager(private val context: Context) {
                 if (base + 11 >= transferred) break
                 val minimum = readLe32(buffer, base)
                 val maximum = readLe32(buffer, base + 4)
-                if (minimum == maximum && minimum in 1..384000) rates += minimum
-                else Log.i(TAG, "Clock source ${clock.id}: continuous rate range $minimum-$maximum")
+                rates += CaptureFormatPolicy.ratesInRange(minimum, maximum, readLe32(buffer, base + 8))
             }
         }
         return rates.toList()
@@ -416,10 +495,12 @@ class UsbAudioManager(private val context: Context) {
                 "id=${it.id} type=${it.type} product=${it.productName}"
             }
         )
-        val match = candidates.firstOrNull { info ->
-            info.type == AudioDeviceInfo.TYPE_USB_DEVICE &&
-                info.productName?.toString()?.trim() == device.productName?.trim()
-        } ?: candidates.firstOrNull { it.type == AudioDeviceInfo.TYPE_USB_DEVICE }
+        val usbInputs = candidates.filter {
+            it.type == AudioDeviceInfo.TYPE_USB_DEVICE || it.type == AudioDeviceInfo.TYPE_USB_HEADSET
+        }
+        val match = usbInputs.firstOrNull { it.address == device.deviceName }
+            ?: usbInputs.filter { it.productName?.toString()?.trim() == device.productName?.trim() }
+                .singleOrNull()
 
         return match?.let { it.id to it.sampleRates.toList() }
     }
@@ -466,20 +547,13 @@ class UsbAudioManager(private val context: Context) {
      * it just sends the SET and trusts it. This does the same.
      */
     private fun establishPioneerRoute(connection: UsbDeviceConnection, profile: PioneerMixerProfile) {
-        if (!profile.allowRouteWrites) {
-            Log.i(
-                TAG,
-                "${profile.displayName}: route writes disabled; use the mixer/driver setting " +
-                    "for the MIX/REC OUT USB pair until its vendor protocol is validated"
-            )
-            return
-        }
         val defaultOutput = profile.defaultCaptureChannelOffset / 2
         val outputs = (listOf(defaultOutput) + profile.additionalMixOutputs)
             .distinct()
             .filter { it in 0 until profile.outputCount }
         for (output in outputs) {
             val mixSource = profile.mixWithoutMicSources.getOrNull(output) ?: continue
+            if (mixSource < 0) continue
             val setValue = ((output + 1) shl 8) or mixSource
             val setResult = connection.controlTransfer(
                 UsbConstants.USB_DIR_OUT or UsbConstants.USB_TYPE_VENDOR,
@@ -504,7 +578,7 @@ class UsbAudioManager(private val context: Context) {
             return null
         }
         val device = usbManager.deviceList.values.firstOrNull {
-            it.vendorId == info.vendorId && it.productId == info.productId
+            it.deviceName == info.deviceName && it.vendorId == info.vendorId && it.productId == info.productId
         } ?: run {
             Log.w(TAG, "openIsoCaptureHandle: ${info.deviceName} is no longer in UsbManager.deviceList")
             return null

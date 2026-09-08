@@ -2,6 +2,10 @@ package com.audiopro.djmrec.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.Alignment
+import androidx.compose.material3.Text
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FiberManualRecord
@@ -38,8 +42,14 @@ fun TransportControls(
         horizontalArrangement = Arrangement.spacedBy(24.dp)
     ) {
         when (state) {
-            is RecordingState.Idle, is RecordingState.Error, is RecordingState.Monitoring,
             is RecordingState.Preparing -> {
+                Column(horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CircularProgressIndicator(modifier = Modifier.size(48.dp))
+                    Text("Connecting", style = MaterialTheme.typography.labelLarge)
+                }
+            }
+            is RecordingState.Idle, is RecordingState.Error, is RecordingState.Monitoring -> {
                 TransportButton(
                     icon = Icons.Filled.FiberManualRecord,
                     contentDescription = "Record",
@@ -88,11 +98,16 @@ private fun TransportButton(
     containerColor: Color,
     onClick: () -> Unit
 ) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)) {
     FilledIconButton(
         onClick = onClick,
         modifier = Modifier.size(72.dp),
         colors = IconButtonDefaults.filledIconButtonColors(containerColor = containerColor)
     ) {
         Icon(imageVector = icon, contentDescription = contentDescription, modifier = Modifier.size(32.dp))
+    }
+    Text(if (contentDescription == "Stop") "Stop & save" else contentDescription,
+        style = MaterialTheme.typography.labelLarge)
     }
 }

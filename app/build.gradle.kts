@@ -5,6 +5,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.bugfender.upload-mapping") version "1.1.2" apply false
 }
 
 // ── Keystore helpers (top-level so they can be used by signingConfigs) ─────
@@ -20,6 +21,19 @@ val keystoreFile = rootProject.file("keystore.properties")
 val keystore = if (keystoreFile.exists()) loadProperties("keystore.properties") else null
 val streamingFile = rootProject.file("streaming.properties")
 val streaming = if (streamingFile.exists()) loadProperties("streaming.properties") else null
+val bugfenderFile = rootProject.file("bugfender.properties")
+val bugfenderProperties = if (bugfenderFile.exists()) loadProperties("bugfender.properties") else null
+val bugfenderSymbolicationToken = providers.environmentVariable("BUGFENDER_SYMBOLICATION_TOKEN").orNull
+    ?: bugfenderProperties?.getProperty("BUGFENDER_SYMBOLICATION_TOKEN")
+if (!bugfenderSymbolicationToken.isNullOrBlank()) {
+    apply(plugin = "com.bugfender.upload-mapping")
+    extensions.configure<com.bugfender.UploadMappingPluginExtension> {
+        symbolicationToken(bugfenderSymbolicationToken)
+        symbolicationURL("https://dashboard.bugfender.com/")
+    }
+    // Local uses the same version/build as release; don't overwrite production mappings.
+    tasks.matching { it.name == "bfUploadMappingLocal" }.configureEach { enabled = false }
+}
 val twitchClientId = providers.environmentVariable("TWITCH_CLIENT_ID").orNull
     ?: streaming?.getProperty("TWITCH_CLIENT_ID").orEmpty()
 // OAuth client IDs are public identifiers. Google still authenticates Android builds using the
@@ -138,6 +152,7 @@ kotlin {
 }
 
 dependencies {
+    implementation("com.bugfender.sdk:android:4.0.1")
     testImplementation(kotlin("test"))
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")

@@ -66,6 +66,8 @@ jobs:
         run: sdkmanager --install "ndk;26.1.10909125" "cmake;3.22.1"
 
       - name: Verify and build
+        env:
+          BUGFENDER_SYMBOLICATION_TOKEN: ${{ secrets.BUGFENDER_SYMBOLICATION_TOKEN }}
         run: ./gradlew lintDebug testDebugUnitTest assembleRelease assembleDebug --console=plain
 
       - name: Verify APKs and create checksums
@@ -91,4 +93,4 @@ jobs:
           gh release create "$GITHUB_REF_NAME"
           "$APK_RELEASE" "$APK_RELEASE.sha256"
           "$APK_DEBUG" "$APK_DEBUG.sha256"
-          --verify-tag --generate-notes --title "$GITHUB_REF_NAME"
+          --verify-tag --notes-file "docs/releases/${GITHUB_REF_NAME#v}.md" --title "$GITHUB_REF_NAME"

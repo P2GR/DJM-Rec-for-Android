@@ -84,6 +84,7 @@ public:
     /** Copies the RGB waveform snapshot into @p outBins (kBinCount * 4 floats).
      *  Safe to call from any thread. */
     void getWaveformBins(float* outBins) const;
+    void setRecordingGainDb(int gainDb);
     void setWaveformEnabled(bool enabled);
     static constexpr int kWaveformBinCount = WaveformAnalyzer::kBinCount;
 
@@ -122,6 +123,7 @@ private:
     std::atomic<bool> mPaused{false};
     std::atomic<bool> mStopRequested{false};
     std::atomic<bool> mWaveformEnabled{true};
+    std::atomic<float> mRecordingGainLinear{3.9810717f};
     std::atomic<bool> mLivePcmActive{false};
     std::atomic<uint64_t> mLiveDroppedFrames{0};
     std::atomic<uint64_t> mLivePcmFramesRead{0};
