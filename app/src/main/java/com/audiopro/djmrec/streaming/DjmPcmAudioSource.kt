@@ -11,6 +11,7 @@ import kotlin.math.log10
 
 /** Supplies RootEncoder with stereo PCM16 copied from native DJM capture, never phone mic. */
 class DjmPcmAudioSource(
+    private val captureSampleRate: Int,
     private val onFailure: (String) -> Unit,
     private val onPcmStats: (totalBytes: Long, peakDb: Float) -> Unit
 ) : AudioSource() {
@@ -29,7 +30,7 @@ class DjmPcmAudioSource(
         noiseSuppressor: Boolean
     ): Boolean {
         pcmSampleRate = sampleRate
-        return isStereo && sampleRate in 8_000..96_000 && AudioEngine.isStreamOpen()
+        return isStereo && StreamAudioFormat.fromCapture(captureSampleRate)?.encoderRate == sampleRate && AudioEngine.isStreamOpen()
     }
 
     override fun start(getMicrophoneData: GetMicrophoneData) {
@@ -44,6 +45,7 @@ class DjmPcmAudioSource(
             Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
             val buffer = ByteArray(inputSize)
             val clock = PcmFrameClock(pcmSampleRate)
+            val converter = StereoPcmDownsampler(captureSampleRate, pcmSampleRate)
             var lastPcmAt = android.os.SystemClock.elapsedRealtime()
             var totalBytes = 0L
             var intervalPeak = 0
@@ -60,12 +62,13 @@ class DjmPcmAudioSource(
                             intervalPeak = maxOf(intervalPeak, abs(sample).coerceAtMost(32_767))
                             index += 2
                         }
+                        val encodedPcm = converter.convert(buffer, bytesRead)
                         getMicrophoneData.inputPCMData(
                             // Encoder queues frames asynchronously. Each owns its PCM until consumed.
-                            Frame(buffer.copyOf(bytesRead), 0, bytesRead,
-                                clock.next(bytesRead, TimeUtils.getCurrentTimeMicro()))
+                            Frame(encodedPcm, 0, encodedPcm.size,
+                                clock.next(encodedPcm.size, TimeUtils.getCurrentTimeMicro()))
                         )
-                        totalBytes += bytesRead
+                        totalBytes += encodedPcm.size
                         if (android.os.SystemClock.elapsedRealtime() >= nextStatsAt) {
                             val peakDb = if (intervalPeak == 0) -60f
                             else (20.0 * log10(intervalPeak / 32767.0)).toFloat().coerceIn(-60f, 0f)
@@ -80,7 +83,7 @@ class DjmPcmAudioSource(
                             break
                         }
                         try {
-                            Thread.sleep(2)
+                            Thread.sleep((2048L * 1000 / captureSampleRate / 4).coerceIn(2L, 10L))
                         } catch (_: InterruptedException) {
                             break
                         }

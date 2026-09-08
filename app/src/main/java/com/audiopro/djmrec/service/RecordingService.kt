@@ -122,8 +122,8 @@ class RecordingService : LifecycleService() {
         private const val CHANNEL_ID = "recording_channel"
         private const val NOTIFICATION_ID = 1001
         private const val METER_UPDATE_INTERVAL_MS = 66L // ~15 fps, plenty for a VU meter
-        private const val WAVEFORM_UPDATE_INTERVAL_MS = 20L // 50 fps for smooth visual updates
-        private const val NOTIFICATION_UPDATE_INTERVAL_MS = 500L
+        private const val WAVEFORM_UPDATE_INTERVAL_MS = 33L // ~30 snapshots/s; UI scrolls at up to 60 fps
+        private const val NOTIFICATION_UPDATE_INTERVAL_MS = 1_000L
         private const val USB_SIGNAL_CHECK_INTERVAL_MS = 100L
         private const val USB_SIGNAL_CHECK_TIMEOUT_MS = 1500L
         private const val HEALTH_UPDATE_INTERVAL_MS = 2_000L
@@ -185,6 +185,8 @@ class RecordingService : LifecycleService() {
     private var isMonitoringOnly = false
     @Volatile
     private var waveformEnabled = true
+    @Volatile private var uiVisible = false
+    @Volatile private var waveformVisible = false
     private var lastCheckpointRealtime = 0L
     private var lastUsbStats = LongArray(7)
     private var usbHealthInitialized = false
@@ -204,7 +206,7 @@ class RecordingService : LifecycleService() {
                     right = ChannelLevel(peakDb = raw[2], rmsDb = raw[3], isClipping = clipping)
                 )
                 _elapsedMillis.value = AudioEngine.getElapsedMillis()
-                monitorHandler.postDelayed(this, METER_UPDATE_INTERVAL_MS)
+                monitorHandler.postDelayed(this, if (uiVisible) METER_UPDATE_INTERVAL_MS else 1_000L)
             }
         }
     }
@@ -213,10 +215,10 @@ class RecordingService : LifecycleService() {
         override fun run() {
             if (_state.value is RecordingState.Recording || _state.value is RecordingState.Paused ||
                 _state.value is RecordingState.Monitoring) {
-                if (waveformEnabled) {
+                if (waveformEnabled && uiVisible && waveformVisible) {
                     _waveformBins.value = AudioEngine.getWaveformBins()
+                    monitorHandler.postDelayed(this, WAVEFORM_UPDATE_INTERVAL_MS)
                 }
-                monitorHandler.postDelayed(this, WAVEFORM_UPDATE_INTERVAL_MS)
             }
         }
     }
@@ -267,7 +269,8 @@ class RecordingService : LifecycleService() {
                     missedPacketDelta = missedDelta,
                     resubmitFailures = resubmitDelta,
                     xRuns = xRunDelta,
-                    writerErrorCode = AudioEngine.getRecordingErrorCode()
+                    writerErrorCode = AudioEngine.getRecordingErrorCode(),
+                    selectedPeakDb = maxOf(_levels.value.left.peakDb, _levels.value.right.peakDb)
                 )
             )
             _health.value = health
@@ -310,13 +313,14 @@ class RecordingService : LifecycleService() {
                 previous = device?.deviceName
             }
         }
-        monitorThread = HandlerThread("AudioMonitorThread", Process.THREAD_PRIORITY_URGENT_AUDIO).apply { start() }
+        monitorThread = HandlerThread("AudioMonitorThread", Process.THREAD_PRIORITY_DEFAULT).apply { start() }
         monitorHandler = Handler(monitorThread.looper)
         liveStreamController = LiveStreamController(this)
         lifecycleScope.launch {
             var lastDiagnosticStatus: com.audiopro.djmrec.streaming.LiveStreamStatus? = null
             liveStreamController.state.collect {
-                if (it.status != lastDiagnosticStatus) {
+                val statusChanged = it.status != lastDiagnosticStatus
+                if (statusChanged) {
                     lastDiagnosticStatus = it.status
                     com.audiopro.djmrec.diagnostics.RemoteDiagnostics.event("Streaming", "${it.status}: ${it.message}")
                     if (it.status == com.audiopro.djmrec.streaming.LiveStreamStatus.ERROR)
@@ -324,6 +328,8 @@ class RecordingService : LifecycleService() {
                 }
                 _liveState.value = it
                 (application as DjmRecApplication).youtubeCoordinator.updateLiveState(it)
+                if (statusChanged && it.status == com.audiopro.djmrec.streaming.LiveStreamStatus.PREPARING &&
+                    it.platform == LivePlatform.YOUTUBE) (application as DjmRecApplication).youtubeCoordinator.startYouTubeLifecycle()
                 if (!it.isActive && cameraForegroundActive) {
                     cameraForegroundActive = false
                     if (_state.value is RecordingState.Monitoring ||
@@ -332,7 +338,7 @@ class RecordingService : LifecycleService() {
                         startForegroundNotification()
                     }
                 }
-                if (::monitorHandler.isInitialized) updateNotification()
+                if (statusChanged && ::monitorHandler.isInitialized) updateNotification()
             }
         }
     }
@@ -344,8 +350,23 @@ class RecordingService : LifecycleService() {
 
     fun setWaveformEnabled(enabled: Boolean) {
         waveformEnabled = enabled
-        AudioEngine.setWaveformEnabled(enabled)
+        updateVisualWork()
         if (!enabled) _waveformBins.value = emptyWaveform
+    }
+
+    fun setVisualsVisible(ui: Boolean, waveform: Boolean) {
+        uiVisible = ui
+        waveformVisible = waveform
+        updateVisualWork()
+    }
+
+    private fun updateVisualWork() {
+        if (!::monitorHandler.isInitialized) return
+        monitorHandler.post {
+            AudioEngine.setWaveformEnabled(waveformEnabled && uiVisible && waveformVisible)
+            monitorHandler.removeCallbacks(waveformRunnable)
+            if (waveformEnabled && uiVisible && waveformVisible) monitorHandler.post(waveformRunnable)
+        }
     }
 
     fun setRecordingGainDb(gainDb: Int) {
@@ -555,8 +576,11 @@ class RecordingService : LifecycleService() {
             ).coerceIn(96_000, 320_000)
         )
         cameraForegroundActive = usesCamera
-        startForegroundNotification()
-        if (config.platform == LivePlatform.YOUTUBE) (application as DjmRecApplication).youtubeCoordinator.startYouTubeLifecycle()
+        if (!startForegroundNotification()) {
+            cameraForegroundActive = false
+            liveStreamController.reject("Android blocked camera streaming. Keep the app open and try again.", platform, videoMode)
+            return
+        }
         liveStreamController.start(config, currentSampleRate)
     }
 

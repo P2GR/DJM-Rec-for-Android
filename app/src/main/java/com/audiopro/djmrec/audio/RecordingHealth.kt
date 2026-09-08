@@ -33,6 +33,7 @@ data class RecordingHealthInput(
     val resubmitFailures: Long,
     val xRuns: Int,
     val writerErrorCode: Int,
+    val selectedPeakDb: Float? = null,
     val minimumFreeBytes: Long = 64L * 1024 * 1024
 )
 
@@ -87,10 +88,10 @@ object RecordingHealthEvaluator {
                 input.remainingSeconds
             )
         }
-        if (input.usbIso && input.byteDelta > 0 && input.nonZeroByteDelta == 0L) {
+        if (input.usbIso && input.byteDelta > 0 && (input.nonZeroByteDelta == 0L || input.selectedPeakDb?.let { it <= -60f } == true)) {
             return RecordingHealth(
                 RecordingHealthLevel.SILENCE,
-                "USB connected, but signal is digital silence",
+                "USB connected; no audible signal on the selected channels",
                 input.freeBytes,
                 input.remainingSeconds
             )

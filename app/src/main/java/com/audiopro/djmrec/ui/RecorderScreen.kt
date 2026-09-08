@@ -123,7 +123,7 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
                         Text(if (waveform) "RGB" else "METERS", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
                     }
                     if (waveform && !compact) LiveRgbWaveform(viewModel.waveformBins, Modifier.fillMaxWidth().weight(1f), smooth = smooth,
-                        active = state is RecordingState.Monitoring || active)
+                        active = state is RecordingState.Monitoring || active, onVisible = viewModel::setWaveformVisible)
                     else if (!compact) Spacer(Modifier.weight(1f))
                     StereoVuMeter(levels)
                 }

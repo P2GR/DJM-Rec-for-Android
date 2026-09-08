@@ -31,6 +31,14 @@ class RecordingHealthEvaluatorTest {
     )
 
     @Test
+    fun `nonzero USB noise with silent selected channels is not ready`() {
+        assertEquals(RecordingHealthLevel.SILENCE,
+            RecordingHealthEvaluator.evaluate(input(recording = false).copy(selectedPeakDb = -60f)).level)
+        assertEquals(RecordingHealthLevel.GOOD,
+            RecordingHealthEvaluator.evaluate(input(recording = false).copy(selectedPeakDb = -20f)).level)
+    }
+
+    @Test
     fun `healthy stream reports good`() {
         assertEquals(RecordingHealthLevel.GOOD, RecordingHealthEvaluator.evaluate(input()).level)
     }

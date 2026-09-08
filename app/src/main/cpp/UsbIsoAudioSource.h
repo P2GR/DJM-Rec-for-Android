@@ -111,7 +111,7 @@ private:
     void handleCompletedTransfer(libusb_transfer* transfer);
     void handlePlaybackTransfer(libusb_transfer* transfer);
     void demuxAndEmit(const uint8_t* data, size_t length);
-    void updateMeasuredSampleRate(size_t frameCount);
+    void updateMeasuredSampleRate(size_t payloadBytes);
     bool submitTransfer(libusb_transfer* transfer);
     bool submitPlaybackTransfer(libusb_transfer* transfer);
     bool startPioneerPlaybackSilence(int sampleRate);
@@ -174,9 +174,12 @@ private:
     std::mutex mRateProbeMutex;
     std::condition_variable mRateProbeReady;
     std::chrono::steady_clock::time_point mRateProbeStart{};
-    uint64_t mRateProbeFrames = 0;
+    uint64_t mRateProbeBytes = 0;
     bool mRateProbeStarted = false;
-    bool mRateProbeResolved = false;
+    std::atomic<bool> mRateProbeResolved{false};
+    uint64_t mRateProbePackets = 0;
+    int mCapturePacketsPerSecond = 0;
+    int mConfirmedClockRate = 0;
 };
 
 } // namespace djmrec

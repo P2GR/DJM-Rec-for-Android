@@ -36,6 +36,7 @@ import kotlin.math.roundToInt
 @Composable
 fun CameraLiveScreen(viewModel: MainViewModel) {
     val live by viewModel.liveStreamState.collectAsState()
+    val youtube by viewModel.youtubeBroadcastState.collectAsState()
     val recording by viewModel.recordingState.collectAsState()
     val elapsed by viewModel.elapsedMillis.collectAsState()
     val gain by viewModel.recordingGainDb.collectAsState()
@@ -74,6 +75,11 @@ fun CameraLiveScreen(viewModel: MainViewModel) {
                     Text(if (live.status == LiveStreamStatus.LIVE) "LIVE · ${live.platform?.label.orEmpty()}" else live.status.name,
                         style = MaterialTheme.typography.labelLarge)
                     Text(cameraTime(if (live.startedAtMillis > 0) now - live.startedAtMillis else 0), fontFamily = FontFamily.Monospace)
+                }
+                if (live.platform == com.audiopro.djmrec.streaming.LivePlatform.YOUTUBE &&
+                    youtube.status != com.audiopro.djmrec.streaming.YouTubeBroadcastStatus.LIVE) {
+                    Text(youtube.message, style = MaterialTheme.typography.labelMedium, maxLines = 2,
+                        color = if (youtube.status == com.audiopro.djmrec.streaming.YouTubeBroadcastStatus.ERROR) AccentRed else Color.White)
                 }
                 CameraAudioMeter(viewModel)
                 Text("Mixer gain ${if (gain >= 0) "+" else ""}$gain dB · ${live.bitrateBitsPerSecond / 1000} kbps",

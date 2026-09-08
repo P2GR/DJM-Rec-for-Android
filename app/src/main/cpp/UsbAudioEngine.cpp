@@ -187,7 +187,7 @@ int UsbAudioEngine::openUsbIso(const UsbIsoAudioSource::Config& isoConfig, int32
 
     // UAC2 clock queries are optional and the DJM-A9 rejects GET_RANGE. Measure the active
     // endpoint cadence before creating an output file so its header matches the real stream.
-    const int measuredSampleRate = mUsbIsoSource->waitForMeasuredSampleRate(/*timeoutMs=*/750);
+    const int measuredSampleRate = mUsbIsoSource->waitForMeasuredSampleRate(/*timeoutMs=*/1500);
     if (measuredSampleRate <= 0) {
         LOGE("USB iso capture produced no usable sample-rate measurement");
         mUsbIsoSource->stop();

@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.41.0 (2026-09-08)
+
+- Cap waveform drawing at 60 fps, reduce snapshots to about 30 Hz, and stop native
+  waveform analysis/polling while hidden. Background meters update once per second;
+  recording, USB keepalive, streaming, and safety checks remain active.
+- Resolve USB rates from packet cadence instead of short wall-clock estimates. Never
+  use uncertain measurements such as 99,271 Hz as a recording/encoder format.
+- Convert high-rate mixer PCM to 44.1/48 kHz for streaming with anti-alias filtering.
+  Report separate audio and camera preparation errors and lower artwork video to 15 fps.
+- Replace the streaming form with Connect, Picture, and Go live steps, a fixed action
+  button, mixer meters, and retryable memory-only credentials. Preserve planned YouTube
+  broadcasts after pre-live failures and start authorization lifecycle from current state.
+- Report silent selected channels accurately even when USB packets contain low-level noise.
+- Real broadcast playback and measured battery savings still require device validation.
+
 ## v0.40.2 (2026-09-08)
 
 - Stop repeating healthy Bugfender capture reports. Log connection/health changes,

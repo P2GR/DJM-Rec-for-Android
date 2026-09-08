@@ -171,6 +171,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     @SuppressLint("StaticFieldLeak")
     private var boundService: RecordingService? = null
     private var isBound = false
+    private var uiVisible = false
+    private var waveformVisible = false
+
+    fun setUiVisible(visible: Boolean) {
+        uiVisible = visible
+        boundService?.setVisualsVisible(uiVisible, waveformVisible)
+    }
+
+    fun setWaveformVisible(visible: Boolean) {
+        waveformVisible = visible
+        boundService?.setVisualsVisible(uiVisible, waveformVisible)
+    }
     private var livePreview: SurfaceView? = null
 
     private val connection = object : ServiceConnection {
@@ -179,6 +191,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             boundService = service
             isBound = true
             _recordingState.value = service.state.value
+            service.setVisualsVisible(uiVisible, waveformVisible)
             service.setWaveformEnabled(_waveformEnabled.value)
             service.setRecordingGainDb(_recordingGainDb.value)
             viewModelScope.launch { service.saving.collect { saving.value = it } }

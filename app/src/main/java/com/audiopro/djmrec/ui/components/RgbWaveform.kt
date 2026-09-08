@@ -16,6 +16,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.audiopro.djmrec.ui.theme.BackgroundDark
 import com.audiopro.djmrec.ui.theme.TextSecondary
+import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.math.sqrt
@@ -23,7 +24,11 @@ import kotlin.math.sqrt
 /** Collect here so waveform updates do not recompose the entire recorder workspace. */
 @Composable
 fun LiveRgbWaveform(source: StateFlow<FloatArray>, modifier: Modifier = Modifier,
-                    smooth: Boolean = true, active: Boolean = true) {
+                    smooth: Boolean = true, active: Boolean = true, onVisible: (Boolean) -> Unit = {}) {
+    DisposableEffect(Unit) {
+        onVisible(true)
+        onDispose { onVisible(false) }
+    }
     val bins by source.collectAsState()
     RgbWaveform(bins, modifier, smooth, active)
 }
@@ -36,6 +41,7 @@ fun RgbWaveform(bins: FloatArray, modifier: Modifier = Modifier, smooth: Boolean
     val colors = remember { IntArray(512) }
     val path = remember { Path() }
     val frame = remember { mutableLongStateOf(0L) }
+    val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     LaunchedEffect(bins) {
         timeline.accept(bins)
         for (i in 0 until 512) {
@@ -45,10 +51,15 @@ fun RgbWaveform(bins: FloatArray, modifier: Modifier = Modifier, smooth: Boolean
             colors[i] = waveformRgb(bins.getOrElse(base + 1) { 0f },
                 bins.getOrElse(base + 2) { 0f }, bins.getOrElse(base + 3) { 0f })
         }
-        frame.longValue = System.nanoTime()
+        if (!active || !smooth) frame.longValue = System.nanoTime()
     }
-    LaunchedEffect(active, smooth) {
-        if (active && smooth) while (isActive) withFrameNanos { frame.longValue = it }
+    LaunchedEffect(active, smooth, owner) {
+        owner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+            val limiter = WaveformFrameLimiter()
+            if (active && smooth) while (isActive) withFrameNanos {
+                if (limiter.shouldRender(it)) frame.longValue = it
+            }
+        }
     }
     Canvas(modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)).background(BackgroundDark)
         .semantics { contentDescription = "Live waveform. Red bass below 250 Hz, green mids to 2 kHz, blue highs. Mixed bands blend RGB. New audio enters at right." }) {

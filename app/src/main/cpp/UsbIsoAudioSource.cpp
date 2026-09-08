@@ -1,5 +1,6 @@
 #include "UsbIsoAudioSource.h"
 #include "UsbPcmFormat.h"
+#include "UsbSampleRate.h"
 
 #include <android/log.h>
 #include <libusb.h>
@@ -58,7 +59,8 @@ struct IsoEndpointInfo {
 IsoEndpointInfo findIsoOutEndpoint(
     const std::vector<uint8_t>& descriptors,
     int targetInterface,
-    int targetAlternateSetting
+    int targetAlternateSetting,
+    int targetAddress = -1
 ) {
     int currentInterface = -1;
     int currentAlternateSetting = -1;
@@ -75,7 +77,7 @@ IsoEndpointInfo findIsoOutEndpoint(
                    currentAlternateSetting == targetAlternateSetting) {
             const int address = descriptors[offset + 2];
             const int attributes = descriptors[offset + 3];
-            if ((address & LIBUSB_ENDPOINT_IN) == 0 &&
+            if ((targetAddress >= 0 ? address == targetAddress : (address & LIBUSB_ENDPOINT_IN) == 0) &&
                 (attributes & LIBUSB_TRANSFER_TYPE_MASK) == LIBUSB_TRANSFER_TYPE_ISOCHRONOUS) {
                 const int rawMaxPacket = descriptors[offset + 4] | (descriptors[offset + 5] << 8);
                 const int transactions = 1 + ((rawMaxPacket >> 11) & 0x03);
@@ -239,21 +241,6 @@ bool setClockFrequency(libusb_device_handle* handle, int interfaceNumber, int cl
     return true;
 }
 
-int normalizeSampleRate(int measuredRate) {
-    constexpr int kCommonRates[] = {8000, 11025, 12000, 16000, 22050, 24000, 32000,
-                                    44100, 48000, 88200, 96000, 176400, 192000};
-    int closest = measuredRate;
-    int closestDistance = INT_MAX;
-    for (const int candidate : kCommonRates) {
-        const int distance = std::abs(measuredRate - candidate);
-        if (distance < closestDistance) {
-            closest = candidate;
-            closestDistance = distance;
-        }
-    }
-    // Wall-clock probing is deliberately approximate. Snap only when a standard USB rate is close.
-    return closestDistance * 100 <= closest * 3 ? closest : measuredRate;
-}
 } // namespace
 
 UsbIsoAudioSource::~UsbIsoAudioSource() {
@@ -308,7 +295,10 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
     mResubmitFailures.store(0, std::memory_order_relaxed);
     {
         std::lock_guard<std::mutex> lock(mRateProbeMutex);
-        mRateProbeFrames = 0;
+        mRateProbeBytes = 0;
+        mRateProbePackets = 0;
+        mCapturePacketsPerSecond = 0;
+        mConfirmedClockRate = mMixerProfile ? mMixerProfile->fixedCaptureInSampleRate : 0;
         mRateProbeStarted = false;
         mRateProbeResolved = false;
     }
@@ -333,6 +323,14 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
         libusb_exit(mContext);
         mContext = nullptr;
         return libusbErrorString("libusb_wrap_sys_device", rc);
+    }
+
+    const auto captureEndpoint = findIsoOutEndpoint(config.rawDescriptors, config.interfaceNumber,
+        config.alternateSetting, config.endpointAddress);
+    const int captureSpeed = libusb_get_device_speed(libusb_get_device(mHandle));
+    if (captureEndpoint.address >= 0 && captureSpeed >= LIBUSB_SPEED_FULL) {
+        const int base = captureSpeed >= LIBUSB_SPEED_HIGH ? 8000 : 1000;
+        mCapturePacketsPerSecond = base >> std::clamp(captureEndpoint.interval - 1, 0, 15);
     }
 
     // Best-effort; harmless if unsupported (Android has no competing kernel audio-class driver
@@ -389,6 +387,7 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
             }
             if (activeRate > 0) {
                 mOpenedSampleRate.store(activeRate, std::memory_order_release);
+                mConfirmedClockRate = activeRate;
             }
             LOGI("Clock source %d active rate: %d Hz", config.clockSourceId,
                  mOpenedSampleRate.load(std::memory_order_acquire));
@@ -468,7 +467,10 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
             config.alternateSetting, config.endpointAddress)) {
         setPioneerCaptureSampleRate(mHandle, config.endpointAddress, config.requestedSampleRate, "USB Audio Class 1");
         const int endpointRate = readPioneerEndpointSampleRate(mHandle, config.endpointAddress, "USB Audio Class 1");
-        if (endpointRate > 0) mOpenedSampleRate.store(endpointRate, std::memory_order_release);
+        if (endpointRate > 0) {
+            mOpenedSampleRate.store(endpointRate, std::memory_order_release);
+            mConfirmedClockRate = endpointRate;
+        }
     }
 
     if (mMixerProfile && mMixerProfile->usesEndpointSampleRate) {
@@ -489,6 +491,7 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
             mHandle, config.endpointAddress, mMixerProfile->name);
         if (endpointRate > 0) {
             mOpenedSampleRate.store(endpointRate, std::memory_order_release);
+            // Vendor endpoint GET may echo a requested rate; packet timing verifies the wire.
             LOGI("%s capture endpoint reports active rate %d Hz", mMixerProfile->name, endpointRate);
         }
     }
@@ -696,6 +699,7 @@ void UsbIsoAudioSource::handleCompletedTransfer(libusb_transfer* transfer) {
             continue;
         }
         mPacketsCompleted.fetch_add(1, std::memory_order_relaxed);
+        updateMeasuredSampleRate(packet.actual_length);
         if (packet.actual_length == 0) {
             mPacketsEmpty.fetch_add(1, std::memory_order_relaxed);
             continue;
@@ -891,35 +895,37 @@ int UsbIsoAudioSource::waitForMeasuredSampleRate(int timeoutMs) {
     mRateProbeReady.wait_for(lock, std::chrono::milliseconds(std::max(0, timeoutMs)), [this] {
         return mRateProbeResolved || !mRunning.load(std::memory_order_acquire);
     });
+    if (!mRunning.load(std::memory_order_acquire)) return 0;
+    if (!mRateProbeResolved) {
+        mOpenedSampleRate.store(mConfirmedClockRate, std::memory_order_release);
+        mRateProbeResolved = true;
+    }
     return mOpenedSampleRate.load(std::memory_order_acquire);
 }
 
-void UsbIsoAudioSource::updateMeasuredSampleRate(size_t frameCount) {
+void UsbIsoAudioSource::updateMeasuredSampleRate(size_t payloadBytes) {
+    if (mRateProbeResolved.load(std::memory_order_acquire)) return;
     std::lock_guard<std::mutex> lock(mRateProbeMutex);
-    if (mRateProbeResolved) {
-        return;
-    }
-
+    if (mRateProbeResolved) return;
     const auto now = std::chrono::steady_clock::now();
     if (!mRateProbeStarted) {
         mRateProbeStart = now;
         mRateProbeStarted = true;
+        return; // The first packet's time interval started before the observation.
     }
-    mRateProbeFrames += frameCount;
-
-    const auto elapsed = std::chrono::duration<double>(now - mRateProbeStart).count();
-    if (elapsed < 0.25) {
-        return;
-    }
-
-    const int measuredRate = static_cast<int>(std::lround(mRateProbeFrames / elapsed));
-    if (measuredRate > 0) {
-        const int normalizedRate = normalizeSampleRate(measuredRate);
-        mOpenedSampleRate.store(normalizedRate, std::memory_order_release);
-        LOGI("Measured USB wire rate: %d Hz (raw=%d Hz, requested=%d Hz)",
-             normalizedRate, measuredRate, mConfig.requestedSampleRate);
-    }
-    mRateProbeResolved = true;
+    mRateProbeBytes += payloadBytes;
+    ++mRateProbePackets;
+    const double elapsed = std::chrono::duration<double>(now - mRateProbeStart).count();
+    if (mCapturePacketsPerSecond > 0 ? mRateProbePackets < mCapturePacketsPerSecond / 2 : elapsed < 1.0) return;
+    const uint64_t frames = mRateProbeBytes / (mConfig.subframeSize * mConfig.totalChannels);
+    const int rawWallRate = elapsed > 0 ? static_cast<int>(std::lround(frames / elapsed)) : 0;
+    const int packetRate = usbPacketSampleRate(frames, mRateProbePackets, mCapturePacketsPerSecond);
+    const int resolved = mConfirmedClockRate > 0 ? mConfirmedClockRate :
+        mCapturePacketsPerSecond > 0 ? packetRate : nominalUsbSampleRate(rawWallRate);
+    mOpenedSampleRate.store(resolved, std::memory_order_release);
+    LOGI("USB rate resolved=%d Hz; packet_rate=%d Hz; wall_estimate=%d Hz; confirmed_clock=%d Hz; packets_per_second=%d",
+        resolved, packetRate, rawWallRate, mConfirmedClockRate, mCapturePacketsPerSecond);
+    mRateProbeResolved.store(true, std::memory_order_release);
     mRateProbeReady.notify_all();
 }
 
@@ -972,7 +978,6 @@ void UsbIsoAudioSource::demuxAndEmit(const uint8_t* data, size_t length) {
     const size_t consumedBytes = completeFrames * frameSize;
 
     if (completeFrames > 0) {
-        updateMeasuredSampleRate(completeFrames);
         if (mScratch.size() < completeFrames * 2) {
             mScratch.resize(completeFrames * 2);
         }

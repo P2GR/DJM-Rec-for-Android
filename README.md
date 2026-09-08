@@ -37,13 +37,15 @@ analog output.
 ## Features
 
 - Recorder controls and setup access without scrolling the recording page.
-- RGB waveform: red bass, green mids, blue highs, with blended colors and smooth scrolling.
+- RGB waveform: red bass, green mids, blue highs, with blended colors and up to 60 fps scrolling.
+  Waveform processing sleeps when the display is hidden.
 - Stereo meters and clipping indication.
 - WAV/FLAC recording, pause/resume and track markers.
 - Saved-set search, playback, sharing, export, rename and deletion.
 - Settings for automatic arming, waveform animation, screen wake and stop confirmation.
 - Background recording with a persistent notification. **Save & close** saves and ends capture.
 - Experimental livestreaming: YouTube with Google sign-in, Mixcloud and custom RTMP/RTMPS.
+  Follow **Connect, Picture, Go live**, then check the service preview.
   Camera streams open a full preview with local meters, timers, gain controls and confirmed stop.
   Provider setup and real broadcasts still need validation.
 

@@ -36,6 +36,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        viewModel.setUiVisible(true)
+    }
+
+    override fun onStop() {
+        viewModel.setUiVisible(false)
+        super.onStop()
+    }
+
     override fun onResume() {
         super.onResume()
         viewModel.ensureLiveMonitoring()

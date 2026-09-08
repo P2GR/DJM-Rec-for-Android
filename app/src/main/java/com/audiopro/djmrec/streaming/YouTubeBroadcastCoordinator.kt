@@ -13,8 +13,14 @@ class YouTubeBroadcastCoordinator {
     fun updateLiveState(state: LiveStreamState) {
         val previous = liveStreamState.value
         liveStreamState.value = state
-        if (previous.platform == LivePlatform.YOUTUBE && previous.isActive && !state.isActive)
-            finishYouTubeSession()
+        if (previous.platform == LivePlatform.YOUTUBE && previous.isActive && !state.isActive) {
+            if (retainPlannedYouTubeBroadcast(state.status, youtubeTransitionRequested)) {
+                youtubeLifecycleJob?.cancel()
+                youtubeLifecycleJob = null
+                _youtubeBroadcastState.value = _youtubeBroadcastState.value.copy(
+                    status = YouTubeBroadcastStatus.PLANNED, message = "Broadcast kept ready. Fix the input/camera issue and retry.")
+            } else finishYouTubeSession()
+        }
     }
     private val _streamSetupState = MutableStateFlow(StreamSetupState())
     val streamSetupState: StateFlow<StreamSetupState> = _streamSetupState.asStateFlow()
@@ -25,8 +31,10 @@ class YouTubeBroadcastCoordinator {
     private var youtubeLifecycleJob: Job? = null
     private var youtubeCompletionJob: Job? = null
     private var youtubeLiveSession: YouTubeLiveSession? = null
+    private var youtubeTransitionRequested = false
 
     fun prepareYouTubeDestination(accessToken: String, title: String, privacy: YouTubePrivacy) {
+        youtubeTransitionRequested = false
         streamSetupJob?.cancel()
         streamSetupJob = scope.launch {
             _streamSetupState.value = StreamSetupState(
@@ -91,6 +99,7 @@ class YouTubeBroadcastCoordinator {
                     status = YouTubeBroadcastStatus.STARTING,
                     message = "YouTube detected RTMP. Starting broadcast..."
                 )
+                youtubeTransitionRequested = true
                 StreamingSetupRepository.startYouTubeBroadcast(session)
                 _youtubeBroadcastState.value = _youtubeBroadcastState.value.copy(
                     status = YouTubeBroadcastStatus.LIVE,
@@ -159,3 +168,6 @@ class YouTubeBroadcastCoordinator {
     }
 
 }
+
+internal fun retainPlannedYouTubeBroadcast(status: LiveStreamStatus, transitionRequested: Boolean): Boolean =
+    status == LiveStreamStatus.ERROR && !transitionRequested

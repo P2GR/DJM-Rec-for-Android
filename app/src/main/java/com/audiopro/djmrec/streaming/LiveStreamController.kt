@@ -64,7 +64,13 @@ class LiveStreamController(context: Context) : ConnectChecker {
             config.platform,
             config.videoMode
         )
-        executor.execute { startInternal(config, sampleRate, endpoint) }
+        executor.execute {
+            runCatching { startInternal(config, sampleRate, endpoint) }.onFailure { error ->
+                stopInternal(LiveStreamState(LiveStreamStatus.ERROR,
+                    "Livestream setup failed (${error.javaClass.simpleName}). Check camera access and retry.",
+                    config.platform, config.videoMode))
+            }
+        }
     }
 
     private fun startInternal(config: LiveStreamConfig, sampleRate: Int, endpoint: String) {
@@ -80,6 +86,13 @@ class LiveStreamController(context: Context) : ConnectChecker {
                     config.videoMode
                 )
             )
+            return
+        }
+        val audioFormat = StreamAudioFormat.fromCapture(sampleRate)
+        if (audioFormat == null) {
+            stopInternal(LiveStreamState(LiveStreamStatus.ERROR,
+                "Mixer reported unsupported rate $sampleRate Hz. Reconnect the mixer to detect its clock again.",
+                config.platform, config.videoMode))
             return
         }
         this.config = config
@@ -100,7 +113,7 @@ class LiveStreamController(context: Context) : ConnectChecker {
             }
         }
         val videoSource = createVideoSource(config, sourceFailure)
-        val audioSource = DjmPcmAudioSource(sourceFailure) { totalBytes, peakDb ->
+        val audioSource = DjmPcmAudioSource(sampleRate, sourceFailure) { totalBytes, peakDb ->
             _state.update { state ->
                 if (state.isActive) state.copy(audioPcmBytes = totalBytes, audioPeakDb = peakDb)
                 else state
@@ -119,27 +132,28 @@ class LiveStreamController(context: Context) : ConnectChecker {
         })
         candidate.getGlInterface().autoHandleOrientation = config.videoMode != LiveVideoMode.ARTWORK
         stream = candidate
-        val prepared = runCatching {
+        val preparation = runCatching {
             candidate.getStreamClient().apply {
                 setLogs(false)
                 setReTries(5)
                 setCheckServerAlive(true)
             }
-            prepareVideo(candidate, config) && candidate.prepareAudio(
-                sampleRate = sampleRate,
-                isStereo = true,
-                bitrate = config.audioBitrate
-            )
-        }.getOrDefault(false)
-        if (!prepared) {
-            stopInternal(
-                LiveStreamState(
-                    LiveStreamStatus.ERROR,
-                    "Phone could not prepare livestream encoders or camera",
-                    config.platform,
-                    config.videoMode
-                )
-            )
+            com.audiopro.djmrec.diagnostics.RemoteDiagnostics.event("StreamingAudio",
+                "LiveStreamController.prepare: capture=${audioFormat.captureRate}Hz stereo PCM16; " +
+                    "AAC=${audioFormat.encoderRate}Hz/${config.audioBitrate}bps; FIR resampling=${sampleRate != audioFormat.encoderRate}")
+            check(candidate.prepareAudio(sampleRate = audioFormat.encoderRate, isStereo = true,
+                bitrate = config.audioBitrate)) {
+                "AAC audio preparation failed at ${audioFormat.encoderRate} Hz stereo. Check device encoder support."
+            }
+            check(prepareVideo(candidate, config)) {
+                if (config.videoMode == LiveVideoMode.ARTWORK) "Artwork/H.264 preparation failed. Choose a readable image."
+                else "Camera/H.264 preparation failed. Close other camera apps and check camera permission."
+            }
+        }
+        if (preparation.isFailure) {
+            stopInternal(LiveStreamState(LiveStreamStatus.ERROR,
+                preparation.exceptionOrNull()?.message ?: "Livestream preparation failed",
+                config.platform, config.videoMode))
             return
         }
         if (config.videoMode != LiveVideoMode.ARTWORK) {
@@ -458,7 +472,7 @@ class LiveStreamController(context: Context) : ConnectChecker {
                     width = width,
                     height = height,
                     bitrate = config.videoBitrate,
-                    fps = 30,
+                    fps = if (config.videoMode == LiveVideoMode.ARTWORK) 15 else 30,
                     iFrameInterval = 2,
                     rotation = rotation
                 )
