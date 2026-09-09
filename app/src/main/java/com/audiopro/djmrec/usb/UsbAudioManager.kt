@@ -89,7 +89,6 @@ class UsbAudioManager(private val context: Context) {
     }
 
     private var registered = false
-    private var rootModeEnabled = false
 
     /**
      * Kept open (not `.close()`'d) for as long as native libusb capture is running -- its fd
@@ -170,28 +169,10 @@ class UsbAudioManager(private val context: Context) {
     /** Explicit UI-triggered scan. If Android exposes the mixer in UsbManager, this requests permission/opens it. */
     fun scanForConnectedMixer(reason: String = "manual-rescan"): Boolean {
         refreshInputs()
-        if (rootModeEnabled) {
-            // Persistent host-mode + kernel USB scan for the DJM REC port.
-            val hostResult = RootUsbHostController.forcePersistentHostMode()
-            Log.i(TAG, "$reason: root persistent host exit=${hostResult.exitCode} timedOut=${hostResult.timedOut}\n${hostResult.output}")
-            RootUsbHostController.grantUsbDeviceAccess(RootUsbHostController.getAppUid())
-            val kernelScan = RootUsbHostController.scanKernelUsbDevices()
-            Log.i(TAG, "$reason: kernel USB scan exit=${kernelScan.exitCode} timedOut=${kernelScan.timedOut}\n${kernelScan.output}")
-        }
         logEnumeratedDevices(reason)
         val device = findConnectedAudioClassDevice()
         if (device == null) {
             Log.w(TAG, "$reason: no connected device exposes a supported audio capture interface")
-            if (rootModeEnabled) {
-                // The framework says nothing is attached -- ask the kernel directly whether it
-                // ever even saw the mixer negotiate, independent of what UsbManager reports.
-                val kernelLog = RootUsbHostController.captureKernelUsbLog()
-                Log.w(
-                    TAG,
-                    "$reason: kernel dmesg (usb/typec/dwc3/xhci) exit=${kernelLog.exitCode} " +
-                        "timedOut=${kernelLog.timedOut}\n${kernelLog.output}"
-                )
-            }
             _deviceState.value = null
             _connectionNotice.value = if (_inputs.value.isEmpty()) "Connect a mixer or USB audio interface using a data cable."
                 else "Connected USB devices expose no audio capture input. Use the PC/Mac audio port, not a storage or Link Export connection."
@@ -200,11 +181,6 @@ class UsbAudioManager(private val context: Context) {
         Log.i(TAG, "$reason: found USB audio class device ${device.deviceName}; connecting")
         onDeviceAttached(device)
         return true
-    }
-
-    fun setRootModeEnabled(enabled: Boolean) {
-        rootModeEnabled = enabled
-        Log.i(TAG, "Root USB assist mode enabled=$enabled")
     }
 
     private fun logEnumeratedDevices(reason: String) {

@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.42.0 (2026-09-09)
+
+- Add opt-in Ethernet Pro DJ Link discovery and track metadata for CDJ-2000NXS2 players,
+  with a shared application API for deck status and now-playing information.
+- Align automatic track markers with recorded audio and add customizable top/bottom
+  now-playing banners to camera and artwork livestreams.
+- Add network selection and USB descriptor checks. DJM-A9 computer USB-B track metadata
+  remains unverified; this integration uses a separate Ethernet connection.
+- Remove obsolete root/ALSA capture paths and their settings, retaining the Android USB
+  capture pipeline and diagnostics.
+- USB protocol probes and raw packet research tools remain in the separate experimental
+  branch and app build. Live mixer/player validation is still required.
+
 ## v0.41.3 (2026-09-08)
 
 - Show the installed app version in Settings and add a manual update check with clear current,

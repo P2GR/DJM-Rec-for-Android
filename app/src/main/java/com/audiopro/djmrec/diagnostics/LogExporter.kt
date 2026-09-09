@@ -14,7 +14,6 @@ import com.audiopro.djmrec.BuildConfig
 import com.audiopro.djmrec.audio.AudioEngine
 import com.audiopro.djmrec.storage.RecordingOutputManager
 import com.audiopro.djmrec.storage.RecordingSessionStore
-import com.audiopro.djmrec.usb.RootUsbHostController
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
@@ -34,7 +33,6 @@ object LogExporter {
 
     private const val TAG = "LogExporter"
     private const val PREFS_NAME = "settings"
-    private const val KEY_ROOT_USB_MODE = "root_usb_mode"
     private const val KEY_USB_CHANNEL_OFFSET = "usb_channel_offset"
     private const val KEY_FORCE_ANDROID_CAPTURE = "force_android_capture"
 
@@ -57,7 +55,6 @@ object LogExporter {
         UsbDiagnosticsCollector.append(context, sb, nativeSummary)
         appendAudioSection(context, sb)
         appendPowerSection(context, sb)
-        appendRootSection(context, sb)
         appendUsbCaptureSettingsSection(context, sb)
         appendUsbTransferStatsSection(sb, nativeSummary)
         appendRecordingSafetySection(context, sb)
@@ -169,58 +166,13 @@ object LogExporter {
         sb.appendLine()
     }
 
-    private fun appendRootSection(context: Context, sb: StringBuilder) {
-        val rootModeEnabled = context
-            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getBoolean(KEY_ROOT_USB_MODE, false)
-        sb.appendLine("=== Root USB assist ===")
-        sb.appendLine("enabled in app settings: $rootModeEnabled")
-        if (rootModeEnabled) {
-            val status = RootUsbHostController.collectRootStatus()
-            sb.appendLine("su exit=${status.exitCode} timedOut=${status.timedOut}")
-            sb.appendLine(status.output)
-
-            val alsaCandidates = RootUsbHostController.findAlsaCaptureDevices(status.output)
-            sb.appendLine("root ALSA capture candidates (${alsaCandidates.size}):")
-            if (alsaCandidates.isEmpty()) {
-                sb.appendLine("  none")
-            } else {
-                alsaCandidates.forEach { candidate ->
-                    sb.appendLine("  hw:${candidate.card},${candidate.device} ${candidate.path} ${candidate.description}")
-                }
-            }
-
-            val kernelUsbScan = RootUsbHostController.scanKernelUsbDevices()
-            sb.appendLine("--- kernel-level USB device scan (bypasses Android UsbManager) ---")
-            sb.appendLine("scan exit=${kernelUsbScan.exitCode} timedOut=${kernelUsbScan.timedOut}")
-            sb.appendLine(kernelUsbScan.output)
-
-            sb.appendLine("--- kernel dmesg (usb/typec/dwc3/xhci lines, last 150) ---")
-            sb.appendLine(
-                "This is the KERNEL's own view of USB attach events, independent of what " +
-                    "Android's UsbManager reports above. If you see 'new high-speed USB device' " +
-                    "and descriptor reads succeeding for the mixer here, the hardware negotiation " +
-                    "worked and Android's framework is the one hiding it from apps -- a very " +
-                    "different (and more fixable) problem than the kernel never seeing it at all."
-            )
-            val kernelLog = RootUsbHostController.captureKernelUsbLog()
-            sb.appendLine("dmesg exit=${kernelLog.exitCode} timedOut=${kernelLog.timedOut}")
-            sb.appendLine(kernelLog.output)
-        } else {
-            sb.appendLine("disabled; enable it from the settings button if this rooted phone needs host-role forcing")
-        }
-        sb.appendLine()
-    }
-
     private fun appendUsbCaptureSettingsSection(context: Context, sb: StringBuilder) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val offset = prefs.getInt(KEY_USB_CHANNEL_OFFSET, -1)
         val forceAndroidCapture = prefs.getBoolean(KEY_FORCE_ANDROID_CAPTURE, false)
-        val rootModeEnabled = prefs.getBoolean(KEY_ROOT_USB_MODE, false)
         sb.appendLine("=== USB capture settings ===")
         sb.appendLine(
             "capture path: " + when {
-                rootModeEnabled -> "Root ALSA /dev/snd"
                 forceAndroidCapture -> "Android audio stack"
                 else -> "Raw libusb isochronous"
             }

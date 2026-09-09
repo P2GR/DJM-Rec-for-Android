@@ -42,6 +42,7 @@ class LiveStreamController(context: Context) : ConnectChecker {
     @Volatile
     private var validationFuture: ScheduledFuture<*>? = null
     private var progressFuture: ScheduledFuture<*>? = null
+    private var bannerFuture: ScheduledFuture<*>? = null
     private val progressWatchdog = MediaProgressWatchdog()
     private val cameraFramesCaptured = AtomicLong(0)
     @Volatile
@@ -166,6 +167,18 @@ class LiveStreamController(context: Context) : ConnectChecker {
         )
         runCatching {
             candidate.startStream(endpoint)
+            val link = (appContext as com.audiopro.djmrec.DjmRecApplication).djLink
+            var previousBanner: Pair<String, com.audiopro.djmrec.prolink.NowPlayingOptions>? = null
+            bannerFuture = executor.scheduleWithFixedDelay({
+                if (stream !== candidate) return@scheduleWithFixedDelay
+                val options = link.options.value
+                val banner = options.text(link.state.value) to options
+                if (banner != previousBanner) {
+                    runCatching {
+                        candidate.getGlInterface().setFilter(NowPlayingBanner.render(banner.first, options, config.portrait))
+                    }.onSuccess { previousBanner = banner }
+                }
+            }, 0, 500, TimeUnit.MILLISECONDS)
             previewView?.let(::startPreviewIfReady)
         }.onFailure { error ->
             Log.e(TAG, "Could not start RTMP stream", error)
@@ -211,6 +224,8 @@ class LiveStreamController(context: Context) : ConnectChecker {
     }
 
     private fun stopInternal(finalState: LiveStreamState?, preservePreview: Boolean = false) {
+        bannerFuture?.cancel(false)
+        bannerFuture = null
         validationFuture?.cancel(false)
         validationFuture = null
         progressFuture?.cancel(false)

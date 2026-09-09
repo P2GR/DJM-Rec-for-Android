@@ -74,15 +74,6 @@ object AudioEngine {
         sampleRateHint: Int
     ): Int
 
-    external fun openRootAlsa(
-        card: Int,
-        device: Int,
-        sampleRate: Int,
-        channels: Int,
-        bitDepth: Int,
-        extractChannelOffset: Int
-    ): Int
-
     /**
      * Begins pulling from the ring buffer into the selected encoder and writing to [outputPath].
      * [format] is [RecordingFormat.nativeValue].
