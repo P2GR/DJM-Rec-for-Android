@@ -131,7 +131,8 @@ android {
         val variant = this
         outputs.all {
             val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
-            output.outputFileName = "DJM-Rec-for-Android-v${variant.versionName}-${variant.buildType.name}.apk"
+            val buildSuffix = if (variant.buildType.name == "experimental") "" else "-${variant.buildType.name}"
+            output.outputFileName = "DJM-Rec-for-Android-v${variant.versionName}$buildSuffix.apk"
         }
     }
 

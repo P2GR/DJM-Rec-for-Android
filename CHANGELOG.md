@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.43.0-experimental (2026-09-09)
+
+- Target the next minor release after stable 0.42.x, with version code 20.
+- Align experimental app version, APK filename and GitHub prerelease title/tag.
+- Retain Pro DJ Link and USB protocol research exclusively in the experimental app.
+
+
 ## v0.41.3 (2026-09-08)
 
 - Show the installed app version in Settings and add a manual update check with clear current,

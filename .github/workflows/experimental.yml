@@ -37,6 +37,7 @@ jobs:
         run: |
           sha256sum app/build/outputs/apk/experimental/*.apk > app/build/outputs/apk/experimental/SHA256SUMS
           git rev-parse HEAD > app/build/outputs/apk/experimental/SOURCE_COMMIT
+          cp version.properties app/build/outputs/apk/experimental/version.properties
       - name: Upload experimental APK
         uses: actions/upload-artifact@v4
         with:
@@ -73,26 +74,33 @@ jobs:
           mapfile -t apks < <(find experimental-output -maxdepth 1 -name '*.apk')
           test "${#apks[@]}" -eq 1
           test "$(cat experimental-output/SOURCE_COMMIT)" = "$GITHUB_SHA"
-          cp "${apks[0]}" release-assets/DJM-REC-experimental.apk
+          VERSION=$(sed -n 's/^VERSION_NAME=//p' experimental-output/version.properties | tr -d '\r')
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          RELEASE_TAG="v${VERSION}-experimental"
+          APK_NAME="DJM-Rec-for-Android-${RELEASE_TAG}.apk"
+          test "$(basename "${apks[0]}")" = "$APK_NAME"
+          echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
+          echo "APK_NAME=$APK_NAME" >> "$GITHUB_ENV"
+          cp "${apks[0]}" "release-assets/$APK_NAME"
           cp experimental-output/SOURCE_COMMIT release-assets/SOURCE_COMMIT
           cd release-assets
-          sha256sum DJM-REC-experimental.apk > DJM-REC-experimental.apk.sha256
-      - name: Publish rolling experimental prerelease
+          sha256sum "$APK_NAME" > "$APK_NAME.sha256"
+      - name: Publish versioned experimental prerelease
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
           # This tag identifies the downloadable experimental build, never a stable release.
-          if gh api "repos/$GH_REPO/git/ref/tags/experimental-latest" > /dev/null 2>&1; then
-            gh api --method PATCH "repos/$GH_REPO/git/refs/tags/experimental-latest" \
+          if gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG" > /dev/null 2>&1; then
+            gh api --method PATCH "repos/$GH_REPO/git/refs/tags/$RELEASE_TAG" \
               -f sha="$GITHUB_SHA" -F force=true > /dev/null
           else
             gh api --method POST "repos/$GH_REPO/git/refs" \
-              -f ref=refs/tags/experimental-latest -f sha="$GITHUB_SHA" > /dev/null
+              -f ref=refs/tags/$RELEASE_TAG -f sha="$GITHUB_SHA" > /dev/null
           fi
           cat > "$RUNNER_TEMP/experimental-notes.md" <<EOF
-          Latest successful experimental build. Install **DJM-REC-experimental.apk** below.
+          Experimental preview $RELEASE_TAG. Install **$APK_NAME** below.
 
           Separate package: com.audiopro.djmrec.experimental. Contains Pro DJ Link and USB protocol research; hardware support remains experimental.
 
@@ -101,10 +109,10 @@ jobs:
           Source commit: $GITHUB_SHA
           Build: https://github.com/$GH_REPO/actions/runs/$GITHUB_RUN_ID
           EOF
-          if ! gh release view experimental-latest > /dev/null 2>&1; then
-            gh release create experimental-latest --verify-tag --draft --prerelease --latest=false \
-              --title "Experimental — latest build" --notes-file "$RUNNER_TEMP/experimental-notes.md"
+          if ! gh release view $RELEASE_TAG > /dev/null 2>&1; then
+            gh release create $RELEASE_TAG --verify-tag --draft --prerelease --latest=false \
+              --title "$RELEASE_TAG" --notes-file "$RUNNER_TEMP/experimental-notes.md"
           fi
-          gh release upload experimental-latest release-assets/* --clobber
-          gh release edit experimental-latest --draft=false --prerelease --latest=false \
-            --title "Experimental — latest build" --notes-file "$RUNNER_TEMP/experimental-notes.md"
+          gh release upload $RELEASE_TAG release-assets/* --clobber
+          gh release edit $RELEASE_TAG --draft=false --prerelease --latest=false \
+            --title "$RELEASE_TAG" --notes-file "$RUNNER_TEMP/experimental-notes.md"

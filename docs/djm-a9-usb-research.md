@@ -70,11 +70,11 @@ cd C:\Web\djmrec-experimental
 Equivalent tasks: `lintExperimental testExperimentalUnitTest assembleExperimental`.
 
 - Package: `com.audiopro.djmrec.experimental`; label: **DJM REC Experimental**. Separate app data and install from stable/debug.
-- APK: `app/build/outputs/apk/experimental/`. Debug-signed, debuggable; development use only.
+- APK: `app/build/outputs/apk/experimental/DJM-Rec-for-Android-v0.43.0-experimental.apk`. Debug-signed, debuggable; development use only.
 - `BuildConfig.PROTOCOL_RESEARCH=true` and native `DJMREC_PROTOCOL_RESEARCH=1` only in this variant. Regular variants default to false/0.
 - Firebase disabled; raw traces are never uploaded automatically. Google OAuth is deliberately empty for the unregistered experimental package/signing identity. Google sign-in/YouTube API setup needs a separately registered client; custom RTMP does not depend on that client.
 - Stable update checks are disabled for the experimental package.
-- `.github/workflows/experimental.yml` runs on experimental pushes/PRs and manual dispatch on that branch. It runs lint/tests/build, produces APK checksums/source identity and retains artifacts for 14 days. After successful branch/manual builds, a separate job publishes the APK, checksum and source commit to the rolling `experimental-latest` prerelease. Pull requests never publish. This prerelease does not become the stable latest release. It runs remotely only after the branch is pushed.
+- `.github/workflows/experimental.yml` runs on experimental pushes/PRs and manual dispatch on that branch. It runs lint/tests/build, produces APK checksums/source identity and retains artifacts for 14 days. After successful branch/manual builds, a separate job publishes the APK, checksum and source commit to the versioned `v<VERSION_NAME>-experimental` prerelease. Pull requests never publish. This prerelease does not become the stable latest release. It runs remotely only after the branch is pushed.
 - CI debug keys can differ between runners and from your local key. Until dedicated experimental signing is provisioned, Android may require uninstalling an older experimental build before installing one from a different signer. Export recordings first.
 
 ## Capture coverage and limits

@@ -77,4 +77,6 @@ MIT. Bundled libraries retain their own licenses.
 
 The `experimental` branch adds a separate `assembleExperimental` APK and opt-in raw protocol diagnostics. See [A9 driver findings, build instructions and hardware capture procedure](docs/djm-a9-usb-research.md). USB-B track metadata is not yet verified.
 
-Download the latest experimental APK from the [Experimental prerelease](https://github.com/P2GR/DJM-Rec-for-Android/releases/tag/experimental-latest), or use the [direct APK link](https://github.com/P2GR/DJM-Rec-for-Android/releases/download/experimental-latest/DJM-REC-experimental.apk). Successful experimental branch builds update this prerelease automatically; pull requests only produce Actions artifacts.
+Download the latest experimental APK from the [Experimental prerelease](https://github.com/P2GR/DJM-Rec-for-Android/releases/tag/v0.43.0-experimental), or use the [direct APK link](https://github.com/P2GR/DJM-Rec-for-Android/releases/download/v0.43.0-experimental/DJM-Rec-for-Android-v0.43.0-experimental.apk). Successful experimental branch builds update this prerelease automatically; pull requests only produce Actions artifacts.
+
+Experimental previews target the next planned minor release: stable 0.42.x, experimental 0.43.0-experimental. The app version, APK filename and prerelease tag use that same version. Successful test builds refresh the preview for that version; SOURCE_COMMIT identifies the exact build.
