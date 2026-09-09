@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.42.1 (2026-09-09)
+
+- Remove Pro DJ Link discovery, automatic metadata markers and now-playing banners from
+  the main app. These features and USB protocol research belong exclusively to the
+  `experimental` branch and its separate application package.
+- Retain the USB capture cleanup and removal of obsolete root/ALSA paths.
+- Provision the missing repository Firebase configuration required by signed release builds.
+  The v0.42.0 release build failed before producing release APKs.
+
 ## v0.42.0 (2026-09-09)
 
 - Add opt-in Ethernet Pro DJ Link discovery and track metadata for CDJ-2000NXS2 players,

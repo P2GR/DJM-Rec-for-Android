@@ -51,10 +51,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -316,39 +312,6 @@ class RecordingService : LifecycleService() {
         monitorThread = HandlerThread("AudioMonitorThread", Process.THREAD_PRIORITY_DEFAULT).apply { start() }
         monitorHandler = Handler(monitorThread.looper)
         liveStreamController = LiveStreamController(this)
-        lifecycleScope.launch {
-            val link = (application as DjmRecApplication).djLink
-            val timeline = com.audiopro.djmrec.prolink.TrackTimeline()
-            val pending = linkedMapOf<Pair<android.net.Uri, String>, com.audiopro.djmrec.prolink.TrackTimeline.Entry>()
-            while (kotlinx.coroutines.currentCoroutineContext().isActive) {
-                val options = link.options.value
-                val snapshot = synchronized(this@RecordingService) {
-                    val output = currentOutput
-                    val uri = output?.uri.takeIf { options.automaticMarkers }
-                    uri to timeline.update(uri?.toString(), _state.value is RecordingState.Recording,
-                        if (uri != null) AudioEngine.getElapsedMillis() - currentPartStartedElapsed else 0L,
-                        link.state.value.nowPlaying(options.requireOnAir))
-                }
-                snapshot.first?.let { uri -> snapshot.second.forEach { pending[uri to it.id] = it } }
-                val iterator = pending.iterator()
-                while (iterator.hasNext()) {
-                    val (key, entry) = iterator.next()
-                    val count = withContext(Dispatchers.IO) {
-                        runCatching { com.audiopro.djmrec.storage.TrackMarkerStore.upsert(this@RecordingService, key.first, entry) }.getOrNull()
-                    }
-                    if (count != null) {
-                        if (currentOutput?.uri == key.first) events.markerCount.value = maxOf(events.markerCount.value, count)
-                        iterator.remove()
-                    } else {
-                        _health.value = RecordingHealth(RecordingHealthLevel.ERROR, "Could not save Link track marker; audio is still recording")
-                        break
-                    }
-                }
-                // Bound work if storage has failed for an extended period.
-                while (pending.size > 256) pending.remove(pending.keys.first())
-                delay(if (options.automaticMarkers || pending.isNotEmpty()) 250 else 1_000)
-            }
-        }
         lifecycleScope.launch {
             var lastDiagnosticStatus: com.audiopro.djmrec.streaming.LiveStreamStatus? = null
             liveStreamController.state.collect {
@@ -1079,7 +1042,6 @@ class RecordingService : LifecycleService() {
 
     @Synchronized
     override fun onDestroy() {
-        (application as DjmRecApplication).djLink.disconnect()
         (application as DjmRecApplication).youtubeCoordinator.finishYouTubeSession()
         if (::liveStreamController.isInitialized) liveStreamController.release()
         if (_state.value is RecordingState.Recording || _state.value is RecordingState.Paused) {

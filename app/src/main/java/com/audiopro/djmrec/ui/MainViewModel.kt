@@ -93,7 +93,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             ?: device.allInOneProfile?.recordChannelOffset
             ?: if (device.pioneerMixerProfile != null) UsbAudioManager.AUTO_CHANNEL_OFFSET else 0
     private val sessionEvents = (application as DjmRecApplication).sessionEvents
-    val djLink = (application as DjmRecApplication).djLink
     val lastSaved = sessionEvents.lastSaved.asStateFlow()
     val markerCount = sessionEvents.markerCount.asStateFlow()
     val keepScreenOn = MutableStateFlow(prefs.getBoolean("keep_screen_on", false))
