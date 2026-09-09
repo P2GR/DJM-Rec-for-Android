@@ -33,6 +33,7 @@ object UpdateChecker {
     private const val DEFER_INTERVAL_MS = 24L * 60L * 60L * 1000L
 
     suspend fun check(context: Context): AppUpdate? = withContext(Dispatchers.IO) {
+        if (BuildConfig.PROTOCOL_RESEARCH) return@withContext null
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
         val cached = cachedUpdate(context)
@@ -50,6 +51,7 @@ object UpdateChecker {
     }
 
     suspend fun checkNow(context: Context): UpdateCheckResult = withContext(Dispatchers.IO) {
+        if (BuildConfig.PROTOCOL_RESEARCH) return@withContext UpdateCheckResult.Failed("Experimental builds come from the experimental workflow, not stable releases.")
         runCatching { fetchLatestRelease() }.fold(
             onSuccess = { remote ->
                 cacheUpdate(context, remote)

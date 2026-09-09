@@ -1,3 +1,4 @@
+#include "ProtocolTrace.h"
 #include "UsbIsoAudioSource.h"
 #include "UsbPcmFormat.h"
 #include "UsbSampleRate.h"
@@ -107,7 +108,7 @@ bool readPioneerRouteSource(
         ? static_cast<uint16_t>(output + 1)
         : static_cast<uint16_t>(allOutputs ? 0 : output);
     const uint16_t length = static_cast<uint16_t>(allOutputs ? profile.outputCount : 2);
-    const int rc = libusb_control_transfer(
+    const int rc = djmrec::tracedUsbControl(
         handle, LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
         0x00, value, kPioneerRouteIndex, response, length, 1000);
     const int expectedOutput = profile.routeReadMode == PioneerRouteReadMode::SingleOutputOneBased
@@ -130,7 +131,7 @@ bool writePioneerRouteSource(
 ) {
     if (output < 0 || output >= profile.outputCount || source < 0 || source > 0xFF) return false;
     const auto value = static_cast<uint16_t>(((output + 1) << 8) | source);
-    const int rc = libusb_control_transfer(
+    const int rc = djmrec::tracedUsbControl(
         handle, LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
         0x03, value, kPioneerRouteIndex, nullptr, 0, 1000);
     if (rc != 0) {
@@ -152,7 +153,7 @@ bool setPioneerCaptureSampleRate(
         static_cast<uint8_t>((sampleRate >> 8) & 0xFF),
         static_cast<uint8_t>((sampleRate >> 16) & 0xFF)
     };
-    const int rc = libusb_control_transfer(
+    const int rc = djmrec::tracedUsbControl(
         handle,
         LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_ENDPOINT,
         kUac1RequestSetCurrent,
@@ -178,7 +179,7 @@ int readPioneerEndpointSampleRate(
     const char* profileName
 ) {
     uint8_t value[3]{};
-    const int rc = libusb_control_transfer(
+    const int rc = djmrec::tracedUsbControl(
         handle,
         LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_ENDPOINT,
         0x81,
@@ -197,7 +198,7 @@ int readPioneerEndpointSampleRate(
 
 int readClockFrequency(libusb_device_handle* handle, int interfaceNumber, int clockSourceId) {
     uint8_t value[4]{};
-    const int rc = libusb_control_transfer(
+    const int rc = djmrec::tracedUsbControl(
         handle,
         LIBUSB_ENDPOINT_IN | LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE,
         kUac2RequestGetCurrent,
@@ -224,7 +225,7 @@ bool setClockFrequency(libusb_device_handle* handle, int interfaceNumber, int cl
         static_cast<uint8_t>((sampleRate >> 16) & 0xFF),
         static_cast<uint8_t>((sampleRate >> 24) & 0xFF)
     };
-    const int rc = libusb_control_transfer(
+    const int rc = djmrec::tracedUsbControl(
         handle,
         LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_RECIPIENT_INTERFACE,
         kUac2RequestSetCurrent,

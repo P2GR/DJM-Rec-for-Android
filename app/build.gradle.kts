@@ -57,6 +57,7 @@ android {
         buildConfigField("String", "TWITCH_CLIENT_ID", "\"${twitchClientId.replace("\"", "\\\"")}\"")
         buildConfigField("String", "GOOGLE_OAUTH_CLIENT_ID", "\"$googlePublicClientId\"")
         buildConfigField("boolean", "FIREBASE_CONFIGURED", "true")
+        buildConfigField("boolean", "PROTOCOL_RESEARCH", "false")
 
         // Only ship arm64-v8a: all modern DJ-capable Android hardware (USB-C host + UAC2)
         // is 64-bit ARM. Keeping a single ABI keeps the native audio path easy to validate.
@@ -106,6 +107,22 @@ android {
                 nativeSymbolUploadEnabled = false
             }
         }
+        create("experimental") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".experimental"
+            versionNameSuffix = "-experimental"
+            matchingFallbacks += listOf("debug")
+            signingConfig = signingConfigs.getByName("debug")
+            buildConfigField("boolean", "PROTOCOL_RESEARCH", "true")
+            buildConfigField("boolean", "FIREBASE_CONFIGURED", "false")
+            // This package/signing identity has no registered Google OAuth client yet.
+            buildConfigField("String", "GOOGLE_OAUTH_CLIENT_ID", "\"\"")
+            externalNativeBuild { cmake { arguments += "-DDJMREC_PROTOCOL_RESEARCH=ON" } }
+            configure<CrashlyticsExtension> {
+                mappingFileUploadEnabled = false
+                nativeSymbolUploadEnabled = false
+            }
+        }
     }
 
     // ── APK output naming ──────────────────────────────────────────────────
@@ -146,7 +163,7 @@ android {
 
 // Firebase is production-only. Keep debug/local builds isolated from production reports and make
 // ordinary contributor builds work without the gitignored Firebase configuration file.
-tasks.matching { it.name in setOf("processDebugGoogleServices", "processLocalGoogleServices") }
+tasks.matching { it.name in setOf("processDebugGoogleServices", "processLocalGoogleServices", "processExperimentalGoogleServices") }
     .configureEach {
         enabled = false
     }

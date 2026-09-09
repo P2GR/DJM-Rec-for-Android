@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
 class DjmRecApplication : Application() {
     val youtubeCoordinator = com.audiopro.djmrec.streaming.YouTubeBroadcastCoordinator()
     val sessionEvents = com.audiopro.djmrec.audio.SessionEvents()
+    val djLink by lazy { com.audiopro.djmrec.prolink.ProLinkClient(this, if (BuildConfig.PROTOCOL_RESEARCH) com.audiopro.djmrec.diagnostics.ProtocolTrace else com.audiopro.djmrec.prolink.WireObserver.NONE) }
 
     lateinit var usbAudioManager: UsbAudioManager
         private set

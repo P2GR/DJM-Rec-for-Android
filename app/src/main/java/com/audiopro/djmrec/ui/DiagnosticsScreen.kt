@@ -45,6 +45,7 @@ fun DiagnosticsScreen() {
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text("Support & diagnostics", style = MaterialTheme.typography.headlineSmall)
+        ProtocolResearchPanel()
         Text(
             "Create a technical report when USB capture or file encoding behaves unexpectedly.",
             color = MaterialTheme.colorScheme.onSurfaceVariant

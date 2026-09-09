@@ -53,6 +53,13 @@ Keep USB connected during a set. Force-stop, reboot, cable loss and some Android
 restrictions can interrupt recording. Track markers identify moments in a stereo recording;
 independent multitrack recording is not implemented.
 
+## Experimental Pro DJ Link
+
+Experimental **Pro DJ Link** is available in Settings: CDJ discovery and track metadata, automatic
+recording markers, and a customizable now-playing livestream banner. Connect Android to the
+players' LAN as well as mixer USB for audio. **DJM-A9 USB-only Link data is unverified**, and physical
+NXS2/banner validation is still required. See [setup, protocol research and limitations](docs/pro-dj-link.md).
+
 ## Diagnostics and privacy
 
 Automatic Firebase Crashlytics diagnostics help improve mixer compatibility. Enabled by default
@@ -65,3 +72,7 @@ Android version, cable/port and what happened when reporting a problem.
 ## License
 
 MIT. Bundled libraries retain their own licenses.
+
+## Experimental USB / Pro DJ Link research
+
+The `experimental` branch adds a separate `assembleExperimental` APK and opt-in raw protocol diagnostics. See [A9 driver findings, build instructions and hardware capture procedure](docs/djm-a9-usb-research.md). USB-B track metadata is not yet verified.

@@ -8,7 +8,6 @@
 
 #include <oboe/Oboe.h>
 
-#include "AlsaPcmAudioSource.h"
 #include "RingBuffer.h"
 #include "UsbIsoAudioSource.h"
 #include "WaveformAnalyzer.h"
@@ -27,7 +26,7 @@ enum class ContainerFormat : int {
  * to reach into a multichannel interface for a specific channel pair that AAudio itself has
  * no way to select.
  */
-enum class SourceMode { None, Oboe, UsbIso, RootAlsa };
+enum class SourceMode { None, Oboe, UsbIso };
 
 /**
  * The whole native audio pipeline in one place:
@@ -56,7 +55,6 @@ public:
      * Returns the measured sample rate on success, or -1 on failure.
      */
     int openUsbIso(const UsbIsoAudioSource::Config& isoConfig, int32_t sampleRateHint);
-    int openRootAlsa(const AlsaPcmAudioSource::Config& alsaConfig);
 
     bool startRecording(const std::string& path, ContainerFormat format);
     bool startRecordingFd(int fd, ContainerFormat format);
@@ -108,7 +106,6 @@ private:
 
     std::shared_ptr<oboe::AudioStream> mStream;
     std::unique_ptr<UsbIsoAudioSource> mUsbIsoSource;
-    std::unique_ptr<AlsaPcmAudioSource> mAlsaSource;
     SourceMode mSourceMode = SourceMode::None;
     std::unique_ptr<RingBuffer> mRingBuffer;
     std::unique_ptr<RingBuffer> mLiveRingBuffer;

@@ -125,6 +125,8 @@ fun SettingsScreen(viewModel: MainViewModel) {
         Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 1.dp) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { RecordingSetupControls(viewModel) }
         }
+        val usbDevice by viewModel.deviceState.collectAsState()
+        ProLinkSettings(viewModel.djLink, usbDevice?.rawDescriptors ?: byteArrayOf())
         Text("Diagnostics & privacy", style = MaterialTheme.typography.titleLarge)
         PreferenceSwitch("Automatic diagnostics", "Send bounded mixer diagnostics, recording health, non-fatal errors and crash reports to Firebase Crashlytics. No recorded audio. Enabled by default in production builds.",
             diagnostics, com.audiopro.djmrec.diagnostics.RemoteDiagnostics::setEnabled)

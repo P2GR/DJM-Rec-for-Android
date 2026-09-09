@@ -51,6 +51,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -93,11 +97,7 @@ class RecordingService : LifecycleService() {
         const val CAPTURE_MODE_AAUDIO = 0
         /** [EXTRA_CAPTURE_MODE] value: raw libusb isochronous path via the EXTRA_USB_* extras. */
         const val CAPTURE_MODE_USB_ISO = 1
-        /** [EXTRA_CAPTURE_MODE] value: rooted /dev/snd ALSA capture path. */
-        const val CAPTURE_MODE_ROOT_ALSA = 2
         const val EXTRA_CAPTURE_MODE = "extra_capture_mode"
-        const val EXTRA_ALSA_CARD = "extra_alsa_card"
-        const val EXTRA_ALSA_DEVICE = "extra_alsa_device"
 
         // --- Raw USB iso capture params (only used when EXTRA_CAPTURE_MODE == CAPTURE_MODE_USB_ISO) ---
         /** `UsbDeviceConnection.getFileDescriptor()`; see [UsbAudioManager.openIsoCaptureHandle]. */
@@ -317,6 +317,39 @@ class RecordingService : LifecycleService() {
         monitorHandler = Handler(monitorThread.looper)
         liveStreamController = LiveStreamController(this)
         lifecycleScope.launch {
+            val link = (application as DjmRecApplication).djLink
+            val timeline = com.audiopro.djmrec.prolink.TrackTimeline()
+            val pending = linkedMapOf<Pair<android.net.Uri, String>, com.audiopro.djmrec.prolink.TrackTimeline.Entry>()
+            while (kotlinx.coroutines.currentCoroutineContext().isActive) {
+                val options = link.options.value
+                val snapshot = synchronized(this@RecordingService) {
+                    val output = currentOutput
+                    val uri = output?.uri.takeIf { options.automaticMarkers }
+                    uri to timeline.update(uri?.toString(), _state.value is RecordingState.Recording,
+                        if (uri != null) AudioEngine.getElapsedMillis() - currentPartStartedElapsed else 0L,
+                        link.state.value.nowPlaying(options.requireOnAir))
+                }
+                snapshot.first?.let { uri -> snapshot.second.forEach { pending[uri to it.id] = it } }
+                val iterator = pending.iterator()
+                while (iterator.hasNext()) {
+                    val (key, entry) = iterator.next()
+                    val count = withContext(Dispatchers.IO) {
+                        runCatching { com.audiopro.djmrec.storage.TrackMarkerStore.upsert(this@RecordingService, key.first, entry) }.getOrNull()
+                    }
+                    if (count != null) {
+                        if (currentOutput?.uri == key.first) events.markerCount.value = maxOf(events.markerCount.value, count)
+                        iterator.remove()
+                    } else {
+                        _health.value = RecordingHealth(RecordingHealthLevel.ERROR, "Could not save Link track marker; audio is still recording")
+                        break
+                    }
+                }
+                // Bound work if storage has failed for an extended period.
+                while (pending.size > 256) pending.remove(pending.keys.first())
+                delay(if (options.automaticMarkers || pending.isNotEmpty()) 250 else 1_000)
+            }
+        }
+        lifecycleScope.launch {
             var lastDiagnosticStatus: com.audiopro.djmrec.streaming.LiveStreamStatus? = null
             liveStreamController.state.collect {
                 val statusChanged = it.status != lastDiagnosticStatus
@@ -413,17 +446,7 @@ class RecordingService : LifecycleService() {
                 val sampleRate = intent.getIntExtra(EXTRA_SAMPLE_RATE, 48000)
                 val bitDepth = intent.getIntExtra(EXTRA_BIT_DEPTH, 24)
                 val captureMode = intent.getIntExtra(EXTRA_CAPTURE_MODE, CAPTURE_MODE_AAUDIO)
-                if (captureMode == CAPTURE_MODE_ROOT_ALSA) {
-                    startRootAlsaSession(
-                        card = intent.getIntExtra(EXTRA_ALSA_CARD, -1),
-                        device = intent.getIntExtra(EXTRA_ALSA_DEVICE, -1),
-                        sampleRateHint = sampleRate,
-                        totalChannels = intent.getIntExtra(EXTRA_USB_TOTAL_CHANNELS, 2),
-                        bitDepth = bitDepth,
-                        channelOffset = intent.getIntExtra(EXTRA_USB_CHANNEL_OFFSET, 0),
-                        monitorOnly = true
-                    )
-                } else if (captureMode == CAPTURE_MODE_USB_ISO) {
+                if (captureMode == CAPTURE_MODE_USB_ISO) {
                     startUsbIsoSession(
                         fd = intent.getIntExtra(EXTRA_USB_FD, -1),
                         interfaceNumber = intent.getIntExtra(EXTRA_USB_INTERFACE, -1),
@@ -481,18 +504,7 @@ class RecordingService : LifecycleService() {
                 val format = recordingFormatFrom(intent)
                 val captureMode = intent.getIntExtra(EXTRA_CAPTURE_MODE, CAPTURE_MODE_AAUDIO)
 
-                if (captureMode == CAPTURE_MODE_ROOT_ALSA) {
-                    startRootAlsaSession(
-                        card = intent.getIntExtra(EXTRA_ALSA_CARD, -1),
-                        device = intent.getIntExtra(EXTRA_ALSA_DEVICE, -1),
-                        sampleRateHint = sampleRate,
-                        totalChannels = intent.getIntExtra(EXTRA_USB_TOTAL_CHANNELS, 2),
-                        bitDepth = bitDepth,
-                        channelOffset = intent.getIntExtra(EXTRA_USB_CHANNEL_OFFSET, 0),
-                        format = format,
-                        monitorOnly = false
-                    )
-                } else if (captureMode == CAPTURE_MODE_USB_ISO) {
+                if (captureMode == CAPTURE_MODE_USB_ISO) {
                     startUsbIsoSession(
                         fd = intent.getIntExtra(EXTRA_USB_FD, -1),
                         interfaceNumber = intent.getIntExtra(EXTRA_USB_INTERFACE, -1),
@@ -676,39 +688,6 @@ class RecordingService : LifecycleService() {
             beginMonitoring()
         } else {
             // Recording a quiet intro is valid. Monitoring/health report silence separately.
-            beginEncodingOrFail(bitDepth, format)
-        }
-    }
-
-    fun startRootAlsaSession(
-        card: Int,
-        device: Int,
-        sampleRateHint: Int,
-        totalChannels: Int,
-        bitDepth: Int,
-        channelOffset: Int,
-        format: RecordingFormat = RecordingFormat.WAV,
-        monitorOnly: Boolean = false
-    ) {
-        if (_state.value is RecordingState.Recording || _state.value is RecordingState.Monitoring) return
-        _state.value = RecordingState.Preparing
-        isUsbIsoSession = false
-        isMonitoringOnly = monitorOnly
-        currentBitDepth = bitDepth
-        currentOutputChannels = 2
-
-        val negotiatedRate = AudioEngine.openRootAlsa(
-            card, device, sampleRateHint, totalChannels, bitDepth, channelOffset
-        )
-        if (negotiatedRate <= 0) {
-            failPreparation("Failed to open root ALSA capture")
-            return
-        }
-        updateRecordingFormat(negotiatedRate, bitDepth)
-
-        if (monitorOnly) {
-            beginMonitoring()
-        } else {
             beginEncodingOrFail(bitDepth, format)
         }
     }
@@ -1100,6 +1079,7 @@ class RecordingService : LifecycleService() {
 
     @Synchronized
     override fun onDestroy() {
+        (application as DjmRecApplication).djLink.disconnect()
         (application as DjmRecApplication).youtubeCoordinator.finishYouTubeSession()
         if (::liveStreamController.isInitialized) liveStreamController.release()
         if (_state.value is RecordingState.Recording || _state.value is RecordingState.Paused) {

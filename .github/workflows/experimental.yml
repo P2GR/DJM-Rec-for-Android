@@ -1,0 +1,55 @@
+name: Experimental protocol research
+
+on:
+  push:
+    branches: [experimental]
+  pull_request:
+    branches: [experimental]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: experimental-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/experimental' || github.base_ref == 'experimental'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - uses: android-actions/setup-android@v4
+      - name: Install native toolchain
+        run: sdkmanager --install "ndk;26.1.10909125" "cmake;3.22.1"
+      - name: Verify and build experimental APK
+        run: |
+          chmod +x gradlew
+          ./gradlew lintExperimental testExperimentalUnitTest assembleExperimental --console=plain
+      - name: Checksums and source identity
+        run: |
+          sha256sum app/build/outputs/apk/experimental/*.apk > app/build/outputs/apk/experimental/SHA256SUMS
+          git rev-parse HEAD > app/build/outputs/apk/experimental/SOURCE_COMMIT
+      - name: Upload experimental APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: djmrec-experimental-${{ github.sha }}
+          path: app/build/outputs/apk/experimental/
+          retention-days: 14
+          if-no-files-found: error
+      - name: Upload test and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: experimental-reports-${{ github.sha }}
+          path: |
+            app/build/reports/
+            app/build/test-results/
+          retention-days: 14

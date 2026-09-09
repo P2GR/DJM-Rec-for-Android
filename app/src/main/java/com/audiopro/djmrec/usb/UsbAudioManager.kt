@@ -89,7 +89,6 @@ class UsbAudioManager(private val context: Context) {
     }
 
     private var registered = false
-    private var rootModeEnabled = false
 
     /**
      * Kept open (not `.close()`'d) for as long as native libusb capture is running -- its fd
@@ -170,28 +169,10 @@ class UsbAudioManager(private val context: Context) {
     /** Explicit UI-triggered scan. If Android exposes the mixer in UsbManager, this requests permission/opens it. */
     fun scanForConnectedMixer(reason: String = "manual-rescan"): Boolean {
         refreshInputs()
-        if (rootModeEnabled) {
-            // Persistent host-mode + kernel USB scan for the DJM REC port.
-            val hostResult = RootUsbHostController.forcePersistentHostMode()
-            Log.i(TAG, "$reason: root persistent host exit=${hostResult.exitCode} timedOut=${hostResult.timedOut}\n${hostResult.output}")
-            RootUsbHostController.grantUsbDeviceAccess(RootUsbHostController.getAppUid())
-            val kernelScan = RootUsbHostController.scanKernelUsbDevices()
-            Log.i(TAG, "$reason: kernel USB scan exit=${kernelScan.exitCode} timedOut=${kernelScan.timedOut}\n${kernelScan.output}")
-        }
         logEnumeratedDevices(reason)
         val device = findConnectedAudioClassDevice()
         if (device == null) {
             Log.w(TAG, "$reason: no connected device exposes a supported audio capture interface")
-            if (rootModeEnabled) {
-                // The framework says nothing is attached -- ask the kernel directly whether it
-                // ever even saw the mixer negotiate, independent of what UsbManager reports.
-                val kernelLog = RootUsbHostController.captureKernelUsbLog()
-                Log.w(
-                    TAG,
-                    "$reason: kernel dmesg (usb/typec/dwc3/xhci) exit=${kernelLog.exitCode} " +
-                        "timedOut=${kernelLog.timedOut}\n${kernelLog.output}"
-                )
-            }
             _deviceState.value = null
             _connectionNotice.value = if (_inputs.value.isEmpty()) "Connect a mixer or USB audio interface using a data cable."
                 else "Connected USB devices expose no audio capture input. Use the PC/Mac audio port, not a storage or Link Export connection."
@@ -200,11 +181,6 @@ class UsbAudioManager(private val context: Context) {
         Log.i(TAG, "$reason: found USB audio class device ${device.deviceName}; connecting")
         onDeviceAttached(device)
         return true
-    }
-
-    fun setRootModeEnabled(enabled: Boolean) {
-        rootModeEnabled = enabled
-        Log.i(TAG, "Root USB assist mode enabled=$enabled")
     }
 
     private fun logEnumeratedDevices(reason: String) {
@@ -318,6 +294,7 @@ class UsbAudioManager(private val context: Context) {
         var mixerProfile: PioneerMixerProfile? = null
         val bestInterface = try {
             rawDescriptors = connection.rawDescriptors ?: ByteArray(0)
+            com.audiopro.djmrec.diagnostics.ProtocolTrace.event("usb-descriptors", "${device.vendorId}:${device.productId}", rawDescriptors)
             com.audiopro.djmrec.diagnostics.RemoteDiagnostics.descriptors(device.vendorId, device.productId, rawDescriptors, device.deviceName)
             Log.i(TAG, "${device.deviceName}: read ${rawDescriptors.size} bytes of raw descriptors")
             streamingInterfaces = UsbAudioDescriptorParser.findAudioStreamingInterfaces(rawDescriptors)
@@ -463,7 +440,7 @@ class UsbAudioManager(private val context: Context) {
             }
             val buffer = ByteArray(2 + 12 * 32)
             val transferred = try {
-                connection.controlTransfer(
+                com.audiopro.djmrec.diagnostics.ProtocolTrace.control(connection,
                     UsbConstants.USB_DIR_IN or UsbConstants.USB_TYPE_CLASS or 0x01,
                     0x82,
                     0x0100,
@@ -579,7 +556,7 @@ class UsbAudioManager(private val context: Context) {
             val mixSource = profile.mixWithoutMicSources.getOrNull(output) ?: continue
             if (mixSource < 0) continue
             val setValue = ((output + 1) shl 8) or mixSource
-            val setResult = connection.controlTransfer(
+            val setResult = com.audiopro.djmrec.diagnostics.ProtocolTrace.control(connection,
                 UsbConstants.USB_DIR_OUT or UsbConstants.USB_TYPE_VENDOR,
                 PioneerMixerProfile.ROUTE_SET_REQUEST,
                 setValue,

@@ -35,10 +35,7 @@ import com.audiopro.djmrec.streaming.YouTubeFinishResult
 import com.audiopro.djmrec.streaming.YouTubeLiveSession
 import com.audiopro.djmrec.usb.UsbAudioDeviceInfo
 import com.audiopro.djmrec.usb.UsbAudioManager
-import com.audiopro.djmrec.usb.RootUsbHostController
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -46,7 +43,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.coroutines.withContext
 import java.io.IOException
 
 /**
@@ -59,7 +55,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         private const val TAG = "MainViewModel"
         private const val PREFS_NAME = "settings"
-        private const val KEY_ROOT_USB_MODE = "root_usb_mode"
         private const val KEY_USB_CHANNEL_OFFSET = "usb_channel_offset"
         private const val KEY_FORCE_ANDROID_CAPTURE = "force_android_capture"
         private const val KEY_DJMREC_PORT_MODE = "djmrec_port_mode"
@@ -98,6 +93,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             ?: device.allInOneProfile?.recordChannelOffset
             ?: if (device.pioneerMixerProfile != null) UsbAudioManager.AUTO_CHANNEL_OFFSET else 0
     private val sessionEvents = (application as DjmRecApplication).sessionEvents
+    val djLink = (application as DjmRecApplication).djLink
     val lastSaved = sessionEvents.lastSaved.asStateFlow()
     val markerCount = sessionEvents.markerCount.asStateFlow()
     val keepScreenOn = MutableStateFlow(prefs.getBoolean("keep_screen_on", false))
@@ -151,9 +147,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         RecordingFormat.entries.firstOrNull { it.name == prefs.getString("recording_format", "WAV") } ?: RecordingFormat.WAV)
     val selectedFormat: StateFlow<RecordingFormat> = _selectedFormat.asStateFlow()
     val availableFormats: List<RecordingFormat> = RecordingFormat.entries
-
-    private val _rootUsbMode = MutableStateFlow(false)
-    val rootUsbMode: StateFlow<Boolean> = _rootUsbMode.asStateFlow()
 
     private val _usbChannelOffset = MutableStateFlow(
         prefs.getInt(KEY_USB_CHANNEL_OFFSET, UsbAudioManager.AUTO_CHANNEL_OFFSET)
@@ -212,11 +205,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     init {
         val context = getApplication<Application>()
         prefs.edit()
-            .remove(KEY_ROOT_USB_MODE)
             .remove(KEY_FORCE_ANDROID_CAPTURE)
             .remove(KEY_DJMREC_PORT_MODE)
             .apply()
-        usbAudioManager.setRootModeEnabled(_rootUsbMode.value)
         context.bindService(
             Intent(context, RecordingService::class.java), connection, Context.BIND_AUTO_CREATE
         )
@@ -290,15 +281,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun setRootUsbModeEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_ROOT_USB_MODE, enabled).apply()
-        _rootUsbMode.value = enabled
-        usbAudioManager.setRootModeEnabled(enabled)
-        if (enabled) {
-            usbAudioManager.scanForConnectedMixer("root-mode-enabled-rescan")
-        }
-    }
-
     fun setUsbChannelOffset(offset: Int) {
         if (saving.value || liveStreamState.value.isActive) return
         if (_recordingState.value is RecordingState.Recording ||
@@ -341,56 +323,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _forceAndroidCapture.value = enabled
     }
 
-    private val _otgStatus = MutableStateFlow<RootUsbHostController.OtgStatus?>(null)
-    val otgStatus: StateFlow<RootUsbHostController.OtgStatus?> = _otgStatus.asStateFlow()
-
     fun setDjmrecPortMode(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_DJMREC_PORT_MODE, enabled).apply()
         _djmrecPortMode.value = enabled
-        // The top digital send/return port is ordinary USB audio. Root is neither required nor
-        // helpful; it must remain independent from the rear multi-channel USB-B capture path.
-        _otgStatus.value = null
-    }
-
-    fun checkOtgAndWarn() {
-        viewModelScope.launch {
-            val status = withContext(Dispatchers.IO) {
-                RootUsbHostController.checkOtgStatus()
-            }
-            _otgStatus.value = status
-            Log.i(TAG, "OTG status: enabled=${status.enabled} suggestions=${status.suggestions}")
-        }
-    }
-
-    fun dismissOtgWarning() {
-        _otgStatus.value = null
-    }
-
-    fun openOtgSettings(context: Context) {
-        val specificIntents = listOf(
-            "com.android.settings.Settings\$ConnectedDeviceDashboardActivity",
-            "com.android.settings.connecteddevice.ConnectedDeviceDashboardActivity",
-            "com.android.settings.connecteddevice.usb.UsbDetailsActivity",
-        )
-        for (className in specificIntents) {
-            try {
-                val intent = Intent().apply {
-                    setClassName("com.android.settings", className)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                if (intent.resolveActivity(context.packageManager) != null) {
-                    context.startActivity(intent)
-                    return
-                }
-            } catch (_: Exception) { }
-        }
-        try {
-            context.startActivity(
-                Intent(android.provider.Settings.ACTION_SETTINGS).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-            )
-        } catch (_: Exception) { }
     }
 
     fun startRecording() {
@@ -424,14 +359,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         val device = deviceState.value ?: run {
-            if (_rootUsbMode.value && !_djmrecPortMode.value && startRootAlsaRecording(context, null)) {
-                return
-            }
             usbAudioManager.scanForConnectedMixer("record-button-rescan")
-            return
-        }
-
-        if (_rootUsbMode.value && !_djmrecPortMode.value && startRootAlsaRecording(context, device)) {
             return
         }
 
@@ -536,47 +464,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             boundService?.setDeviceLabel(device.productName)
             Log.i(TAG, "USB attached: auto-starting live monitor for ${device.productName}")
         }
-    }
-
-    private fun startRootAlsaRecording(context: Context, device: UsbAudioDeviceInfo?): Boolean {
-        val prepareResult = RootUsbHostController.prepareAlsaCaptureAccess()
-        Log.i(
-            TAG,
-            "root ALSA prepare exit=${prepareResult.exitCode} timedOut=${prepareResult.timedOut}\n" +
-                prepareResult.output
-        )
-
-        val candidates = RootUsbHostController.findAlsaCaptureDevices(prepareResult.output)
-        Log.i(TAG, "root ALSA capture candidates=${candidates.joinToString()}")
-        val rootAlsaDevice = candidates.firstOrNull()
-        if (rootAlsaDevice == null) {
-            _recordingState.value = RecordingState.Error("No root ALSA capture device found")
-            return false
-        }
-
-        val sampleRate = when {
-            device?.negotiatedSampleRate != null && device.negotiatedSampleRate > 0 -> device.negotiatedSampleRate
-            device != null && 48000 in device.supportedSampleRates -> 48000
-            else -> 48000
-        }
-        val totalChannels = device?.channelCount?.takeIf { it >= 2 } ?: 2
-        val bitDepth = device?.bitResolution?.takeIf { it == 24 || it == 32 } ?: 16
-
-        val intent = Intent(context, RecordingService::class.java).apply {
-            action = RecordingService.ACTION_START
-            putExtra(RecordingService.EXTRA_CAPTURE_MODE, RecordingService.CAPTURE_MODE_ROOT_ALSA)
-            putExtra(RecordingService.EXTRA_ALSA_CARD, rootAlsaDevice.card)
-            putExtra(RecordingService.EXTRA_ALSA_DEVICE, rootAlsaDevice.device)
-            putExtra(RecordingService.EXTRA_SAMPLE_RATE, sampleRate)
-            putExtra(RecordingService.EXTRA_BIT_DEPTH, bitDepth)
-            putExtra(RecordingService.EXTRA_FORMAT, _selectedFormat.value.nativeValue)
-            putExtra(RecordingService.EXTRA_USB_TOTAL_CHANNELS, totalChannels)
-            putExtra(RecordingService.EXTRA_USB_CHANNEL_OFFSET, device?.let(::captureChannelOffset) ?: 0)
-        }
-        if (!startForegroundServiceSafely(context, intent)) return false
-        boundService?.setDeviceLabel("Root ALSA ${rootAlsaDevice.description}")
-        Log.i(TAG, "starting root ALSA capture from ${rootAlsaDevice.path}: ${rootAlsaDevice.description}")
-        return true
     }
 
     /**

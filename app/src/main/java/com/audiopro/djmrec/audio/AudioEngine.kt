@@ -10,6 +10,8 @@ package com.audiopro.djmrec.audio
  * (the ViewModel does this) to avoid nonsensical overlapping transitions.
  */
 object AudioEngine {
+    external fun setProtocolTracing(enabled: Boolean)
+    external fun drainProtocolTrace(): String
 
     init {
         System.loadLibrary("djmrec_audio")
@@ -72,15 +74,6 @@ object AudioEngine {
         productId: Int,
         rawDescriptors: ByteArray,
         sampleRateHint: Int
-    ): Int
-
-    external fun openRootAlsa(
-        card: Int,
-        device: Int,
-        sampleRate: Int,
-        channels: Int,
-        bitDepth: Int,
-        extractChannelOffset: Int
     ): Int
 
     /**
