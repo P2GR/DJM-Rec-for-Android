@@ -10,13 +10,6 @@ internal object DiagnosticPrivacy {
         "${it.groupValues[1]}=[redacted]"
     }, "[private path omitted]").take(12_000)
 
-    fun allowLogcat(tag: String, message: String): Boolean = tag in setOf(
-        "UsbAudioManager", "UsbAudioEngine", "UsbIsoAudioSource", "AlsaPcmAudioSource",
-        "RecordingService", "WavWriter", "FlacWriter"
-    ) && !message.contains("raw iso packet", ignoreCase = true) &&
-        !message.contains("kernel", ignoreCase = true) && !message.contains("dmesg", ignoreCase = true) &&
-        !message.contains("root persistent host", ignoreCase = true)
-
     /** Configuration descriptors only. USB string descriptors may contain serial numbers. */
     fun descriptorHex(raw: ByteArray): String {
         val out = StringBuilder()

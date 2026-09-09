@@ -27,10 +27,11 @@ JDK 17, Android SDK, NDK 26.1, CMake 3.22.1 required. Open in Android Studio or 
 
 ## Mixer diagnostics
 
-In Bugfender, filter `MixerConnection`, `MixerCapabilities`, `Mixer`, `UsbDescriptors` and
-`CaptureHealth`. The connection ID links detection, permission, profile selection and failures.
-Source class/method hints identify the relevant code; build type/version identify the APK.
-`mixer.name` and `mixer.connection` are searchable device attributes.
+In Firebase Crashlytics, use custom keys `mixer.name`, `mixer.profile`, `mixer.connection`,
+`mixer.usb_id` and `mixer.connected`. `mixer.name` is a known profile name such as `DJM-A9`,
+`Unknown` for an unprofiled USB audio device, or `None` without a mixer. Bounded custom logs use
+`MixerConnection`, `MixerCapabilities`, `Mixer`, `UsbDescriptors` and `CaptureHealth` prefixes.
+Connection ID links detection, permission, profile selection and failures.
 
 Example format (illustrative values, not a hardware certification):
 
@@ -67,8 +68,9 @@ c++ -std=c++17 -Iapp/src/main/cpp app/src/test/cpp/ChannelActivityTest.cpp -o ch
 ./channel-test
 ```
 
-When testing a modified release without a version bump, exclude `:app:bfUploadMappingRelease`
-from Gradle tasks so local test mappings cannot overwrite a published release's mappings.
+Production builds require an untracked `app/google-services.json`. For GitHub releases, store its
+base64-encoded contents in the `GOOGLE_SERVICES_JSON_BASE64` repository secret. The release workflow
+reconstructs the file only on the runner and uploads native symbols to Firebase Crashlytics.
 
 ## License
 

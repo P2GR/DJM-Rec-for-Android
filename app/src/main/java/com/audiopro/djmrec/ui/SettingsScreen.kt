@@ -38,7 +38,6 @@ fun SettingsScreen(viewModel: MainViewModel) {
     val scope = rememberCoroutineScope()
     val diagnostics by com.audiopro.djmrec.diagnostics.RemoteDiagnostics.enabled.collectAsState()
     val diagnosticsStatus by com.audiopro.djmrec.diagnostics.RemoteDiagnostics.status.collectAsState()
-    val diagnosticsRestart by com.audiopro.djmrec.diagnostics.RemoteDiagnostics.restartRequired.collectAsState()
     var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }
     var pendingPermissionUpdate by remember { mutableStateOf<AppUpdate?>(null) }
     var installRequest by remember { mutableStateOf<AppUpdate?>(null) }
@@ -127,11 +126,9 @@ fun SettingsScreen(viewModel: MainViewModel) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { RecordingSetupControls(viewModel) }
         }
         Text("Diagnostics & privacy", style = MaterialTheme.typography.titleLarge)
-        PreferenceSwitch("Automatic diagnostics", "Send mixer formats, channel activity, recording health and crash reports to Bugfender. No recorded audio. Enabled by default in all builds.",
+        PreferenceSwitch("Automatic diagnostics", "Send bounded mixer diagnostics, recording health, non-fatal errors and crash reports to Firebase Crashlytics. No recorded audio. Enabled by default in production builds.",
             diagnostics, com.audiopro.djmrec.diagnostics.RemoteDiagnostics::setEnabled)
         Text(diagnosticsStatus, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-        if (diagnosticsRestart) Text("Finish your set, then force-stop DJM Rec in Android app settings and reopen it. Until then, previously queued reports and SDK traffic may continue. Closing the screen alone does not restart the app.",
-            style = MaterialTheme.typography.bodySmall, color = TextSecondary)
         Text("Display", style = MaterialTheme.typography.titleLarge)
         PreferenceSwitch("Live waveform", "RGB: red bass, green mids, blue highs. Mixed frequencies blend colors.", waveform, viewModel::setWaveformEnabled)
         PreferenceSwitch("Smooth waveform", "Scroll at the display frame rate. Turn off to reduce graphics work.", smooth, viewModel::setSmoothWaveform)

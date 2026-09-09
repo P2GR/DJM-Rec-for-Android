@@ -38,6 +38,11 @@
         android:theme="@style/Theme.DjmRec"
         android:hardwareAccelerated="true">
 
+        <!-- App preference enables collection after startup; disabled users send nothing. -->
+        <meta-data
+            android:name="firebase_crashlytics_collection_enabled"
+            android:value="false" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -76,9 +76,6 @@ fun MainScreen(viewModel: MainViewModel) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var selectedDestination by rememberSaveable { mutableStateOf(Destination.RECORDING) }
-    LaunchedEffect(selectedDestination) {
-        com.audiopro.djmrec.diagnostics.RemoteDiagnostics.event("Navigation", selectedDestination.name)
-    }
     val cameraMode = selectedDestination == Destination.LIVE && liveState.isActive && liveState.usesCamera
     var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }
 

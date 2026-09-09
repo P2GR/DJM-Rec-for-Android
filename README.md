@@ -55,13 +55,12 @@ independent multitrack recording is not implemented.
 
 ## Diagnostics and privacy
 
-Automatic Bugfender diagnostics help improve mixer compatibility. Enabled by default, they send
-USB configuration, channel activity, recording health and error reports, not your recorded audio.
+Automatic Firebase Crashlytics diagnostics help improve mixer compatibility. Enabled by default
+in production builds, they send bounded USB configuration, channel activity, recording health,
+non-fatal error and crash reports, not your recorded audio.
 
-Disable **Automatic diagnostics** in Settings to stop new diagnostic logs. Finish your set, then
-force-stop and reopen the app to fully stop SDK traffic; already queued reports may upload until
-then. Please identify your mixer, Android version, cable/port and what happened when reporting a
-problem.
+Disable **Automatic diagnostics** in Settings to stop collection. Please identify your mixer,
+Android version, cable/port and what happened when reporting a problem.
 
 ## License
 

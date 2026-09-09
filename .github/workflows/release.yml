@@ -80,6 +80,17 @@ jobs:
           keyPassword=$KEY_PASSWORD
           EOF
 
+      - name: Configure Firebase
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        shell: bash
+        run: |
+          test -n "$GOOGLE_SERVICES_JSON_BASE64" || {
+            echo "GOOGLE_SERVICES_JSON_BASE64 is not configured."
+            exit 1
+          }
+          printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > app/google-services.json
+
       - name: Prepare Gradle wrapper
         run: chmod +x gradlew
 
@@ -87,9 +98,7 @@ jobs:
         run: sdkmanager --install "ndk;26.1.10909125" "cmake;3.22.1"
 
       - name: Verify and build
-        env:
-          BUGFENDER_SYMBOLICATION_TOKEN: ${{ secrets.BUGFENDER_SYMBOLICATION_TOKEN }}
-        run: ./gradlew lintDebug testDebugUnitTest assembleRelease assembleDebug --console=plain
+        run: ./gradlew lintDebug testDebugUnitTest assembleRelease assembleDebug uploadCrashlyticsSymbolFileRelease --console=plain
 
       - name: Verify APKs and create checksums
         shell: bash

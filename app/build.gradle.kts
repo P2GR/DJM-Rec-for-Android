@@ -1,11 +1,13 @@
 import java.io.FileInputStream
 import java.util.Properties
+import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
 
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
-    id("com.bugfender.upload-mapping") version "1.1.2" apply false
+    id("com.google.gms.google-services")
+    id("com.google.firebase.crashlytics")
 }
 
 // ── Keystore helpers (top-level so they can be used by signingConfigs) ─────
@@ -21,19 +23,6 @@ val keystoreFile = rootProject.file("keystore.properties")
 val keystore = if (keystoreFile.exists()) loadProperties("keystore.properties") else null
 val streamingFile = rootProject.file("streaming.properties")
 val streaming = if (streamingFile.exists()) loadProperties("streaming.properties") else null
-val bugfenderFile = rootProject.file("bugfender.properties")
-val bugfenderProperties = if (bugfenderFile.exists()) loadProperties("bugfender.properties") else null
-val bugfenderSymbolicationToken = providers.environmentVariable("BUGFENDER_SYMBOLICATION_TOKEN").orNull
-    ?: bugfenderProperties?.getProperty("BUGFENDER_SYMBOLICATION_TOKEN")
-if (!bugfenderSymbolicationToken.isNullOrBlank()) {
-    apply(plugin = "com.bugfender.upload-mapping")
-    extensions.configure<com.bugfender.UploadMappingPluginExtension> {
-        symbolicationToken(bugfenderSymbolicationToken)
-        symbolicationURL("https://dashboard.bugfender.com/")
-    }
-    // Local uses the same version/build as release; don't overwrite production mappings.
-    tasks.matching { it.name == "bfUploadMappingLocal" }.configureEach { enabled = false }
-}
 val twitchClientId = providers.environmentVariable("TWITCH_CLIENT_ID").orNull
     ?: streaming?.getProperty("TWITCH_CLIENT_ID").orEmpty()
 // OAuth client IDs are public identifiers. Google still authenticates Android builds using the
@@ -67,6 +56,7 @@ android {
         versionName = appVersion.getProperty("VERSION_NAME")
         buildConfigField("String", "TWITCH_CLIENT_ID", "\"${twitchClientId.replace("\"", "\\\"")}\"")
         buildConfigField("String", "GOOGLE_OAUTH_CLIENT_ID", "\"$googlePublicClientId\"")
+        buildConfigField("boolean", "FIREBASE_CONFIGURED", "true")
 
         // Only ship arm64-v8a: all modern DJ-capable Android hardware (USB-C host + UAC2)
         // is 64-bit ARM. Keeping a single ABI keeps the native audio path easy to validate.
@@ -94,18 +84,27 @@ android {
                 "proguard-rules.pro"
             )
             signingConfig = releaseSigning
+            configure<CrashlyticsExtension> {
+                nativeSymbolUploadEnabled = true
+            }
         }
         debug {
             isDebuggable = true
             // So debug and release can be installed side-by-side
             applicationIdSuffix = ".debug"
             buildConfigField("String", "GOOGLE_OAUTH_CLIENT_ID", "\"$googleLocalClientId\"")
+            buildConfigField("boolean", "FIREBASE_CONFIGURED", "false")
         }
         create("local") {
             initWith(getByName("release"))
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += listOf("release")
             buildConfigField("String", "GOOGLE_OAUTH_CLIENT_ID", "\"$googleLocalClientId\"")
+            buildConfigField("boolean", "FIREBASE_CONFIGURED", "false")
+            configure<CrashlyticsExtension> {
+                mappingFileUploadEnabled = false
+                nativeSymbolUploadEnabled = false
+            }
         }
     }
 
@@ -145,6 +144,13 @@ android {
     }
 }
 
+// Firebase is production-only. Keep debug/local builds isolated from production reports and make
+// ordinary contributor builds work without the gitignored Firebase configuration file.
+tasks.matching { it.name in setOf("processDebugGoogleServices", "processLocalGoogleServices") }
+    .configureEach {
+        enabled = false
+    }
+
 kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
@@ -152,7 +158,8 @@ kotlin {
 }
 
 dependencies {
-    implementation("com.bugfender.sdk:android:4.0.1")
+    implementation(platform("com.google.firebase:firebase-bom:34.18.0"))
+    implementation("com.google.firebase:firebase-crashlytics-ndk")
     testImplementation(kotlin("test"))
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")

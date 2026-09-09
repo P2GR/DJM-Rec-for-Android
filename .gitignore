@@ -33,6 +33,8 @@ build/
 keystore.properties
 streaming.properties
 bugfender.properties
+# Firebase client configuration is provisioned locally / through GitHub Actions secrets.
+google-services.json
 
 # Local configuration file (sdk path, etc)
 local.properties
