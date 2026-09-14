@@ -11,7 +11,7 @@ Choose the **release APK** for everyday use. The debug APK is for testing.
 
 | Device | Recording support |
 | --- | --- |
-| **DJM-A9, DJM-750MK2** | Confirmed working by the project owner |
+| **DJM-A9, DJM-750MK2** | Confirmed working |
 | DJM-900NXS2 | Previously tested; needs retesting with this version |
 | DJM-V10, DJM-V5, DJM-S11, DJM-450 | Experimental mixer profiles; hardware testing needed |
 | XDJ-XZ | Experimental USB capture; automatic master selection on USB 5/6 |
