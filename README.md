@@ -59,12 +59,22 @@ Pro DJ Link and USB protocol research are available only on the
 [`experimental` branch](https://github.com/P2GR/DJM-Rec-for-Android/tree/experimental),
 which builds a separate app. They are not included in main releases.
 
-Automatic Firebase Crashlytics diagnostics help improve mixer compatibility. Enabled by default
-in production builds, they send bounded USB configuration, channel activity, recording health,
-non-fatal error and crash reports, not your recorded audio.
+Automatic Firebase diagnostics help improve mixer compatibility. Enabled by default in production
+builds, Google Analytics receives bounded events for mixer connections, USB configuration, channel
+selection, recording state and capture health. Crashlytics continues to receive non-fatal errors and
+crash reports. Recorded audio, filenames, authentication data, USB serial numbers and advertising
+IDs are not collected.
 
 Disable **Automatic diagnostics** in Settings to stop collection. Please identify your mixer,
 Android version, cable/port and what happened when reporting a problem.
+
+Production telemetry is available in Firebase under **Analytics > Events**. The main events are
+`mixer_connected`, `mixer_disconnected`, `usb_connection`, `capture_health`, `recording_state`,
+`recording_saved` and `diagnostic_issue`. Register frequently used parameters such as `mixer_name`,
+`profile`, `usb_product`, `health_level`, `connection_id` and `resolved_pair` as event-scoped custom
+dimensions; register numeric fields such as `opened_rate`, `nonzero_bytes` and `packets_missed` as
+custom metrics when needed. For raw event rows and longer-term queries, enable the Google Analytics
+BigQuery export from **Firebase project settings > Integrations**.
 
 ## License
 

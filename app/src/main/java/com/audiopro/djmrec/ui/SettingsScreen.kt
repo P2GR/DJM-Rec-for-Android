@@ -126,7 +126,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { RecordingSetupControls(viewModel) }
         }
         Text("Diagnostics & privacy", style = MaterialTheme.typography.titleLarge)
-        PreferenceSwitch("Automatic diagnostics", "Send bounded mixer diagnostics, recording health, non-fatal errors and crash reports to Firebase Crashlytics. No recorded audio. Enabled by default in production builds.",
+        PreferenceSwitch("Automatic diagnostics", "Send bounded mixer connection and recording-health events to Firebase Analytics, plus non-fatal errors and crashes to Crashlytics. No recorded audio or filenames. Enabled by default in production builds.",
             diagnostics, com.audiopro.djmrec.diagnostics.RemoteDiagnostics::setEnabled)
         Text(diagnosticsStatus, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
         Text("Display", style = MaterialTheme.typography.titleLarge)

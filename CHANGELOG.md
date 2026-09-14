@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.42.2 (2026-09-14)
+
+- Add privacy-controlled Firebase Analytics events for non-crash app, mixer connection,
+  recording, streaming and recovery diagnostics.
+- Report mixer identity, selected USB format and channel pair, transfer health, active USB
+  channels and playback keepalive state to diagnose unsupported or silent mixer captures.
+- Keep telemetry disabled until the existing Automatic diagnostics setting is enabled, and
+  exclude audio, filenames, credentials, serial numbers and raw USB descriptors.
+
 ## v0.42.1 (2026-09-09)
 
 - Remove Pro DJ Link discovery, automatic metadata markers and now-playing banners from
