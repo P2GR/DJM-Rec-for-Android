@@ -145,6 +145,9 @@ object RemoteDiagnostics {
     }
 
     fun event(tag: String, message: String) {
+        if (tag == "RecordingState" && message == "Preparing") {
+            synchronized(this) { healthGate.reset() }
+        }
         diagnosticEvent(tag, message)
     }
 
@@ -278,7 +281,7 @@ object RemoteDiagnostics {
     }
 
     @Synchronized
-    fun health(key: String) {
+    fun health(key: String, capturedSummary: String? = null) {
         if (!_enabled.value || !initialized) return
         val now = android.os.SystemClock.elapsedRealtime()
         val connection = activeConnection
@@ -286,7 +289,7 @@ object RemoteDiagnostics {
         if (!healthGate.shouldLog(connection, key, now)) return
         submit {
             if (connection != activeConnection) return@submit
-            val summary = AudioEngine.getDiagnosticSummary()
+            val summary = capturedSummary ?: AudioEngine.getDiagnosticSummary()
             if (connection != activeConnection) return@submit
             crashlytics.log(
                 "[CaptureHealth] " + DiagnosticPrivacy.redact(
@@ -307,7 +310,25 @@ object RemoteDiagnostics {
                     }
                 }
             )
+            val setup = setupTelemetryValues(summary)
+            if (setup.isNotEmpty()) {
+                analytics.logEvent("capture_setup", Bundle().apply {
+                    putSafeString("connection_id", connection)
+                    putSafeString("mixer_name", mixerName)
+                    setup.forEach { (name, value) -> putLong(name, value) }
+                })
+            }
         }
+    }
+
+    internal fun setupTelemetryValues(summary: String): Map<String, Long> {
+        val match = Regex(
+            "capture_setup=rate_set_result:(-?\\d+) route_value:(-?\\d+) route_set_result:(-?\\d+)"
+        ).find(summary) ?: return emptyMap()
+        return listOf("rate_set_result", "route_value", "route_set_result")
+            .mapIndexedNotNull { index, name ->
+                match.groupValues[index + 1].toLongOrNull()?.let { name to it }
+            }.toMap()
     }
 
     internal fun telemetryEventName(tag: String): String = when (tag) {

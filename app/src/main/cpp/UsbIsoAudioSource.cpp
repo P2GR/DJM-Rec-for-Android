@@ -141,7 +141,7 @@ bool writePioneerRouteSource(
     return true;
 }
 
-bool setPioneerCaptureSampleRate(
+int setPioneerCaptureSampleRate(
     libusb_device_handle* handle,
     int endpointAddress,
     int sampleRate,
@@ -165,11 +165,11 @@ bool setPioneerCaptureSampleRate(
         LOGW("%s endpoint 0x%02x SET_CUR sampling frequency %d Hz unsupported: %s",
              profileName, endpointAddress, sampleRate,
              rc < 0 ? libusb_error_name(rc) : "short response");
-        return false;
+        return rc;
     }
     LOGI("%s endpoint 0x%02x initialized at %d Hz using Pioneer driver sequence",
          profileName, endpointAddress, sampleRate);
-    return true;
+    return rc;
 }
 
 int readPioneerEndpointSampleRate(
@@ -277,6 +277,9 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
     mPlaybackTransfers.clear();
     mPlaybackFrameRemainder = 0;
     mPioneerFallbackStage = 0;
+    mEndpointRateSetResult = -999;
+    mDjm450RouteSetResult = -999;
+    mDjm450RouteValue = -1;
     mResolvedChannelOffset = config.extractChannelOffset;
     mFramesSincePeakLog = 0;
     mLoggedPayloadWindow = false;
@@ -485,7 +488,7 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
         // that GET result may not reflect whether the endpoint is actually armed, so gating the
         // SET on it could have been silently skipping the one command that arms real streaming.
         // Always SET now, unconditionally, matching the proven-working driver sequence.
-        setPioneerCaptureSampleRate(
+        mEndpointRateSetResult = setPioneerCaptureSampleRate(
             mHandle, config.endpointAddress, config.requestedSampleRate, mMixerProfile->name);
         const int endpointRate = readPioneerEndpointSampleRate(
             mHandle, config.endpointAddress, mMixerProfile->name);
@@ -496,13 +499,41 @@ std::string UsbIsoAudioSource::start(const Config& config, FrameCallback callbac
         }
     }
 
+    if (mMixerProfile == &kDjm450Profile) {
+        // The DJM-450 has a documented SET mapping but no established route GET. Apply the
+        // selected MIX route once, after interface/rate setup and before any transfers run.
+        // Do not invent readback/restore semantics or block the USB event thread with retries.
+        const int value = pioneerMixRouteValue(*mMixerProfile, config.extractChannelOffset);
+        mDjm450RouteValue = value;
+        if (value >= 0) {
+            const int result = libusb_control_transfer(
+                mHandle, LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
+                0x03, static_cast<uint16_t>(value), kPioneerRouteIndex, nullptr, 0, 1000);
+            mDjm450RouteSetResult = result;
+            LOGI("DJM-450 MIX route SET value=0x%04x result=%d; rate SET result=%d",
+                 value, result, mEndpointRateSetResult.load());
+            if (result != 0) {
+                const auto error = libusbErrorString("DJM-450 MIX/REC OUT route SET", result);
+                stop();
+                return error;
+            }
+            std::lock_guard<std::mutex> lock(mDiagnosticMutex);
+            mPioneerAppliedSources[(value >> 8) - 1] = value & 0xff;
+        }
+    }
+
     // Some UAC2 Pioneer models (notably DJM-S11) derive the capture clock from the active
     // playback stream but do not use the UAC1 endpoint-rate request above. Keep their OUT
     // traffic alive independently of the endpoint-rate initialization path.
     if (mMixerProfile && mMixerProfile->requiresPlaybackTraffic && mPlaybackTransfers.empty() &&
         !startPioneerPlaybackSilence(mOpenedSampleRate.load(std::memory_order_acquire))) {
+        if (mMixerProfile == &kDjm450Profile) {
+            stop();
+            return "DJM-450 playback keepalive could not be initialized";
+        }
         LOGW("%s could not start playback traffic; continuing capture-only", mMixerProfile->name);
     }
+    if (mMixerProfile == &kDjm450Profile) mPioneerFallbackStage = 0;
 
     const std::string channelDescription = config.extractChannelOffset < 0
         ? "auto stereo pair"
@@ -769,6 +800,13 @@ std::string UsbIsoAudioSource::diagnosticSummary() const {
         << " transfers:" << mPlaybackTransfers.size() << '\n'
         << "route_fallback_stage=" << mPioneerFallbackStage.load(std::memory_order_relaxed) << '\n';
 
+    if (mMixerProfile == &kDjm450Profile) {
+        out << "capture_setup=rate_set_result:" << mEndpointRateSetResult.load()
+            << " route_value:" << mDjm450RouteValue.load()
+            << " route_set_result:" << mDjm450RouteSetResult.load()
+            << " route_readback:unsupported\n";
+    }
+
     if (mMixerProfile) {
         for (int output = 0; output < mMixerProfile->outputCount; ++output) {
             out << "route_output_" << (output + 1)
@@ -796,6 +834,9 @@ void UsbIsoAudioSource::configurePioneerRecordingRoute() {
         mPioneerRoutesChanged.fill(false);
     }
     if (!mHandle || !mMixerProfile) return;
+
+    // Write-only DJM-450 setup runs once after SET_INTERFACE and sample-rate initialization.
+    if (mMixerProfile == &kDjm450Profile) return;
 
     int output = mMixerProfile->defaultOutput;
     if (mConfig.extractChannelOffset >= 0) {

@@ -76,6 +76,15 @@ dimensions; register numeric fields such as `opened_rate`, `nonzero_bytes` and `
 custom metrics when needed. For raw event rows and longer-term queries, enable the Google Analytics
 BigQuery export from **Firebase project settings > Integrations**.
 
+DJM-450 capture initializes the selected MIX/REC OUT pair after activating its USB interface,
+with silent eight-channel playback traffic to keep the duplex stream active. AUTO uses USB 1/2;
+manual USB 3/4 and 5/6 configure their respective MIX routes. USB 7/8 retains its existing fixed
+route. This correction still needs a physical mixer test. The `capture_setup` event reports
+`rate_set_result` (3 means accepted), `route_value` (266/522/778 for USB 1/2, 3/4, 5/6), and
+`route_set_result` (0 means accepted). Negative results are USB errors; -999 means not attempted.
+An accepted route write is not readback verification. `capture_health` confirms whether audio
+actually arrives. No route-read command or guessed restoration is used for this model.
+
 ## License
 
 MIT. Bundled libraries retain their own licenses.

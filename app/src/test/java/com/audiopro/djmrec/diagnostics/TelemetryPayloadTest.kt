@@ -6,6 +6,24 @@ import kotlin.test.assertTrue
 
 class TelemetryPayloadTest {
     @Test
+    fun distinguishesAcceptedFailedAndUnattemptedSetupCommands() {
+        val accepted = RemoteDiagnostics.setupTelemetryValues(
+            "capture_setup=rate_set_result:3 route_value:778 route_set_result:0 route_readback:unsupported"
+        )
+        assertEquals(mapOf("rate_set_result" to 3L, "route_value" to 778L, "route_set_result" to 0L), accepted)
+        val failed = RemoteDiagnostics.setupTelemetryValues(
+            "capture_setup=rate_set_result:-9 route_value:778 route_set_result:-6 route_readback:unsupported"
+        )
+        assertEquals(-9L, failed["rate_set_result"])
+        assertEquals(-6L, failed["route_set_result"])
+        val fixedPair = RemoteDiagnostics.setupTelemetryValues(
+            "capture_setup=rate_set_result:3 route_value:-1 route_set_result:-999 route_readback:unsupported"
+        )
+        assertEquals(-999L, fixedPair["route_set_result"])
+        assertEquals(emptyMap<String, Long>(), RemoteDiagnostics.setupTelemetryValues("profile=DJM-A9"))
+    }
+
+    @Test
     fun mapsExistingDiagnosticCategoriesToStableAnalyticsEvents() {
         assertEquals("usb_connection", RemoteDiagnostics.telemetryEventName("MixerConnection"))
         assertEquals("recording_state", RemoteDiagnostics.telemetryEventName("RecordingState"))

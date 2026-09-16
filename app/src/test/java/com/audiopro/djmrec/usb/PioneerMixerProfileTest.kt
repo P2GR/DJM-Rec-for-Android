@@ -77,7 +77,9 @@ class PioneerMixerProfileTest {
         assertEquals(3, PioneerMixerProfile.DJM_450.outputCount)
         assertEquals(listOf(0x0A, 0x0A, 0x0A), PioneerMixerProfile.DJM_450.mixWithoutMicSources)
         assertEquals(PioneerMixerProfile.RouteReadMode.NONE, PioneerMixerProfile.DJM_450.routeReadMode)
-        assertEquals(false, PioneerMixerProfile.DJM_450.requiresPlaybackTraffic)
+        assertEquals(true, PioneerMixerProfile.DJM_450.requiresPlaybackTraffic)
+        assertEquals(0, PioneerMixerProfile.DJM_450.playbackInterface)
+        assertEquals(1, PioneerMixerProfile.DJM_450.playbackAlternateSetting)
     }
 
     @Test

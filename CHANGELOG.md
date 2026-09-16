@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.42.3 (2026-09-16)
+
+- Correct DJM-450 MIX/REC OUT routing to honor the selected USB pair after interface and
+  sample-rate initialization, without requiring unsupported route readback.
+- Enable silent eight-channel playback keepalive for DJM-450 USB capture. Physical mixer
+  validation is still required; the profile remains experimental.
+- Report DJM-450 setup-command results and retain native startup failures in Firebase
+  diagnostics. Restarting capture on the same connection now produces fresh health snapshots.
+- Add regression coverage for selected-pair routing, duplex configuration and setup telemetry.
+
 ## v0.42.2 (2026-09-14)
 
 - Add privacy-controlled Firebase Analytics events for non-crash app, mixer connection,

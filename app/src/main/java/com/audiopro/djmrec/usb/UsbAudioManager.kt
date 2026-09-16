@@ -547,6 +547,9 @@ class UsbAudioManager(private val context: Context) {
      * it just sends the SET and trusts it. This does the same.
      */
     private fun establishPioneerRoute(connection: UsbDeviceConnection, profile: PioneerMixerProfile) {
+        // DJM-450 is configured after native SET_INTERFACE/SET_CUR, with the actual selected
+        // pair. A pre-claim write to the default pair cannot initialize an explicit USB5/6 route.
+        if (profile == PioneerMixerProfile.DJM_450) return
         val defaultOutput = profile.defaultCaptureChannelOffset / 2
         val outputs = (listOf(defaultOutput) + profile.additionalMixOutputs)
             .distinct()

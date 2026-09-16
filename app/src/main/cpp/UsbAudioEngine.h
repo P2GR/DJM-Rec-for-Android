@@ -106,6 +106,7 @@ private:
 
     std::shared_ptr<oboe::AudioStream> mStream;
     std::unique_ptr<UsbIsoAudioSource> mUsbIsoSource;
+    std::string mLastUsbSetupFailure; // retained after failed source teardown; guarded by mControlMutex
     SourceMode mSourceMode = SourceMode::None;
     std::unique_ptr<RingBuffer> mRingBuffer;
     std::unique_ptr<RingBuffer> mLiveRingBuffer;

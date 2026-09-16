@@ -145,6 +145,10 @@ private:
     int mPlaybackMaxPacketSize = 0;
     uint64_t mPlaybackFrameRemainder = 0;
     std::atomic<int> mPioneerFallbackStage{0};
+    // -999 means no request was sent; libusb errors use -1 through -99.
+    std::atomic<int> mEndpointRateSetResult{-999};
+    std::atomic<int> mDjm450RouteSetResult{-999};
+    std::atomic<int> mDjm450RouteValue{-1};
 
     std::atomic<bool> mRunning{false};
     std::atomic<int> mOutstandingTransfers{0};

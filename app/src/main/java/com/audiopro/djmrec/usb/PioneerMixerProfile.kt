@@ -114,7 +114,7 @@ enum class PioneerMixerProfile(
     DJM_450(
         "DJM-450", setOf(0x0013), 0, 3, RouteReadMode.NONE,
         listOf(0x0A, 0x0A, 0x0A),
-        playbackInterface = 0, playbackAlternateSetting = 1,
+        requiresPlaybackTraffic = true, playbackInterface = 0, playbackAlternateSetting = 1,
         vendorCaptureInterface = 0, vendorCaptureAlternateSetting = 1,
         vendorCaptureChannelCount = 8, vendorCaptureSubframeSize = 3,
         vendorCaptureBitResolution = 24, vendorCaptureSampleRates = listOf(48_000)

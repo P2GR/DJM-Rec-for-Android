@@ -37,6 +37,7 @@ size_t UsbAudioEngine::bytesPerFrameFor(oboe::AudioFormat format, int32_t channe
 int UsbAudioEngine::open(int32_t audioManagerDeviceId, int32_t sampleRateHint, int32_t channelCount,
                           int32_t bitDepthHint) {
     std::lock_guard<std::mutex> lock(mControlMutex);
+    mLastUsbSetupFailure.clear();
     if (mStreamOpen.load()) {
         LOGW("open() called while a stream is already open; closing the previous one first");
     }
@@ -149,6 +150,7 @@ int UsbAudioEngine::open(int32_t audioManagerDeviceId, int32_t sampleRateHint, i
 
 int UsbAudioEngine::openUsbIso(const UsbIsoAudioSource::Config& isoConfig, int32_t sampleRateHint) {
     std::lock_guard<std::mutex> lock(mControlMutex);
+    mLastUsbSetupFailure.clear();
     if (mStreamOpen.load()) {
         LOGW("openUsbIso() called while a stream is already open; closing the previous one first");
     }
@@ -172,6 +174,7 @@ int UsbAudioEngine::openUsbIso(const UsbIsoAudioSource::Config& isoConfig, int32
 
     if (!error.empty()) {
         LOGE("Failed to start USB iso capture: %s", error.c_str());
+        mLastUsbSetupFailure = "usb_setup_error=" + error + "\n" + mUsbIsoSource->diagnosticSummary();
         mUsbIsoSource.reset();
         mSourceMode = SourceMode::None;
         return -1;
@@ -183,6 +186,8 @@ int UsbAudioEngine::openUsbIso(const UsbIsoAudioSource::Config& isoConfig, int32
     if (measuredSampleRate <= 0) {
         LOGE("USB iso capture produced no usable sample-rate measurement");
         mUsbIsoSource->stop();
+        mLastUsbSetupFailure = "usb_setup_error=No usable sample-rate measurement\n" +
+            mUsbIsoSource->diagnosticSummary();
         mUsbIsoSource.reset();
         mSourceMode = SourceMode::None;
         return -1;
@@ -685,6 +690,8 @@ std::string UsbAudioEngine::getDiagnosticSummary() {
     }
     if (mUsbIsoSource) {
         out << "\n--- usb_iso_source ---\n" << mUsbIsoSource->diagnosticSummary();
+    } else if (!mLastUsbSetupFailure.empty()) {
+        out << "\n--- failed_usb_setup ---\n" << mLastUsbSetupFailure;
     }
     return out.str();
 }

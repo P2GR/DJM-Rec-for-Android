@@ -641,6 +641,9 @@ class RecordingService : LifecycleService() {
             rawDescriptors, sampleRateHint
         )
         if (negotiatedRate <= 0) {
+            com.audiopro.djmrec.diagnostics.RemoteDiagnostics.health(
+                "ERROR: Failed to open USB isochronous capture", AudioEngine.getDiagnosticSummary()
+            )
             failPreparation("Failed to open USB isochronous capture")
             releaseIsoConnectionIfNeeded()
             return

@@ -100,10 +100,19 @@ constexpr PioneerMixerProfile kDjm450Profile{
     "DJM-450", 0x0013, 0x0013, 3, 0,
     {0x0A, 0x0A, 0x0A, -1, -1, -1},
     {0x0A, 0x0A, 0x0A, -1, -1, -1},
-    PioneerRouteReadMode::None, true, false, 0, 1,
+    PioneerRouteReadMode::None, true, true, 0, 1,
     8, 3,  // playback OUT PCM
     8, 3, 24, 48000 // capture IN PCM
 };
+
+// -1 preserves a fixed/unconfigurable pair; AUTO uses the profile's default MIX pair.
+constexpr int pioneerMixRouteValue(const PioneerMixerProfile& profile, int channelOffset) {
+    if (channelOffset < -1 || (channelOffset >= 0 && channelOffset % 2 != 0)) return -1;
+    const int output = channelOffset < 0 ? profile.defaultOutput : channelOffset / 2;
+    if (output < 0 || output >= profile.outputCount) return -1;
+    const int source = profile.mixWithoutMicSources[output];
+    return source < 0 ? -1 : ((output + 1) << 8) | source;
+}
 
 // Linux ALSA quirks-table.h and mixer_quirks.c: separate UAC2 interfaces,
 // fixed 48 kHz, and MIX REC OUT available on capture pair 5/6 only.
