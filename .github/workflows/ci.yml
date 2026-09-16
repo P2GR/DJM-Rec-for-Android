@@ -20,6 +20,8 @@ jobs:
           java-version: "17"
           cache: gradle
       - uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
       - name: Prepare Gradle wrapper
         run: chmod +x gradlew
       - name: Install native toolchain

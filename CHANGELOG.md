@@ -9,6 +9,7 @@
 - Report DJM-450 setup-command results and retain native startup failures in Firebase
   diagnostics. Restarting capture on the same connection now produces fresh health snapshots.
 - Add regression coverage for selected-pair routing, duplex configuration and setup telemetry.
+- Fix CI and release SDK setup by skipping the unavailable legacy `tools` package.
 
 ## v0.42.2 (2026-09-14)
 
