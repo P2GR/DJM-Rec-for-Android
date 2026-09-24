@@ -59,7 +59,11 @@ import java.util.concurrent.TimeUnit
 /**
  * Foreground service hosting the entire recording session so the OS cannot kill the process
  * mid-capture. Exposes a [LocalBinder] for the UI's ViewModel to observe state directly, and
- * also reacts to notification action buttons (Pause/Resume/Stop) via `onStartCommand`.
+ * also reacts to notification action buttons (Pause/Resume/Mark/Stop) via `onStartCommand`.
+ *
+ * Session opening runs on [monitorHandler] rather than the main thread: the native open/probe
+ * can block for seconds on a half-connected mixer, and blocking `onStartCommand` would make the
+ * notification's Stop button (and every other command) unresponsive exactly in that state.
  */
 class RecordingService : LifecycleService() {
 
@@ -291,6 +295,18 @@ class RecordingService : LifecycleService() {
     val saving: StateFlow<Boolean> = _saving.asStateFlow()
     private var closeAfterSave = false
 
+    /**
+     * Incremented by every teardown path (stop/close/detach) to invalidate a session open that
+     * is still probing the device on [monitorHandler] -- without this, a slow open finishing
+     * after "Stop & close" would resurrect monitoring and its notification.
+     */
+    @Volatile
+    private var sessionOpenToken = 0
+
+    /** True while a session open is posted/running; teardown then defers AudioEngine.close() to it. */
+    @Volatile
+    private var sessionOpening = false
+
     override fun onCreate() {
         super.onCreate()
         lifecycleScope.launch {
@@ -374,7 +390,8 @@ class RecordingService : LifecycleService() {
         if (intent?.hasExtra(EXTRA_RECORDING_GAIN_DB) == true) {
             setRecordingGainDb(intent.getIntExtra(EXTRA_RECORDING_GAIN_DB, 12))
         }
-        if (_saving.value && intent?.action != ACTION_STOP_ALL && intent?.action != ACTION_DEVICE_DETACHED) return START_NOT_STICKY
+        if (_saving.value && intent?.action != ACTION_STOP_ALL && intent?.action != ACTION_DEVICE_DETACHED &&
+            intent?.action != ACTION_STOP_LIVE) return START_NOT_STICKY
         if (intent?.action == ACTION_START || intent?.action == ACTION_MONITOR) {
             if (events.closeRequested.value) return START_NOT_STICKY
             if (_state.value is RecordingState.Idle || _state.value is RecordingState.Error) {
@@ -585,17 +602,29 @@ class RecordingService : LifecycleService() {
         currentBitDepth = bitDepth
         currentOutputChannels = 2
 
-        val negotiatedRate = AudioEngine.open(audioManagerDeviceId, sampleRateHint, channelCount, bitDepth)
-        if (negotiatedRate <= 0) {
-            failPreparation("Failed to open exclusive audio stream")
-            return
-        }
-        updateRecordingFormat(negotiatedRate, bitDepth)
+        // The native open can block for seconds while probing the device. Run it on the monitor
+        // thread so onStartCommand keeps accepting commands -- Stop from the notification must
+        // stay responsive even while this is still opening.
+        val token = ++sessionOpenToken
+        sessionOpening = true
+        monitorHandler.post {
+            try {
+                val negotiatedRate = AudioEngine.open(audioManagerDeviceId, sampleRateHint, channelCount, bitDepth)
+                if (abandonStaleOpen(token)) return@post
+                if (negotiatedRate <= 0) {
+                    failPreparation("Failed to open exclusive audio stream")
+                    return@post
+                }
+                updateRecordingFormat(negotiatedRate, bitDepth)
 
-        if (monitorOnly) {
-            beginMonitoring()
-        } else {
-            beginEncodingOrFail(bitDepth, format)
+                if (monitorOnly) {
+                    beginMonitoring(token)
+                } else {
+                    beginEncodingOrFail(bitDepth, format, token)
+                }
+            } finally {
+                sessionOpening = false
+            }
         }
     }
 
@@ -633,28 +662,38 @@ class RecordingService : LifecycleService() {
             releaseIsoConnectionIfNeeded()
             return
         }
-        val negotiatedRate = AudioEngine.openUsbIso(
-            fd, interfaceNumber, alternateSetting, endpointAddress, maxPacketSize,
-            totalChannels, subframeSize, bitDepth, channelOffset,
-            clockControlInterfaceNumber, clockSourceId, clockSupportsFrequencySet,
-            feedbackEndpointAddress, feedbackMaxPacketSize, vendorId, productId,
-            rawDescriptors, sampleRateHint
-        )
-        if (negotiatedRate <= 0) {
-            com.audiopro.djmrec.diagnostics.RemoteDiagnostics.health(
-                "ERROR: Failed to open USB isochronous capture", AudioEngine.getDiagnosticSummary()
-            )
-            failPreparation("Failed to open USB isochronous capture")
-            releaseIsoConnectionIfNeeded()
-            return
-        }
-        updateRecordingFormat(negotiatedRate, bitDepth)
+        // Off-main open: USB control probing can block on a half-connected mixer (see startSession).
+        val token = ++sessionOpenToken
+        sessionOpening = true
+        monitorHandler.post {
+            try {
+                val negotiatedRate = AudioEngine.openUsbIso(
+                    fd, interfaceNumber, alternateSetting, endpointAddress, maxPacketSize,
+                    totalChannels, subframeSize, bitDepth, channelOffset,
+                    clockControlInterfaceNumber, clockSourceId, clockSupportsFrequencySet,
+                    feedbackEndpointAddress, feedbackMaxPacketSize, vendorId, productId,
+                    rawDescriptors, sampleRateHint
+                )
+                if (abandonStaleOpen(token)) return@post
+                if (negotiatedRate <= 0) {
+                    com.audiopro.djmrec.diagnostics.RemoteDiagnostics.health(
+                        "ERROR: Failed to open USB isochronous capture", AudioEngine.getDiagnosticSummary()
+                    )
+                    failPreparation("Failed to open USB isochronous capture")
+                    releaseIsoConnectionIfNeeded()
+                    return@post
+                }
+                updateRecordingFormat(negotiatedRate, bitDepth)
 
-        if (monitorOnly) {
-            beginMonitoring()
-        } else {
-            // Recording a quiet intro is valid. Monitoring/health report silence separately.
-            beginEncodingOrFail(bitDepth, format)
+                if (monitorOnly) {
+                    beginMonitoring(token)
+                } else {
+                    // Recording a quiet intro is valid. Monitoring/health report silence separately.
+                    beginEncodingOrFail(bitDepth, format, token)
+                }
+            } finally {
+                sessionOpening = false
+            }
         }
     }
 
@@ -666,14 +705,15 @@ class RecordingService : LifecycleService() {
     }
 
     /** Shared setup after stream open for monitoring: starts metering without file output. */
-    private fun beginMonitoring() {
+    private fun beginMonitoring(openToken: Int = sessionOpenToken) {
         val queuedFormat = pendingRecordingFormat
         if (queuedFormat != null) {
             pendingRecordingFormat = null
             isMonitoringOnly = false
-            beginEncodingOrFail(currentBitDepth, queuedFormat)
+            beginEncodingOrFail(currentBitDepth, queuedFormat, openToken)
             return
         }
+        if (abandonStaleOpen(openToken)) return
         acquireWakeLock()
         if (!startForegroundNotification()) {
             AudioEngine.close()
@@ -694,7 +734,8 @@ class RecordingService : LifecycleService() {
 
     /** Shared tail of both [startSession] and [startUsbIsoSession] once the native capture
      *  source is open: creates the output file, starts the encoder, and flips to Recording. */
-    private fun beginEncodingOrFail(bitDepth: Int, format: RecordingFormat) {
+    private fun beginEncodingOrFail(bitDepth: Int, format: RecordingFormat, openToken: Int = sessionOpenToken) {
+        if (abandonStaleOpen(openToken)) return
         val freeBytes = RecordingOutputManager.freeBytes()
         val requiredBytes = RecordingStoragePolicy.requiredStartBytes(bytesPerSecond)
         if (freeBytes != Long.MAX_VALUE && freeBytes < requiredBytes) {
@@ -879,18 +920,34 @@ class RecordingService : LifecycleService() {
         }
     }
 
-    /** Closes the [UsbAudioManager] connection backing native libusb capture, if this session used it. */
+    /**
+     * Closes the [UsbAudioManager] connection backing native libusb capture, if this session used it.
+     */
     private fun releaseIsoConnectionIfNeeded() {
         if (isUsbIsoSession) {
             (application as DjmRecApplication).usbAudioManager.releaseIsoCaptureConnection()
         }
     }
 
+    /**
+     * True when the session open was invalidated by a stop/close that ran while the native open
+     * was still probing. Cleans up the just-opened stream so nothing survives an explicit
+     * shutdown. Called from the open task itself (the only safe place to touch the engine
+     * mid-open) -- see [sessionOpenToken].
+     */
+    private fun abandonStaleOpen(token: Int): Boolean {
+        if (token == sessionOpenToken) return false
+        Log.i(TAG, "Session open superseded by stop/close; discarding")
+        AudioEngine.close()
+        releaseIsoConnectionIfNeeded()
+        return true
+    }
+
     private fun failPreparation(message: String) {
         pendingRecordingFormat = null
         _state.value = RecordingState.Error(message)
         _health.value = RecordingHealth(RecordingHealthLevel.ERROR, message)
-        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        dismissNotification()
     }
 
     fun pauseSession() {
@@ -911,12 +968,15 @@ class RecordingService : LifecycleService() {
         if (_saving.value) return
         pendingRecordingFormat = null
         if (_state.value is RecordingState.Preparing || _state.value is RecordingState.Error) {
+            sessionOpenToken++ // cancel an in-flight session open, if any
             stopLiveStream()
-            AudioEngine.close()
-            releaseIsoConnectionIfNeeded()
+            if (!sessionOpening) {
+                AudioEngine.close()
+                releaseIsoConnectionIfNeeded()
+            }
             _state.value = RecordingState.Idle
             _health.value = RecordingHealth.Ready
-            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            dismissNotification()
             stopSelf()
             return
         }
@@ -932,7 +992,7 @@ class RecordingService : LifecycleService() {
                 _levels.value = StereoLevels(floorLevel, floorLevel)
                 _waveformBins.value = emptyWaveform
                 _health.value = RecordingHealth.Ready
-                ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                dismissNotification()
                 stopSelf()
             }
             return
@@ -978,15 +1038,21 @@ class RecordingService : LifecycleService() {
     }
 
     private fun closeCaptureAndTask() {
+        sessionOpenToken++ // invalidate any session open still probing in the background
         stopLiveStream()
-        AudioEngine.close()
-        releaseIsoConnectionIfNeeded()
+        if (!sessionOpening) {
+            AudioEngine.close()
+            releaseIsoConnectionIfNeeded()
+        }
         releaseWakeLock()
-        monitorHandler.removeCallbacksAndMessages(null)
         _state.value = RecordingState.Idle
         _levels.value = StereoLevels(floorLevel, floorLevel)
         _waveformBins.value = emptyWaveform
-        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        // Clear callbacks first, then let the monitor thread run the final cancel: any
+        // notification update already executing there is serialized before it, so it cannot
+        // re-post the ongoing notification after it has been removed.
+        monitorHandler.removeCallbacksAndMessages(null)
+        dismissNotification()
         (getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager).appTasks.forEach { it.finishAndRemoveTask() }
         stopSelf()
     }
@@ -1019,7 +1085,7 @@ class RecordingService : LifecycleService() {
             RecordingOutputManager.freeBytes(),
             0
         )
-        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        dismissNotification()
         safetyStopPending = false
     }
 
@@ -1030,13 +1096,16 @@ class RecordingService : LifecycleService() {
             stopSessionWithError("USB mixer disconnected. Recording finalized safely.")
             return
         }
+        sessionOpenToken++ // detach during Preparing: let the in-flight open clean up after itself
         stopLiveStream("USB mixer disconnected")
-        AudioEngine.close()
-        releaseIsoConnectionIfNeeded()
+        if (!sessionOpening) {
+            AudioEngine.close()
+            releaseIsoConnectionIfNeeded()
+        }
         releaseWakeLock()
         _state.value = RecordingState.Error("USB mixer disconnected")
         _health.value = RecordingHealth(RecordingHealthLevel.ERROR, "USB mixer disconnected")
-        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        dismissNotification()
     }
 
     fun setDeviceLabel(label: String) {
@@ -1056,7 +1125,9 @@ class RecordingService : LifecycleService() {
             releaseIsoConnectionIfNeeded()
         }
         releaseWakeLock()
+        sessionOpenToken++
         monitorHandler.removeCallbacksAndMessages(null)
+        NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID)
         monitorThread.quitSafely()
         super.onDestroy()
     }
@@ -1126,12 +1197,29 @@ class RecordingService : LifecycleService() {
     }
 
     private fun updateNotification() {
+        val active = _saving.value || _state.value is RecordingState.Recording ||
+            _state.value is RecordingState.Paused || _state.value is RecordingState.Monitoring
+        if (!active) return
         if (events.closeRequested.value && !_saving.value) return
         val canNotify = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED
         if (canNotify) {
             NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, buildNotification())
+        }
+    }
+
+    /**
+     * Removes the foreground notification and guarantees no racing notification refresh
+     * re-posts it afterwards: the final `cancel` is serialized on [monitorHandler], the same
+     * thread that runs the periodic notification updates.
+     */
+    private fun dismissNotification() {
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        if (::monitorHandler.isInitialized) {
+            monitorHandler.post { NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID) }
+        } else {
+            NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID)
         }
     }
 
@@ -1184,13 +1272,24 @@ class RecordingService : LifecycleService() {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
-        if (isRecording) {
+            // Full transport controls on the lock screen -- recordings are managed while the
+            // phone stays locked during a set.
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+        // While saving, transport actions would no-op (onStartCommand drops them), so show none.
+        if (isRecording && !_saving.value) {
             builder.addAction(toggleAction)
             builder.addAction(
                 NotificationCompat.Action(
-                    android.R.drawable.ic_menu_close_clear_cancel,
-                    "Save & close",
-                    servicePendingIntent(ACTION_STOP_ALL)
+                    android.R.drawable.ic_input_add,
+                    getString(R.string.action_mark),
+                    servicePendingIntent(ACTION_MARK_TRACK)
+                )
+            )
+            builder.addAction(
+                NotificationCompat.Action(
+                    android.R.drawable.ic_menu_save,
+                    getString(R.string.action_stop_save),
+                    servicePendingIntent(ACTION_STOP)
                 )
             )
         }
@@ -1203,11 +1302,11 @@ class RecordingService : LifecycleService() {
                 )
             )
         }
-        if (!isRecording) {
+        if (!isRecording && !_saving.value) {
             builder.addAction(
                 NotificationCompat.Action(
                     android.R.drawable.ic_menu_close_clear_cancel,
-                    "Stop & close",
+                    getString(R.string.action_stop_close),
                     servicePendingIntent(ACTION_STOP_ALL)
                 )
             )

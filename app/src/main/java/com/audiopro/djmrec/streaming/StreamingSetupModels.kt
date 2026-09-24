@@ -23,10 +23,14 @@ data class StreamCredentials(
 )
 
 class YouTubeLiveSession internal constructor(
-    internal val accessToken: String,
+    accessToken: String,
     val broadcastId: String,
     val streamId: String
 ) {
+    /** Refreshed in place on HTTP 401 via [StreamingSetupRepository.accessTokenRefresher]. */
+    @Volatile
+    internal var accessToken: String = accessToken
+
     val studioUrl: String = "https://studio.youtube.com/video/$broadcastId/livestreaming"
     val watchUrl: String = "https://www.youtube.com/watch?v=$broadcastId"
 
@@ -44,6 +48,13 @@ enum class YouTubeFinishResult {
     DELETED
 }
 
+/** Snapshot of a live broadcast's audience and YouTube-reported ingest health. */
+data class YouTubeLiveStats(
+    val concurrentViewers: Int?,
+    val healthLabel: String?,
+    val healthIssues: List<String>
+)
+
 enum class YouTubeBroadcastStatus {
     IDLE,
     PLANNED,
@@ -59,7 +70,10 @@ data class YouTubeBroadcastState(
     val status: YouTubeBroadcastStatus = YouTubeBroadcastStatus.IDLE,
     val message: String = "",
     val watchUrl: String? = null,
-    val studioUrl: String? = null
+    val studioUrl: String? = null,
+    val viewerCount: Int? = null,
+    val healthLabel: String? = null,
+    val healthIssues: List<String> = emptyList()
 )
 
 data class StreamSetupState(

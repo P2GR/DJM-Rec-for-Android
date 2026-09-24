@@ -17,6 +17,8 @@ class YouTubeBroadcastCoordinator {
             if (retainPlannedYouTubeBroadcast(state.status, youtubeTransitionRequested)) {
                 youtubeLifecycleJob?.cancel()
                 youtubeLifecycleJob = null
+                youtubeStatsJob?.cancel()
+                youtubeStatsJob = null
                 _youtubeBroadcastState.value = _youtubeBroadcastState.value.copy(
                     status = YouTubeBroadcastStatus.PLANNED, message = "Broadcast kept ready. Fix the input/camera issue and retry.")
             } else finishYouTubeSession()
@@ -30,8 +32,13 @@ class YouTubeBroadcastCoordinator {
     private var streamSetupJob: Job? = null
     private var youtubeLifecycleJob: Job? = null
     private var youtubeCompletionJob: Job? = null
+    private var youtubeStatsJob: Job? = null
     private var youtubeLiveSession: YouTubeLiveSession? = null
     private var youtubeTransitionRequested = false
+
+    private companion object {
+        const val STATS_POLL_INTERVAL_MS = 15_000L
+    }
 
     fun prepareYouTubeDestination(accessToken: String, title: String, privacy: YouTubePrivacy) {
         youtubeTransitionRequested = false
@@ -105,6 +112,7 @@ class YouTubeBroadcastCoordinator {
                     status = YouTubeBroadcastStatus.LIVE,
                     message = "Broadcast is live and ready to share"
                 )
+                startStatsPolling(session)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -121,6 +129,8 @@ class YouTubeBroadcastCoordinator {
         youtubeLiveSession = null
         youtubeLifecycleJob?.cancel()
         youtubeLifecycleJob = null
+        youtubeStatsJob?.cancel()
+        youtubeStatsJob = null
         youtubeCompletionJob?.cancel()
         youtubeCompletionJob = scope.launch {
             _youtubeBroadcastState.value = _youtubeBroadcastState.value.copy(
@@ -155,6 +165,41 @@ class YouTubeBroadcastCoordinator {
 
     fun setStreamSetupError(platform: LivePlatform, message: String) {
         _streamSetupState.value = StreamSetupState(platform, StreamSetupStatus.ERROR, message)
+    }
+
+    /**
+     * Cleans up a prepared-but-never-used broadcast (e.g. the user switched platform after
+     * "Broadcast planned"): finishing the session deletes the planned event so it does not
+     * linger on the channel. Never touches an in-progress or live broadcast.
+     */
+    fun abandonPlannedBroadcast() {
+        if (youtubeLiveSession == null) return
+        when (_youtubeBroadcastState.value.status) {
+            YouTubeBroadcastStatus.WAITING_FOR_INGEST,
+            YouTubeBroadcastStatus.STARTING,
+            YouTubeBroadcastStatus.LIVE -> return
+            else -> finishYouTubeSession()
+        }
+    }
+
+    /** Keeps audience size and YouTube ingest health fresh while the broadcast is live. */
+    private fun startStatsPolling(session: YouTubeLiveSession) {
+        youtubeStatsJob?.cancel()
+        youtubeStatsJob = scope.launch {
+            while (isActive) {
+                runCatching { StreamingSetupRepository.fetchYouTubeLiveStats(session) }
+                    .onSuccess { stats ->
+                        _youtubeBroadcastState.update {
+                            it.copy(
+                                viewerCount = stats.concurrentViewers,
+                                healthLabel = stats.healthLabel,
+                                healthIssues = stats.healthIssues
+                            )
+                        }
+                    }
+                delay(STATS_POLL_INTERVAL_MS)
+            }
+        }
     }
 
     fun consumeStreamCredentials() {

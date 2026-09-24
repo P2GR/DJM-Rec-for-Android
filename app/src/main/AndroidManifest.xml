@@ -17,6 +17,12 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Android 13+ runtime notification permission for the persistent recording notification. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Onboarding: lets DJM REC put the phone into Do Not Disturb while recording
+         (Notification policy access, granted via Android Settings). -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+    <!-- Onboarding: lets the user exclude the app from battery optimisation so long
+         background recordings are not slept by Android ("Allow background usage"). -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- Needed for resolveActivity() on Android 11+ (package visibility). -->
     <queries>

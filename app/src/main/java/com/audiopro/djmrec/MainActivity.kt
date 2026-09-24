@@ -10,8 +10,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import com.audiopro.djmrec.ui.MainScreen
 import com.audiopro.djmrec.ui.MainViewModel
+import com.audiopro.djmrec.ui.OnboardingScreen
 import com.audiopro.djmrec.ui.theme.DjmRecTheme
 
 class MainActivity : ComponentActivity() {
@@ -27,11 +30,21 @@ class MainActivity : ComponentActivity() {
         val events = (application as DjmRecApplication).sessionEvents
         events.closeRequested.value = false
         lifecycleScope.launch { events.closeRequested.collect { if (it) finishAndRemoveTask() } }
-        requestRuntimePermissions()
+        // First launch: the onboarding stepper collects every permission itself. Later launches
+        // keep the legacy silent re-request in case a required grant was revoked meanwhile.
+        if (viewModel.onboardingComplete.value) requestRuntimePermissions()
 
         setContent {
             DjmRecTheme {
-                MainScreen(viewModel = viewModel)
+                val onboardingComplete by viewModel.onboardingComplete.collectAsState()
+                if (onboardingComplete) {
+                    MainScreen(viewModel = viewModel)
+                } else {
+                    OnboardingScreen(onFinished = {
+                        viewModel.completeOnboarding()
+                        viewModel.rescanUsbDevices()
+                    })
+                }
             }
         }
     }

@@ -59,6 +59,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val KEY_FORCE_ANDROID_CAPTURE = "force_android_capture"
         private const val KEY_DJMREC_PORT_MODE = "djmrec_port_mode"
         private const val KEY_WAVEFORM_ENABLED = "waveform_enabled"
+        private const val KEY_ONBOARDING_COMPLETE = "onboarding_complete"
     }
 
     private val usbAudioManager = (application as DjmRecApplication).usbAudioManager
@@ -98,6 +99,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val keepScreenOn = MutableStateFlow(prefs.getBoolean("keep_screen_on", false))
     val smoothWaveform = MutableStateFlow(prefs.getBoolean("smooth_waveform", true))
     val confirmStop = MutableStateFlow(prefs.getBoolean("confirm_stop", true))
+
+    private val _onboardingComplete = MutableStateFlow(prefs.getBoolean(KEY_ONBOARDING_COMPLETE, false))
+    val onboardingComplete: StateFlow<Boolean> = _onboardingComplete.asStateFlow()
+
+    fun completeOnboarding() {
+        prefs.edit().putBoolean(KEY_ONBOARDING_COMPLETE, true).apply()
+        _onboardingComplete.value = true
+    }
 
     fun setKeepScreenOn(value: Boolean) { prefs.edit().putBoolean("keep_screen_on", value).apply(); keepScreenOn.value = value }
     fun setSmoothWaveform(value: Boolean) { prefs.edit().putBoolean("smooth_waveform", value).apply(); smoothWaveform.value = value }
@@ -576,6 +585,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setStreamSetupError(platform: LivePlatform, message: String) = youtubeCoordinator.setStreamSetupError(platform, message)
     fun consumeStreamCredentials() = youtubeCoordinator.consumeStreamCredentials()
     fun cancelStreamSetup() = youtubeCoordinator.cancelStreamSetup()
+
+    /** Tears down a prepared-but-unused YouTube broadcast when the user changes platform. */
+    fun abandonYouTubeSetup() {
+        cancelStreamSetup()
+        youtubeCoordinator.abandonPlannedBroadcast()
+    }
 
     fun attachLivePreview(surfaceView: SurfaceView) {
         livePreview = surfaceView

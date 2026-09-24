@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.net.Uri
@@ -68,6 +69,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -81,11 +83,13 @@ import com.audiopro.djmrec.streaming.LiveStreamState
 import com.audiopro.djmrec.streaming.LiveStreamStatus
 import com.audiopro.djmrec.streaming.LiveVideoMode
 import com.audiopro.djmrec.streaming.StreamSetupStatus
+import com.audiopro.djmrec.streaming.StreamingSetupRepository
 import com.audiopro.djmrec.streaming.YouTubePrivacy
 import com.audiopro.djmrec.streaming.YouTubeBroadcastStatus
 import com.audiopro.djmrec.ui.theme.AccentAmber
 import com.audiopro.djmrec.ui.theme.AccentGreen
 import com.audiopro.djmrec.ui.theme.AccentRed
+import com.google.android.gms.auth.api.identity.AuthorizationClient
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
 import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.common.api.Scope
@@ -95,7 +99,9 @@ import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.coroutines.resume
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 
 @Composable
@@ -112,7 +118,10 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
     var step by rememberSaveable { mutableStateOf(0) }
     var confirmEnd by remember { mutableStateOf(false) }
     var authorizing by remember { mutableStateOf(false) }
-    var portrait by rememberSaveable { mutableStateOf(false) }
+    // Stream shape follows how the phone is held when the user goes live. The encoder keeps that
+    // orientation for the whole broadcast; on-screen controls rotate with the device.
+    val streamPortrait = LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT
+    val orientationLabel = if (streamPortrait) "Portrait (9:16)" else "Landscape (16:9)"
     val artworkPreferences = remember(context) {
         context.getSharedPreferences("livestream", Context.MODE_PRIVATE)
     }
@@ -153,6 +162,11 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
     }
 
     val googleAuthorizationClient = remember(context) { Identity.getAuthorizationClient(context) }
+    // Keeps YouTube API calls (viewer stats, broadcast finalization) working on long sets, where
+    // the access token captured at connect time has already expired.
+    LaunchedEffect(Unit) {
+        StreamingSetupRepository.accessTokenRefresher = { silentYouTubeToken(googleAuthorizationClient) }
+    }
     val googleAuthorization = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
@@ -272,7 +286,6 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
         CameraLiveScreen(viewModel)
         return
     }
-
     LaunchedEffect(youtubeBroadcast.status) {
         if (platform == LivePlatform.YOUTUBE && youtubeBroadcast.status == YouTubeBroadcastStatus.COMPLETE) {
             streamKey = ""
@@ -282,14 +295,14 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
     }
 
     val destinationReady = runCatching {
-        LiveStreamConfig(platform, serverUrl, streamKey, videoMode, portrait).endpoint()
+        LiveStreamConfig(platform, serverUrl, streamKey, videoMode, streamPortrait).endpoint()
     }.isSuccess
     val pictureReady = videoMode != LiveVideoMode.ARTWORK || !artworkUri.isNullOrBlank()
     val health by viewModel.recordingHealth.collectAsState()
     val device by viewModel.deviceState.collectAsState()
 
     fun goLive() {
-        val config = LiveStreamConfig(platform, serverUrl, streamKey, videoMode, portrait, artworkUri)
+        val config = LiveStreamConfig(platform, serverUrl, streamKey, videoMode, streamPortrait, artworkUri)
         localError = runCatching { config.endpoint() }.exceptionOrNull()?.message
         if (localError != null) { step = 0; return }
         if (!pictureReady) { step = 1; return }
@@ -308,8 +321,18 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
             if (liveState.isActive) {
                 LiveStatusCard(liveState, captureReady)
                 Text("Your artwork and mixer audio are streaming. You can keep recording locally.")
+                youtubeBroadcast.viewerCount?.let { count ->
+                    Text("${formatViewerCount(count)} watching now",
+                        style = MaterialTheme.typography.titleMedium, color = AccentGreen)
+                }
+                youtubeBroadcast.healthIssues.forEach { issue ->
+                    Text(issue, style = MaterialTheme.typography.bodySmall, color = AccentAmber)
+                }
                 youtubeBroadcast.watchUrl?.let { url ->
                     OutlinedButton(onClick = { shareBroadcast(url) }) { Text("Share broadcast") }
+                }
+                youtubeBroadcast.studioUrl?.let { url ->
+                    OutlinedButton(onClick = { openUrl(url) }) { Text("Open YouTube Studio") }
                 }
             } else {
                 Text("Share your set", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
@@ -332,7 +355,7 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                                 enabled = !setupState.isBusy && !authorizing,
                                 onClick = {
                                     if (platform != option) {
-                                        viewModel.cancelStreamSetup()
+                                        viewModel.abandonYouTubeSetup()
                                         platform = option; serverUrl = option.defaultServerUrl
                                         streamKey = ""; destinationUrl = null; localError = null
                                     }
@@ -343,7 +366,9 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                             LivePlatform.YOUTUBE -> {
                                 if (destinationReady) {
                                     Text("YouTube destination ready", color = AccentGreen)
-                                    destinationUrl?.let { url -> TextButton(onClick = { openUrl(url) }) { Text("Open broadcast") } }
+                                    (youtubeBroadcast.watchUrl ?: destinationUrl)?.let { url ->
+                                        TextButton(onClick = { openUrl(url) }) { Text("Open broadcast") }
+                                    }
                                 } else {
                                     OutlinedTextField(
                                         value = youtubeTitle,
@@ -400,9 +425,10 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                             Text("Still artwork uses less power than the camera.", style = MaterialTheme.typography.bodySmall)
                         }
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text(if (portrait) "Portrait (vertical)" else "Landscape (horizontal)")
-                            Switch(portrait, { portrait = it })
+                            Text("Stream orientation: $orientationLabel")
                         }
+                        Text("Matches how you hold your phone when you go live. The stream keeps this shape; on-screen controls rotate with your phone.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text("Meters, timers and controls stay on your phone. Viewers see only your camera or artwork.")
                     }
                     else -> {
@@ -410,7 +436,7 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                         Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(16.dp)) {
                             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(platform.label, fontWeight = FontWeight.Bold)
-                                Text("${videoMode.label} / ${if (portrait) "Portrait" else "Landscape"}")
+                                Text("${videoMode.label} / $orientationLabel")
                                 Text(device?.productName ?: "No mixer selected")
                                 Text(
                                     when {
@@ -447,7 +473,7 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                 }, enabled = liveState.isActive || when (step) {
                     0 -> !setupState.isBusy && !authorizing && (destinationReady || platform == LivePlatform.YOUTUBE && youtubeTitle.isNotBlank())
                     1 -> destinationReady && pictureReady
-                    else -> destinationReady && pictureReady
+                    else -> destinationReady && pictureReady && device != null
                 }, modifier = Modifier.weight(1f).height(56.dp)) {
                     Text(if (liveState.isActive) "End stream" else when (step) {
                         0 -> if (platform == LivePlatform.YOUTUBE && !destinationReady) "Connect YouTube" else "Continue"
@@ -588,6 +614,19 @@ private fun decodeArtworkPreview(context: Context, artworkUri: String): Bitmap? 
     }
 }.getOrNull()
 
+/** Silent token renewal for long sets: returns null when re-consent would need user action. */
+private suspend fun silentYouTubeToken(client: AuthorizationClient): String? =
+    suspendCancellableCoroutine { continuation ->
+        val request = AuthorizationRequest.builder()
+            .setRequestedScopes(listOf(Scope("https://www.googleapis.com/auth/youtube.force-ssl")))
+            .build()
+        client.authorize(request)
+            .addOnSuccessListener { result ->
+                continuation.resume(if (result.hasResolution()) null else result.accessToken)
+            }
+            .addOnFailureListener { continuation.resume(null) }
+    }
+
 private fun googleAuthorizationError(context: Context, error: ApiException): String {
     val unregistered = error.statusCode == CommonStatusCodes.DEVELOPER_ERROR ||
         error.message.orEmpty().contains("UNREGISTERED_ON_API_CONSOLE", ignoreCase = true)
@@ -674,7 +713,7 @@ private fun LiveStatusCard(liveState: LiveStreamState, captureReady: Boolean) {
                 Text(
                     String.format(
                         Locale.US,
-                        "Upload %.2f Mbps / audio and video sending",
+                        "Upload %.2f Mbps",
                         mbps
                     ),
                     style = MaterialTheme.typography.bodySmall,

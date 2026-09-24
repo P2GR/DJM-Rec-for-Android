@@ -25,8 +25,11 @@ class ArtworkVideoSource(
     private var worker: Thread? = null
     private var surface: Surface? = null
     private var artwork: Bitmap? = null
+    /** Capture rotation from prepareVideo, kept under a distinct name (VideoSource has `rotation`). */
+    private var frameRotation = 0
 
     override fun create(width: Int, height: Int, fps: Int, rotation: Int): Boolean {
+        frameRotation = ((rotation % 360) + 360) % 360
         artwork = runCatching { decodeArtwork(width, height) }.getOrNull()
         return artwork != null
     }
@@ -97,20 +100,41 @@ class ArtworkVideoSource(
             val targetLongestSide = maxOf(width, height) * 2
             decoder.setTargetSampleSize((longestSide / targetLongestSide).coerceAtLeast(1))
         }
-        val output = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val rotated = frameRotation == 90 || frameRotation == 270
+        // Compose the artwork upright on the OUTPUT frame viewers should see (letterboxed 16:9
+        // landscape, or 9:16 portrait).
+        val outputWidth = if (rotated) height else width
+        val outputHeight = if (rotated) width else height
+        val output = Bitmap.createBitmap(outputWidth, outputHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(output)
         canvas.drawColor(Color.BLACK)
-        val scale = min(width.toFloat() / decoded.width, height.toFloat() / decoded.height)
+        val scale = min(outputWidth.toFloat() / decoded.width, outputHeight.toFloat() / decoded.height)
         val drawnWidth = decoded.width * scale
         val drawnHeight = decoded.height * scale
         val destination = RectF(
-            (width - drawnWidth) / 2f,
-            (height - drawnHeight) / 2f,
-            (width + drawnWidth) / 2f,
-            (height + drawnHeight) / 2f
+            (outputWidth - drawnWidth) / 2f,
+            (outputHeight - drawnHeight) / 2f,
+            (outputWidth + drawnWidth) / 2f,
+            (outputHeight + drawnHeight) / 2f
         )
         canvas.drawBitmap(decoded, null, destination, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
         decoded.recycle()
-        return output
+        if (!rotated) return output
+        // The encoder rotates capture buffers to upright -- the same transform that corrects
+        // camera sensor frames (a portrait camera buffer needs a 90 degree clockwise correction,
+        // per Android's camera display-orientation math). So the buffer content must sit one
+        // inverse rotation away from upright: pre-rotate the finished artwork by -rotation into
+        // the capture buffer and the encoder transform yields exactly the upright frame above.
+        val buffer = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val bufferCanvas = Canvas(buffer)
+        bufferCanvas.drawColor(Color.BLACK)
+        val matrix = android.graphics.Matrix().apply {
+            postTranslate(-outputWidth / 2f, -outputHeight / 2f)
+            postRotate(-frameRotation.toFloat())
+            postTranslate(width / 2f, height / 2f)
+        }
+        bufferCanvas.drawBitmap(output, matrix, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
+        output.recycle()
+        return buffer
     }
 }

@@ -23,6 +23,14 @@ object StreamingSetupRepository {
     private const val YOUTUBE_INGEST_TIMEOUT_MS = 90_000L
     private const val YOUTUBE_TRANSITION_TIMEOUT_MS = 60_000L
 
+    /**
+     * Set by the UI layer: silently returns a fresh Google access token (Identity Authorization
+     * API). Recovers API calls from 401s during long sets, when the token captured at connect
+     * time has expired (Google access tokens live about an hour).
+     */
+    @Volatile
+    var accessTokenRefresher: (suspend () -> String?)? = null
+
     suspend fun prepareYouTubeLive(
         accessToken: String,
         title: String,
@@ -120,14 +128,13 @@ object StreamingSetupRepository {
     }
 
     suspend fun startYouTubeBroadcast(session: YouTubeLiveSession) = withContext(Dispatchers.IO) {
-        val headers = youtubeHeaders(session)
         val ingestDeadline = SystemClock.elapsedRealtime() + YOUTUBE_INGEST_TIMEOUT_MS
         while (true) {
-            val stream = requestJson(
+            val stream = requestAuthed(
+                session,
                 "GET",
                 "https://www.googleapis.com/youtube/v3/liveStreams" +
-                    "?part=status&id=${encode(session.streamId)}",
-                headers
+                    "?part=status&id=${encode(session.streamId)}"
             )
             requireSuccess(stream, "YouTube ingest status")
             val status = stream.json.getJSONArray("items").optJSONObject(0)?.optJSONObject("status")
@@ -142,13 +149,13 @@ object StreamingSetupRepository {
             delay(YOUTUBE_POLL_INTERVAL_MS)
         }
 
-        val currentStatus = youtubeBroadcastStatus(session, headers)
+        val currentStatus = youtubeBroadcastStatus(session)
         if (currentStatus != "live" && currentStatus != "liveStarting") {
-            val transition = requestJson(
+            val transition = requestAuthed(
+                session,
                 "POST",
                 "https://www.googleapis.com/youtube/v3/liveBroadcasts/transition" +
-                    "?part=status&id=${encode(session.broadcastId)}&broadcastStatus=live",
-                headers
+                    "?part=status&id=${encode(session.broadcastId)}&broadcastStatus=live"
             )
             val reason = youtubeErrorReason(transition)
             val autoStartRace = reason == "redundantTransition" || reason == "invalidTransition"
@@ -158,7 +165,7 @@ object StreamingSetupRepository {
         }
 
         val transitionDeadline = SystemClock.elapsedRealtime() + YOUTUBE_TRANSITION_TIMEOUT_MS
-        while (youtubeBroadcastStatus(session, headers) != "live") {
+        while (youtubeBroadcastStatus(session) != "live") {
             if (SystemClock.elapsedRealtime() >= transitionDeadline) {
                 throw IOException("YouTube broadcast did not become live within 60 seconds")
             }
@@ -168,14 +175,13 @@ object StreamingSetupRepository {
 
     suspend fun finishYouTubeBroadcast(session: YouTubeLiveSession): YouTubeFinishResult =
         withContext(Dispatchers.IO) {
-            val headers = youtubeHeaders(session)
-            when (youtubeBroadcastStatus(session, headers)) {
+            when (youtubeBroadcastStatus(session)) {
                 "live", "liveStarting", "testing", "testStarting" -> {
-                    val transition = requestJson(
+                    val transition = requestAuthed(
+                        session,
                         "POST",
                         "https://www.googleapis.com/youtube/v3/liveBroadcasts/transition" +
-                            "?part=status&id=${encode(session.broadcastId)}&broadcastStatus=complete",
-                        headers
+                            "?part=status&id=${encode(session.broadcastId)}&broadcastStatus=complete"
                     )
                     if (transition.code !in 200..299 &&
                         youtubeErrorReason(transition) != "redundantTransition") {
@@ -186,32 +192,58 @@ object StreamingSetupRepository {
                 "complete" -> YouTubeFinishResult.COMPLETED
                 else -> {
                     // A stream stopped before going live should not remain as a planned event.
-                    val deleteBroadcast = requestJson(
+                    val deleteBroadcast = requestAuthed(
+                        session,
                         "DELETE",
                         "https://www.googleapis.com/youtube/v3/liveBroadcasts" +
-                            "?id=${encode(session.broadcastId)}",
-                        headers
+                            "?id=${encode(session.broadcastId)}"
                     )
                     requireSuccess(deleteBroadcast, "YouTube planned broadcast cleanup")
-                    requestJson(
+                    requestAuthed(
+                        session,
                         "DELETE",
-                        "https://www.googleapis.com/youtube/v3/liveStreams?id=${encode(session.streamId)}",
-                        headers
+                        "https://www.googleapis.com/youtube/v3/liveStreams?id=${encode(session.streamId)}"
                     )
                     YouTubeFinishResult.DELETED
                 }
             }
         }
 
-    private fun youtubeBroadcastStatus(
-        session: YouTubeLiveSession,
-        headers: Map<String, String>
-    ): String {
-        val response = requestJson(
+    /** Audience size and YouTube-reported ingest health for the live broadcast, polled by the UI. */
+    suspend fun fetchYouTubeLiveStats(session: YouTubeLiveSession): YouTubeLiveStats =
+        withContext(Dispatchers.IO) {
+            val video = requestAuthed(
+                session,
+                "GET",
+                "https://www.googleapis.com/youtube/v3/liveVideos" +
+                    "?part=liveStreamingDetails&id=${encode(session.broadcastId)}"
+            )
+            val viewers = video.json.getJSONArray("items").optJSONObject(0)
+                ?.optJSONObject("liveStreamingDetails")?.optString("concurrentViewers")
+                ?.takeIf(String::isNotBlank)?.toIntOrNull()
+            val stream = requestAuthed(
+                session,
+                "GET",
+                "https://www.googleapis.com/youtube/v3/liveStreams" +
+                    "?part=status&id=${encode(session.streamId)}"
+            )
+            val health = stream.json.getJSONArray("items").optJSONObject(0)
+                ?.optJSONObject("status")?.optJSONObject("healthStatus")
+            val label = health?.optString("status")?.takeIf(String::isNotBlank)
+            val issues = health?.optJSONArray("configurationIssues")?.let { array ->
+                (0 until array.length()).mapNotNull { index ->
+                    array.optJSONObject(index)?.optString("description")?.takeIf(String::isNotBlank)
+                }
+            }.orEmpty()
+            YouTubeLiveStats(viewers, label, issues)
+        }
+
+    private suspend fun youtubeBroadcastStatus(session: YouTubeLiveSession): String {
+        val response = requestAuthed(
+            session,
             "GET",
             "https://www.googleapis.com/youtube/v3/liveBroadcasts" +
-                "?part=status&id=${encode(session.broadcastId)}",
-            headers
+                "?part=status&id=${encode(session.broadcastId)}"
         )
         requireSuccess(response, "YouTube broadcast status")
         return response.json.getJSONArray("items").optJSONObject(0)
@@ -222,6 +254,24 @@ object StreamingSetupRepository {
 
     private fun youtubeHeaders(session: YouTubeLiveSession): Map<String, String> =
         mapOf("Authorization" to "Bearer ${session.accessToken}")
+
+    /** [requestJson] with YouTube auth and a single silent re-auth retry on 401. */
+    private suspend fun requestAuthed(
+        session: YouTubeLiveSession,
+        method: String,
+        url: String,
+        body: String? = null
+    ): JsonResponse {
+        var response = requestJson(method, url, youtubeHeaders(session), body)
+        if (response.code == 401) {
+            val fresh = accessTokenRefresher?.invoke()
+            if (!fresh.isNullOrBlank()) {
+                session.accessToken = fresh
+                response = requestJson(method, url, youtubeHeaders(session), body)
+            }
+        }
+        return response
+    }
 
     private fun youtubeHealthError(status: JSONObject): String {
         val issues = status.optJSONObject("healthStatus")?.optJSONArray("configurationIssues")
