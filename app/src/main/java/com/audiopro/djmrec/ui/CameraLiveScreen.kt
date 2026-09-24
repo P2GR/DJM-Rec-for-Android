@@ -13,12 +13,14 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.Settings
@@ -48,6 +50,7 @@ import com.audiopro.djmrec.streaming.YouTubeBroadcastStatus
 import com.audiopro.djmrec.ui.components.StereoVuMeter
 import com.audiopro.djmrec.ui.theme.AccentAmber
 import com.audiopro.djmrec.ui.theme.AccentRed
+import com.audiopro.djmrec.ui.theme.rememberReducedMotion
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
@@ -95,7 +98,9 @@ fun CameraLiveScreen(viewModel: MainViewModel) {
     }
     DisposableEffect(Unit) { onDispose { viewModel.detachLivePreview() } }
     LaunchedEffect(Unit) { while (true) { now = SystemClock.elapsedRealtime(); delay(1000) } }
-    BackHandler { if (settings) settings = false else confirmStop = true }
+    // Back leaves the console WITHOUT ending the stream — the console is a view on a running
+    // service stream. Ending the stream is always the explicit red button.
+    BackHandler { if (settings) settings = false else viewModel.cameraConsoleOpen.value = false }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(
@@ -116,6 +121,17 @@ fun CameraLiveScreen(viewModel: MainViewModel) {
                     verticalAlignment = Alignment.CenterVertically) {
                     Row(verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        // Explicit, labeled exit: leaves the console while the stream keeps
+                        // running (the red End stream button is the only way to stop the show).
+                        Row(
+                            modifier = Modifier.clickable { viewModel.cameraConsoleOpen.value = false }
+                                .heightIn(min = 48.dp).padding(horizontal = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, null, Modifier.size(18.dp))
+                            Text("Exit", style = MaterialTheme.typography.labelMedium)
+                        }
                         LiveDot(live.status)
                         Text(
                             if (live.status == LiveStreamStatus.LIVE) "LIVE · ${live.platform?.label.orEmpty()}"
@@ -140,7 +156,7 @@ fun CameraLiveScreen(viewModel: MainViewModel) {
                             }
                         }
                         youtube.watchUrl?.let { url ->
-                            IconButton(onClick = { shareUrl(url) }, modifier = Modifier.size(36.dp)) {
+                            IconButton(onClick = { shareUrl(url) }) {
                                 Icon(Icons.Default.Share, "Share watch link")
                             }
                         }
@@ -166,7 +182,7 @@ fun CameraLiveScreen(viewModel: MainViewModel) {
                         is RecordingState.Paused -> "Recording paused · ${cameraTime(elapsed)}"
                         else -> "Streaming only · local recording off"
                     }, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelLarge)
-                    Text("gain ${if (gain >= 0) "+" else ""}$gain dB · ${live.bitrateBitsPerSecond / 1000} kbps",
+                    Text("gain ${if (gain > 0) "+" else ""}$gain dB · ${live.bitrateBitsPerSecond / 1000} kbps",
                         style = MaterialTheme.typography.labelMedium)
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly,
@@ -236,9 +252,9 @@ fun CameraLiveScreen(viewModel: MainViewModel) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Keep screen awake"); Switch(awake, { awake = it })
             }
-            Text("Mixer gain: ${if (gain >= 0) "+" else ""}$gain dB")
+            Text("Mixer gain: ${if (gain > 0) "+" else ""}$gain dB")
             Slider(value = gain.toFloat(), onValueChange = { viewModel.setRecordingGainDb(it.roundToInt()) },
-                valueRange = -12f..24f, steps = 35,
+                valueRange = 0f..12f, steps = 11,
                 enabled = recording is RecordingState.Monitoring && !saving)
             Text(if (recording is RecordingState.Monitoring) "Gain changes the audio sent to viewers. Watch for clipping."
                 else "Gain is locked while recording or saving a set.", style = MaterialTheme.typography.bodySmall)
@@ -257,7 +273,7 @@ internal fun cameraTime(millis: Long): String {
     return "%02d:%02d:%02d".format(java.util.Locale.US, seconds / 3600, seconds / 60 % 60, seconds % 60)
 }
 
-/** Pulsing red dot while live, steady amber while connecting. */
+/** Pulsing red dot while live, steady amber while connecting (steady under reduced motion). */
 @Composable
 private fun LiveDot(status: LiveStreamStatus) {
     val color = when (status) {
@@ -265,7 +281,8 @@ private fun LiveDot(status: LiveStreamStatus) {
         LiveStreamStatus.PREPARING, LiveStreamStatus.CONNECTING, LiveStreamStatus.RECONNECTING -> AccentAmber
         LiveStreamStatus.IDLE -> Color.White
     }
-    val alpha = if (status != LiveStreamStatus.LIVE) 1f else {
+    val reducedMotion = rememberReducedMotion()
+    val alpha = if (status != LiveStreamStatus.LIVE || reducedMotion) 1f else {
         val transition = rememberInfiniteTransition(label = "liveDot")
         val pulse by transition.animateFloat(
             initialValue = 1f,

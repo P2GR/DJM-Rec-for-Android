@@ -1,8 +1,5 @@
 package com.audiopro.djmrec.ui.components
 
-import kotlin.math.pow
-import kotlin.math.roundToInt
-
 /** Audio cursor drives translation; historical peaks never morph between snapshots. */
 internal class WaveformTimeline {
     var bins = FloatArray(0)
@@ -47,14 +44,4 @@ internal class WaveformTimeline {
         cursor = cursor.coerceAtLeast(end - 24)
         return (end - cursor).toFloat()
     }
-}
-
-/** Relative band magnitude maps directly to additive RGB; equal bands produce white. */
-internal fun waveformRgb(low: Float, mid: Float, high: Float): Int {
-    fun clean(value: Float) = if (value.isFinite()) value.coerceAtLeast(0f) else 0f
-    val r = clean(low); val g = clean(mid); val b = clean(high)
-    val max = maxOf(r, g, b)
-    if (max < 0.000001f) return 0xff000000.toInt()
-    fun channel(value: Float) = ((value / max).pow(0.65f) * 255).roundToInt().coerceIn(0, 255)
-    return (0xff shl 24) or (channel(r) shl 16) or (channel(g) shl 8) or channel(b)
 }

@@ -30,6 +30,7 @@ class MainActivity : ComponentActivity() {
         val events = (application as DjmRecApplication).sessionEvents
         events.closeRequested.value = false
         lifecycleScope.launch { events.closeRequested.collect { if (it) finishAndRemoveTask() } }
+        intent?.data?.host?.let { viewModel.pendingRoute.value = it }
         // First launch: the onboarding stepper collects every permission itself. Later launches
         // keep the legacy silent re-request in case a required grant was revoked meanwhile.
         if (viewModel.onboardingComplete.value) requestRuntimePermissions()
@@ -69,6 +70,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        intent.data?.host?.let { viewModel.pendingRoute.value = it }
         viewModel.rescanUsbDevices()
     }
 

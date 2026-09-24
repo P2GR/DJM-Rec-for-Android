@@ -73,7 +73,6 @@ class RecordingService : LifecycleService() {
         const val ACTION_PAUSE = "com.audiopro.djmrec.action.PAUSE"
         const val ACTION_RESUME = "com.audiopro.djmrec.action.RESUME"
         const val ACTION_STOP_ALL = "com.audiopro.djmrec.action.STOP_ALL"
-        const val ACTION_MARK_TRACK = "com.audiopro.djmrec.action.MARK_TRACK"
         const val ACTION_STOP = "com.audiopro.djmrec.action.STOP"
         const val ACTION_DEVICE_DETACHED = "com.audiopro.djmrec.action.DEVICE_DETACHED"
         const val ACTION_START_LIVE = "com.audiopro.djmrec.action.START_LIVE"
@@ -400,14 +399,6 @@ class RecordingService : LifecycleService() {
         }
         when (intent?.action) {
             ACTION_STOP_ALL -> stopAndClose()
-            ACTION_MARK_TRACK -> synchronized(this) {
-                if (_state.value is RecordingState.Recording) currentOutput?.let { output ->
-                    runCatching {
-                        events.markerCount.value = com.audiopro.djmrec.storage.TrackMarkerStore.add(
-                            this, output.uri, AudioEngine.getElapsedMillis() - currentPartStartedElapsed)
-                    }.onFailure { _health.value = RecordingHealth(RecordingHealthLevel.ERROR, "Could not save track marker; audio is still recording") }
-                }
-            }
             ACTION_MONITOR -> {
                 if (_state.value is RecordingState.Monitoring ||
                     _state.value is RecordingState.Recording ||
@@ -744,7 +735,6 @@ class RecordingService : LifecycleService() {
         }
 
         val sessionId = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(Date())
-        events.markerCount.value = 0
         events.lastSaved.value = null
         val output = RecordingOutputManager.create(this, sessionId, format, 1)
         if (output == null) {
@@ -900,7 +890,6 @@ class RecordingService : LifecycleService() {
         currentOutput = next
         currentPartIndex = nextIndex
         currentPartStartedElapsed = elapsed
-        events.markerCount.value = 0
         if (!partJournaled) {
             requestSafetyStop("Could not journal next WAV part. Recording stopped safely.")
         } else if (!previousFinalized) {
@@ -1278,13 +1267,6 @@ class RecordingService : LifecycleService() {
         // While saving, transport actions would no-op (onStartCommand drops them), so show none.
         if (isRecording && !_saving.value) {
             builder.addAction(toggleAction)
-            builder.addAction(
-                NotificationCompat.Action(
-                    android.R.drawable.ic_input_add,
-                    getString(R.string.action_mark),
-                    servicePendingIntent(ACTION_MARK_TRACK)
-                )
-            )
             builder.addAction(
                 NotificationCompat.Action(
                     android.R.drawable.ic_menu_save,

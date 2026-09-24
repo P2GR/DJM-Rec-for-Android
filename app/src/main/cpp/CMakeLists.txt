@@ -122,6 +122,25 @@ if (NOT TARGET usb::usb)
 endif ()
 
 
+# ---------------------------------------------------------------------------
+# shine: fixed-point MPEG Layer III (MP3) encoder used by Mp3Writer for 320 kbps
+# CBR stereo output. Licensed under the GNU Library GPL v2 (see
+# THIRD_PARTY_NOTICES.md). Like libusb above it only ships autotools, so its
+# small src/lib/*.c set is compiled directly here; the public API is an
+# interleaved-int16 frame interface (src/lib/layer3.h).
+# ---------------------------------------------------------------------------
+FetchContent_Declare(
+    shine_src
+    GIT_REPOSITORY https://github.com/toots/shine.git
+    GIT_TAG        main
+)
+FetchContent_Populate(shine_src)
+
+file(GLOB SHINE_SOURCES ${shine_src_SOURCE_DIR}/src/lib/*.c)
+add_library(mp3shine STATIC ${SHINE_SOURCES})
+target_include_directories(mp3shine PUBLIC ${shine_src_SOURCE_DIR}/src)
+target_compile_options(mp3shine PRIVATE -Wno-unused-parameter -Wno-unused-function)
+
 add_library(
     djmrec_audio
     SHARED
@@ -130,6 +149,7 @@ add_library(
     WaveformAnalyzer.cpp
     writers/WavWriter.cpp
     writers/FlacWriter.cpp
+    writers/Mp3Writer.cpp
     jni/AudioEngineJNI.cpp
 )
 
@@ -145,6 +165,7 @@ target_link_libraries(
     PRIVATE
     oboe::oboe
     FLAC
+    mp3shine
     usb::usb
     android
     log

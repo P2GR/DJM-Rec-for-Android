@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.selection.selectable
@@ -36,10 +37,11 @@ fun FormatSelector(
             val detail = when (format) {
                 RecordingFormat.WAV -> "PCM"
                 RecordingFormat.FLAC -> "LOSSLESS"
+                RecordingFormat.MP3 -> "320 KBPS"
             }
             val isSelected = selected == format
             Surface(
-                modifier = Modifier.selectable(
+                modifier = Modifier.heightIn(min = 48.dp).selectable(
                     selected = isSelected,
                     enabled = enabled,
                     role = Role.RadioButton,

@@ -2,45 +2,40 @@ package com.audiopro.djmrec.ui
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FiberManualRecord
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Coffee
+import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.LiveTv
-import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalDrawerSheet
-import androidx.compose.material3.ModalNavigationDrawer
-import androidx.compose.material3.NavigationDrawerItem
-import androidx.compose.material3.NavigationDrawerItemDefaults
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -48,20 +43,24 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.audiopro.djmrec.DjmRecApplication
+import com.audiopro.djmrec.audio.RecordingState
+import com.audiopro.djmrec.ui.theme.AccentGreen
 import com.audiopro.djmrec.ui.theme.BackgroundDark
+import com.audiopro.djmrec.ui.theme.OutlineSubtle
 import com.audiopro.djmrec.ui.theme.SurfaceDark
 import com.audiopro.djmrec.ui.theme.TextPrimary
 import com.audiopro.djmrec.ui.theme.TextSecondary
-import com.audiopro.djmrec.audio.RecordingState
+import com.audiopro.djmrec.ui.theme.DjmRecMotion
+import com.audiopro.djmrec.ui.theme.rememberReducedMotion
 import com.audiopro.djmrec.update.AppUpdate
 import com.audiopro.djmrec.update.UpdateChecker
-import kotlinx.coroutines.launch
 
-private enum class Destination(val label: String, val icon: ImageVector) {
-    RECORDING("Recording", Icons.Filled.FiberManualRecord),
-    LIVE("Go Live", Icons.Filled.LiveTv),
-    RECORDINGS("My Recordings", Icons.Filled.LibraryMusic),
-    SETTINGS("Settings", Icons.Filled.Settings)
+private enum class Destination(val route: String, val label: String, val icon: ImageVector) {
+    RECORDING("record", "Record", Icons.Filled.FiberManualRecord),
+    LIVE("live", "Go Live", Icons.Filled.LiveTv),
+    RECORDINGS("recordings", "Recordings", Icons.Filled.LibraryMusic),
+    SETTINGS("settings", "Settings", Icons.Filled.Settings),
+    SUPPORT("support", "Support & diagnostics", Icons.Filled.BugReport)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -73,14 +72,28 @@ fun MainScreen(viewModel: MainViewModel) {
     val recoveryNotice by application.recoveryNotice.collectAsState()
     val recordingState by viewModel.recordingState.collectAsState()
     val liveState by viewModel.liveStreamState.collectAsState()
-    val drawerState = rememberDrawerState(DrawerValue.Closed)
-    val scope = rememberCoroutineScope()
     var selectedDestination by rememberSaveable { mutableStateOf(Destination.RECORDING) }
-    val cameraMode = selectedDestination == Destination.LIVE && liveState.isActive && liveState.usesCamera
+    // Fullscreen camera console takes over the whole window (no bars); closing it from the
+    // console brings the app chrome back while the stream keeps running.
+    val cameraMode = selectedDestination == Destination.LIVE && liveState.isActive &&
+        liveState.usesCamera && viewModel.cameraConsoleOpen.value
+    // The power-saving overlay is a true fullscreen takeover: hide both bars with the console.
+    // Scoped to the Record tab so a deep link can't leave other screens without chrome.
+    val chromeless = cameraMode ||
+        (viewModel.powerSaveActive.value && selectedDestination == Destination.RECORDING)
     var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }
 
     LaunchedEffect(Unit) {
         availableUpdate = UpdateChecker.check(context.applicationContext)
+    }
+
+    // djmrec://<route> deep links land here and navigate once the shell is up.
+    val pendingRoute by viewModel.pendingRoute.collectAsState()
+    LaunchedEffect(pendingRoute) {
+        pendingRoute?.let { route ->
+            Destination.entries.firstOrNull { it.route == route }?.let { selectedDestination = it }
+            viewModel.pendingRoute.value = null
+        }
     }
 
     recoveryNotice?.let { message ->
@@ -122,127 +135,84 @@ fun MainScreen(viewModel: MainViewModel) {
         )
     }
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        gesturesEnabled = !cameraMode,
-        drawerContent = {
-            ModalDrawerSheet(
-                drawerContainerColor = SurfaceDark
-            ) {
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "DJM REC",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = TextPrimary,
-                    modifier = Modifier.padding(horizontal = 28.dp, vertical = 12.dp)
-                )
-                Text(
-                    text = "USB recording studio",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary,
-                    modifier = Modifier.padding(horizontal = 28.dp)
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                HorizontalDivider(color = TextSecondary.copy(alpha = 0.2f))
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Destination.entries.forEach { dest ->
-                    NavigationDrawerItem(
-                        icon = {
-                            Icon(
-                                imageVector = dest.icon,
-                                contentDescription = dest.label,
-                                tint = if (selectedDestination == dest) TextPrimary else TextSecondary
-                            )
-                        },
-                        label = {
-                            Text(
-                                text = dest.label,
-                                color = if (selectedDestination == dest) TextPrimary else TextSecondary
-                            )
-                        },
+    Scaffold(
+        containerColor = BackgroundDark,
+        bottomBar = {
+            if (!chromeless) NavigationBar(containerColor = SurfaceDark, tonalElevation = 0.dp) {
+                listOf(Destination.RECORDING, Destination.LIVE, Destination.RECORDINGS, Destination.SETTINGS).forEach { dest ->
+                    NavigationBarItem(
                         selected = selectedDestination == dest,
-                        onClick = {
-                            selectedDestination = dest
-                            scope.launch { drawerState.close() }
-                        },
-                        colors = NavigationDrawerItemDefaults.colors(
-                            selectedContainerColor = TextSecondary.copy(alpha = 0.12f),
-                            unselectedContainerColor = SurfaceDark
-                        ),
-                        modifier = Modifier.padding(horizontal = 12.dp)
+                        onClick = { selectedDestination = dest },
+                        icon = { Icon(dest.icon, contentDescription = dest.label) },
+                        label = { Text(dest.label) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = BackgroundDark,
+                            selectedTextColor = AccentGreen,
+                            indicatorColor = AccentGreen,
+                            unselectedIconColor = TextSecondary,
+                            unselectedTextColor = TextSecondary
+                        )
                     )
-                    if (dest == Destination.RECORDINGS) {
-                        HorizontalDivider(
-                            color = TextSecondary.copy(alpha = 0.14f),
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                }
+            }
+        },
+        topBar = {
+            if (!chromeless) TopAppBar(
+                title = {
+                    Text(
+                        text = if (selectedDestination == Destination.RECORDING) "DJM REC" else selectedDestination.label,
+                        color = TextPrimary
+                    )
+                },
+                actions = {
+                    var menuOpen by remember { mutableStateOf(false) }
+                    IconButton(onClick = { menuOpen = true }) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = "More options", tint = TextPrimary)
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(
+                            leadingIcon = { Icon(Icons.Filled.BugReport, contentDescription = null, tint = TextSecondary) },
+                            text = { Text("Support & diagnostics") },
+                            onClick = { menuOpen = false; selectedDestination = Destination.SUPPORT }
+                        )
+                        HorizontalDivider(color = OutlineSubtle)
+                        DropdownMenuItem(
+                            leadingIcon = { Icon(Icons.Filled.Coffee, contentDescription = null, tint = TextSecondary) },
+                            text = { Text("Buy me a coffee") },
+                            onClick = {
+                                menuOpen = false
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse("https://buymeacoffee.com/p2gr"))
+                                )
+                            }
                         )
                     }
-                }
-                HorizontalDivider(
-                    color = TextSecondary.copy(alpha = 0.14f),
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
-                )
-                NavigationDrawerItem(
-                    icon = {
-                        Icon(Icons.Filled.Coffee, contentDescription = null, tint = TextSecondary)
-                    },
-                    label = { Text("Buy me a coffee", color = TextSecondary) },
-                    selected = false,
-                    onClick = {
-                        scope.launch { drawerState.close() }
-                        context.startActivity(
-                        Intent(Intent.ACTION_VIEW, Uri.parse("https://buymeacoffee.com/p2gr"))
-                        )
-                    },
-                    colors = NavigationDrawerItemDefaults.colors(
-                        unselectedContainerColor = SurfaceDark
-                    ),
-                    modifier = Modifier.padding(horizontal = 12.dp)
-                )
-            }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = SurfaceDark)
+            )
         }
-    ) {
-        Scaffold(
-            containerColor = BackgroundDark,
-            bottomBar = {
-                if (!cameraMode) NavigationBar(containerColor = SurfaceDark) {
-                    listOf(Destination.RECORDING, Destination.LIVE, Destination.RECORDINGS, Destination.SETTINGS).forEach { dest ->
-                        NavigationBarItem(selected = selectedDestination == dest, onClick = { selectedDestination = dest },
-                            icon = { Icon(dest.icon, null) },
-                            label = { Text(when (dest) { Destination.RECORDING -> "Record"; Destination.LIVE -> "Live"; Destination.RECORDINGS -> "Sets"; else -> "Settings" }) })
+    ) { padding ->
+        val reducedMotion = rememberReducedMotion()
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            AnimatedContent(
+                targetState = selectedDestination,
+                transitionSpec = {
+                    DjmRecMotion.pageTransform(
+                        forward = targetState.ordinal >= initialState.ordinal,
+                        reduced = reducedMotion
+                    )
+                },
+                label = "destinations",
+                modifier = Modifier.fillMaxSize()
+            ) { destination ->
+                destinationState.SaveableStateProvider(destination.name) {
+                    when (destination) {
+                        Destination.RECORDING -> RecorderScreen(viewModel = viewModel, onOpenLibrary = { selectedDestination = Destination.RECORDINGS })
+                        Destination.LIVE -> LiveStreamScreen(viewModel = viewModel)
+                        Destination.RECORDINGS -> LibraryScreen(onBack = null)
+                        Destination.SETTINGS -> SettingsScreen(viewModel = viewModel)
+                        Destination.SUPPORT -> DiagnosticsScreen()
                     }
-                }
-            },
-            topBar = {
-                if (!cameraMode) TopAppBar(
-                    title = {
-                        Text(
-                            text = if (selectedDestination == Destination.RECORDING) "DJM REC" else selectedDestination.label,
-                            color = TextPrimary
-                        )
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(
-                                imageVector = Icons.Filled.Menu,
-                                contentDescription = "Menu",
-                                tint = TextPrimary
-                            )
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = SurfaceDark)
-                )
-            }
-        ) { padding ->
-            Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-                destinationState.SaveableStateProvider(selectedDestination.name) {
-                when (selectedDestination) {
-                    Destination.RECORDING -> RecorderScreen(viewModel = viewModel, onOpenLibrary = { selectedDestination = Destination.RECORDINGS })
-                    Destination.LIVE -> LiveStreamScreen(viewModel = viewModel)
-                    Destination.RECORDINGS -> LibraryScreen(onBack = null)
-                    Destination.SETTINGS -> SettingsScreen(viewModel = viewModel)
-                }
                 }
             }
         }

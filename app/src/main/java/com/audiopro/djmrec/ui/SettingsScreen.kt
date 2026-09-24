@@ -130,7 +130,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
             diagnostics, com.audiopro.djmrec.diagnostics.RemoteDiagnostics::setEnabled)
         Text(diagnosticsStatus, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
         Text("Display", style = MaterialTheme.typography.titleLarge)
-        PreferenceSwitch("Live waveform", "RGB: red bass, green mids, blue highs. Mixed frequencies blend colors.", waveform, viewModel::setWaveformEnabled)
+        PreferenceSwitch("Live waveform", "CDJ-style layered bands: blue = low, amber = mid, white = high.", waveform, viewModel::setWaveformEnabled)
         PreferenceSwitch("Smooth waveform", "Scroll at the display frame rate. Turn off to reduce graphics work.", smooth, viewModel::setSmoothWaveform)
         PreferenceSwitch("Keep recorder screen awake", "Applies while monitoring or recording. Capture also works with screen locked.", keepScreen, viewModel::setKeepScreenOn)
         Text("Background recording", style = MaterialTheme.typography.titleLarge)
@@ -176,9 +176,6 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 }
             }
         }
-        Text("Track markers", style = MaterialTheme.typography.titleLarge)
-        Text("Tap Mark during recording to identify tracks. Find markers in Sets and export the track list. Markers never cut or modify your recording.", color = TextSecondary)
-        OutlinedButton(onClick = viewModel::stopAndClose, modifier = Modifier.fillMaxWidth()) { Text("Save everything & close") }
     }
 }
 

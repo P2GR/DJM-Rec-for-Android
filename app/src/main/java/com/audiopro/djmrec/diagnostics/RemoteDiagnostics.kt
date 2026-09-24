@@ -15,6 +15,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToLong
 
 /** Bounded Firebase telemetry. No SDK or network calls on audio callback thread. */
@@ -120,22 +121,67 @@ object RemoteDiagnostics {
         }
     }
 
+    /**
+     * User-initiated bug report from Support & diagnostics. Always delivered, even when
+     * automatic diagnostics is off (Crashlytics collection is switched on for the send),
+     * and tagged `report_type=manual` so reports are filterable in Firebase. Carries the
+     * full redacted diagnostic report -- phone/OS, connected mixer + USB descriptors,
+     * audio devices, settings, recent logs -- plus the user's own description.
+     */
+    fun sendManualReport(description: String, report: String, onResult: (Boolean) -> Unit) {
+        scope.launch {
+            val ok = runCatching {
+                safelyInitialize()
+                check(initialized) { "Firebase is not configured for this build" }
+                crashlytics.setCrashlyticsCollectionEnabled(true)
+                crashlytics.setCustomKey("report_type", "manual")
+                crashlytics.setCustomKey(
+                    "report.user_description",
+                    DiagnosticPrivacy.redact(description).take(1_500)
+                )
+                val current =
+                    (app as? com.audiopro.djmrec.DjmRecApplication)?.usbAudioManager?.deviceState?.value
+                crashlytics.setCustomKey(
+                    "report.mixer",
+                    current?.let { "${it.productName} (%04x:%04x)".format(it.vendorId, it.productId) }
+                        ?: "None"
+                )
+                crashlytics.log("=== MANUAL BUG REPORT ===")
+                DiagnosticPrivacy.redact(report).chunked(3_000).forEach { crashlytics.log(it) }
+                crashlytics.recordException(ManualBugReport(description))
+                crashlytics.sendUnsentReports()
+                true
+            }.getOrDefault(false)
+            withContext(Dispatchers.Main) { onResult(ok) }
+        }
+    }
+
+    /** Crashlytics issue type for user-submitted reports; titles them "Manual bug report". */
+    class ManualBugReport(detail: String) :
+        java.io.IOException("Manual bug report: " + detail.trim().take(200))
+
+    /**
+     * Idempotent Firebase setup shared by automatic telemetry and manual bug reports.
+     * Collection flags always follow [_enabled]; manual sending opts in explicitly, so a
+     * report works even when automatic diagnostics is off.
+     */
     @Synchronized
     private fun initialize() {
-        if (!_enabled.value || initialized) return
+        if (initialized) return
         if (!BuildConfig.FIREBASE_CONFIGURED) {
             _status.value = "Firebase telemetry disabled for this build"
             return
         }
         crashlytics = FirebaseCrashlytics.getInstance()
         analytics = FirebaseAnalytics.getInstance(app)
-        crashlytics.setCrashlyticsCollectionEnabled(true)
-        analytics.setAnalyticsCollectionEnabled(true)
+        crashlytics.setCrashlyticsCollectionEnabled(_enabled.value)
+        analytics.setAnalyticsCollectionEnabled(_enabled.value)
         crashlytics.setCustomKey("app.build_type", BuildConfig.BUILD_TYPE)
         crashlytics.setCustomKey("app.version", BuildConfig.VERSION_NAME)
         crashlytics.setCustomKey("mixer.name", "None")
         crashlytics.setCustomKey("mixer.connected", false)
         initialized = true
+        if (!_enabled.value) return
         _status.value = "Firebase telemetry on · delivery requires internet"
         event("App", "Diagnostics initialized; build=${BuildConfig.BUILD_TYPE} version=${BuildConfig.VERSION_NAME}")
     }

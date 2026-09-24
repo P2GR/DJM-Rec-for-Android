@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -18,7 +19,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -45,12 +48,13 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
     val health by viewModel.recordingHealth.collectAsState()
     val format by viewModel.selectedFormat.collectAsState()
     val gain by viewModel.recordingGainDb.collectAsState()
-    val markers by viewModel.markerCount.collectAsState()
     val saved by viewModel.lastSaved.collectAsState()
     var setupOpen by rememberSaveable { mutableStateOf(false) }
     var stopPrompt by rememberSaveable { mutableStateOf(false) }
     var detailsOpen by rememberSaveable { mutableStateOf(false) }
     var inputsOpen by rememberSaveable { mutableStateOf(false) }
+    // Hoisted to the view model so MainScreen can hide the app chrome for true fullscreen.
+    var powerSave by viewModel.powerSaveActive
     val connectionNotice by viewModel.connectionNotice.collectAsState()
     val context = LocalContext.current
     val active = state is RecordingState.Recording || state is RecordingState.Paused
@@ -73,7 +77,7 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
     }
     if (stopPrompt) AlertDialog(onDismissRequest = { stopPrompt = false },
         title = { Text("Save this set?") }, text = { Text("Recording will finish. Input monitoring stays ready for your next set.") },
-        confirmButton = { TextButton(onClick = { stopPrompt = false; viewModel.stopRecording() }) { Text("Stop & save") } },
+        confirmButton = { TextButton(onClick = { stopPrompt = false; powerSave = false; viewModel.stopRecording() }) { Text("Stop & save") } },
         dismissButton = { TextButton(onClick = { stopPrompt = false }) { Text("Keep recording") } })
     if (detailsOpen) AlertDialog(onDismissRequest = { detailsOpen = false }, title = { Text("Input status") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -94,6 +98,9 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
                     style = MaterialTheme.typography.titleMedium)
                 Text(device?.let { "${it.preferredSampleRate / 1000f} kHz / ${it.bitResolution}-bit / USB" }
                     ?: "USB audio input", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+            }
+            IconButton(onClick = { powerSave = true }) {
+                Icon(Icons.Default.BatterySaver, "Power saving mode")
             }
             IconButton(onClick = { inputsOpen = true }) {
                 Icon(Icons.Default.Usb, "Choose audio input")
@@ -118,9 +125,10 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
                         }
                         AnimatedContent(targetState = label, label = "captureStatus") { status ->
                             Text(status, color = if (active) AccentRed else AccentGreen,
-                                style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                                style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold,
+                                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
                         }
-                        Text(if (waveform) "RGB" else "METERS", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+                        Text(if (waveform) "3-BAND" else "METERS", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
                     }
                     if (waveform && !compact) LiveRgbWaveform(viewModel.waveformBins, Modifier.fillMaxWidth().weight(1f), smooth = smooth,
                         active = state is RecordingState.Monitoring || active, onVisible = viewModel::setWaveformVisible)
@@ -132,8 +140,7 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
     }
     val transport: @Composable (Boolean) -> Unit = { compact ->
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (!compact) TextButton(onClick = { detailsOpen = true }, modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
+        if (!compact) {
             val message = when {
                 saving -> "Finalizing your recording..."
                 state is RecordingState.Error -> (state as RecordingState.Error).message
@@ -141,22 +148,33 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
                 device == null -> connectionNotice ?: "Connect mixer, grant USB access, check signal"
                 else -> health.message
             }
-            Text(message, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-            Icon(Icons.Default.Info, null, Modifier.size(16.dp), tint = TextSecondary)
-        }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween) {
-            Column {
-                Text(elapsedText(elapsed), style = MaterialTheme.typography.headlineLarge.copy(fontFamily = FontFamily.Monospace))
-                Text("${format.name} / ${if (gain > 0) "+" else ""}$gain dB", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+            val attention = saving || state is RecordingState.Error ||
+                (active && (levels.left.isClipping || levels.right.isClipping))
+            Surface(shape = RoundedCornerShape(14.dp), color = SurfaceVariantDark.copy(alpha = 0.5f)) {
+                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { detailsOpen = true }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Icon(if (attention) Icons.Default.WarningAmber else Icons.Default.Info, null,
+                        Modifier.size(18.dp), tint = if (attention) AccentAmber else TextSecondary)
+                    Text(message, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(18.dp), tint = TextSecondary)
+                }
             }
-            OutlinedButton(onClick = viewModel::addTrackMarker, enabled = state is RecordingState.Recording && !saving) {
-                Icon(Icons.Default.BookmarkAdd, null, Modifier.size(18.dp)); Text(" Mark ($markers)")
-            }
         }
+        Column {
+            Text(elapsedText(elapsed), style = MaterialTheme.typography.headlineLarge.copy(fontFamily = FontFamily.Monospace))
+            Text("${format.name} / ${if (gain > 0) "+" else ""}$gain dB", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+        }
+        val reducedMotion = rememberReducedMotion()
+        AnimatedContent(
+            targetState = active,
+            transitionSpec = { DjmRecMotion.fadeTransform(reduced = reducedMotion) },
+            label = "transport"
+        ) { transportActive ->
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (active) {
+            if (transportActive) {
                 OutlinedButton(onClick = { if (state is RecordingState.Paused) viewModel.resumeRecording() else viewModel.pauseRecording() },
                     enabled = !saving, modifier = Modifier.weight(1f).heightIn(min = 56.dp)) {
                     Icon(if (state is RecordingState.Paused) Icons.Default.PlayArrow else Icons.Default.Pause, null)
@@ -178,8 +196,28 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
             }
         }
         }
+        }
     }
-    BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
+    // Power saving replaces the whole workspace: the waveform/meters leave composition (which
+    // also stops the native waveform analyzer) while capture keeps running untouched.
+    val reducedMotion = rememberReducedMotion()
+    AnimatedContent(
+        targetState = powerSave,
+        transitionSpec = { DjmRecMotion.fadeTransform(reduced = reducedMotion) },
+        label = "powerSave"
+    ) { powerSaveOn ->
+    if (powerSaveOn) {
+        PowerSaveOverlay(
+            recording = active,
+            saving = saving,
+            elapsedMillis = elapsed,
+            onStop = {
+                if (confirmStop) stopPrompt = true
+                else { powerSave = false; viewModel.stopRecording() }
+            },
+            onClose = { powerSave = false }
+        )
+    } else BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
         if (maxWidth >= 600.dp && maxWidth > maxHeight) {
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Column(Modifier.weight(1.2f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -195,6 +233,7 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
                 transport(false)
             }
         }
+    }
     }
     saved?.let { recording ->
         AlertDialog(onDismissRequest = viewModel::dismissSavedRecording, title = { Text("Set saved") },
@@ -222,7 +261,7 @@ internal fun RecordingSetupControls(viewModel: MainViewModel) {
         TextButton(onClick = { viewModel.setRecordingGainDb(0) }, enabled = enabled) { Text("Reset to 0 dB") }
     }
     Slider(gain.toFloat(), { viewModel.setRecordingGainDb(it.toInt()) }, enabled = enabled,
-        valueRange = -12f..24f, steps = 35, modifier = Modifier.semantics { contentDescription = "Recording gain in decibels" })
+        valueRange = 0f..12f, steps = 11, modifier = Modifier.semantics { contentDescription = "Recording gain in decibels" })
     Text("0 dB preserves input level. Keep peaks below 0 dBFS.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
     if (device?.requiresIsoCapture == true) {
         Text("Stereo input pair", style = MaterialTheme.typography.titleSmall)

@@ -8,14 +8,17 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.audiopro.djmrec.ui.theme.BackgroundDark
 import com.audiopro.djmrec.ui.theme.TextSecondary
+import com.audiopro.djmrec.ui.theme.WaveformCdjHi
+import com.audiopro.djmrec.ui.theme.WaveformCdjLow
+import com.audiopro.djmrec.ui.theme.WaveformCdjMid
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.StateFlow
@@ -33,24 +36,25 @@ fun LiveRgbWaveform(source: StateFlow<FloatArray>, modifier: Modifier = Modifier
     RgbWaveform(bins, modifier, smooth, active)
 }
 
-/** Fixed historical envelopes translate on the display frame clock, with additive RGB shading. */
+/** Fixed historical envelopes translate on the display frame clock, as CDJ-style layered bands. */
 @Composable
 fun RgbWaveform(bins: FloatArray, modifier: Modifier = Modifier, smooth: Boolean = true, active: Boolean = true) {
     val timeline = remember { WaveformTimeline() }
-    val heights = remember { FloatArray(512) }
-    val colors = remember { IntArray(512) }
-    val path = remember { Path() }
+    val bandHeights = remember { Array(3) { FloatArray(512) } }
+    val cache = remember { LayeredPathCache() }
     val frame = remember { mutableLongStateOf(0L) }
     val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     LaunchedEffect(bins) {
         timeline.accept(bins)
         for (i in 0 until 512) {
             val base = i * 4
-            val peak = bins.getOrElse(base) { 0f }
-            heights[i] = sqrt(if (peak.isFinite()) peak.coerceIn(0f, 1f) else 0f)
-            colors[i] = waveformRgb(bins.getOrElse(base + 1) { 0f },
-                bins.getOrElse(base + 2) { 0f }, bins.getOrElse(base + 3) { 0f })
+            for (band in 0..2) {
+                val value = bins.getOrElse(base + 1 + band) { 0f }
+                bandHeights[band][i] =
+                    sqrt(if (value.isFinite()) value.coerceIn(0f, 1f) else 0f)
+            }
         }
+        cache.invalidate()
         if (!active || !smooth) frame.longValue = System.nanoTime()
     }
     LaunchedEffect(active, smooth, owner) {
@@ -62,7 +66,7 @@ fun RgbWaveform(bins: FloatArray, modifier: Modifier = Modifier, smooth: Boolean
         }
     }
     Canvas(modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)).background(BackgroundDark)
-        .semantics { contentDescription = "Live waveform. Red bass below 250 Hz, green mids to 2 kHz, blue highs. Mixed bands blend RGB. New audio enters at right." }) {
+        .semantics { contentDescription = "Live waveform in CDJ 3-band style. Blue = low, amber = mid, white = high, layered. New audio enters at right." }) {
         val lag = timeline.lag(frame.longValue, smooth && active)
         val center = size.height / 2f
         for (line in 1..5) {
@@ -73,23 +77,56 @@ fun RgbWaveform(bins: FloatArray, modifier: Modifier = Modifier, smooth: Boolean
             val y = size.height * line / 4f
             drawLine(TextSecondary.copy(alpha = 0.09f), Offset(0f, y), Offset(size.width, y))
         }
-        // Keep 24 bins outside the viewport for jitter recovery; never resample shifted peaks.
-        val step = size.width / 487f
+        cache.ensureBuilt(bandHeights, size.width, center)
         if (timeline.bins.isNotEmpty()) clipRect {
+            // Pioneer 3Band layout: the low band draws the full body, mids layer over it and
+            // highs cap the top -- three stacked envelopes (blue/amber/white). The paths are
+            // rebuilt only when analyzer data (or width) changes; scrolling between updates is
+            // pure translation, so 60 fps stays smooth without rebuilding every frame.
+            translate(left = (lag - 24f) * cache.step) {
+                drawPath(cache.paths[0], WaveformCdjLow)
+                drawPath(cache.paths[1], WaveformCdjMid)
+                drawPath(cache.paths[2], WaveformCdjHi)
+            }
+        }
+    }
+}
+
+/**
+ * Holds the three band envelopes in bin space (x = binIndex * step). Rebuilt on data
+ * revisions and resizes only -- per display frame the cached paths are just translated.
+ */
+private class LayeredPathCache {
+    val paths = Array(3) { Path() }
+    var step = 0f
+        private set
+    private var built = false
+    private var builtWidth = -1f
+
+    fun invalidate() {
+        built = false
+    }
+
+    fun ensureBuilt(bands: Array<FloatArray>, width: Float, center: Float) {
+        if (built && width == builtWidth) return
+        step = width / 487f
+        for (band in 0..2) {
+            val values = bands[band]
+            val path = paths[band]
+            path.reset()
+            // 511 ramp segments; keep 24 bins of history so translation never resamples peaks.
             for (i in 0 until 511) {
-                val x = (i - 24 + lag) * step
-                if (x + step < 0 || x > size.width) continue
-                val a = heights[i] * center * 0.91f
-                val b = heights[i + 1] * center * 0.91f
-                path.reset()
+                val x = i * step
+                val a = values[i] * center * 0.91f
+                val b = values[i + 1] * center * 0.91f
                 path.moveTo(x, center - a)
                 path.lineTo(x + step + 0.25f, center - b)
                 path.lineTo(x + step + 0.25f, center + b)
                 path.lineTo(x, center + a)
                 path.close()
-                drawPath(path, Color(colors[i]))
             }
         }
-        drawLine(TextSecondary.copy(alpha = 0.3f), Offset(0f, center), Offset(size.width, center))
+        builtWidth = width
+        built = true
     }
 }

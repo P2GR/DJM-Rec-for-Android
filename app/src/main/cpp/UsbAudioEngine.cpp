@@ -9,6 +9,7 @@
 #include "AudioGain.h"
 #include "writers/WavWriter.h"
 #include "writers/FlacWriter.h"
+#include "writers/Mp3Writer.h"
 
 #define TAG "UsbAudioEngine"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
@@ -364,6 +365,7 @@ bool UsbAudioEngine::startRecording(const std::string& path, ContainerFormat for
     switch (format) {
         case ContainerFormat::Wav: mWriter = std::make_unique<WavWriter>(); break;
         case ContainerFormat::Flac: mWriter = std::make_unique<FlacWriter>(); break;
+        case ContainerFormat::Mp3: mWriter = std::make_unique<Mp3Writer>(); break;
     }
 
     if (!mWriter->open(path, mFormat)) {
@@ -392,6 +394,7 @@ bool UsbAudioEngine::startRecordingFd(int fd, ContainerFormat format) {
     switch (format) {
         case ContainerFormat::Wav: mWriter = std::make_unique<WavWriter>(); break;
         case ContainerFormat::Flac: mWriter = std::make_unique<FlacWriter>(); break;
+        case ContainerFormat::Mp3: mWriter = std::make_unique<Mp3Writer>(); break;
     }
     if (!mWriter->openFd(fd, mFormat)) {
         LOGE("Writer failed to open MediaStore fd");
@@ -419,6 +422,7 @@ bool UsbAudioEngine::rollRecordingFd(int fd, ContainerFormat format) {
     switch (format) {
         case ContainerFormat::Wav: next = std::make_unique<WavWriter>(); break;
         case ContainerFormat::Flac: next = std::make_unique<FlacWriter>(); break;
+        case ContainerFormat::Mp3: next = std::make_unique<Mp3Writer>(); break;
     }
     if (!next->openFd(fd, mFormat)) return false;
 

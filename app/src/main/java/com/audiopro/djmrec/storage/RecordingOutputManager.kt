@@ -180,6 +180,8 @@ object RecordingOutputManager {
     private fun minimumRecoverableBytes(format: RecordingFormat): Long = when (format) {
         RecordingFormat.WAV -> MIN_RECOVERABLE_WAV_BYTES
         RecordingFormat.FLAC -> MIN_RECOVERABLE_FLAC_BYTES
+        // Two 320 kbps MPEG frames (~24 ms each) -- anything shorter is not worth keeping.
+        RecordingFormat.MP3 -> 2_048L
     }
 
     private fun formatFromName(name: String): RecordingFormat? =
@@ -197,12 +199,17 @@ object RecordingOutputManager {
                 bytes.copyOfRange(0, 4).contentEquals("RIFF".toByteArray()) &&
                     bytes.copyOfRange(8, 12).contentEquals("WAVE".toByteArray())
             RecordingFormat.FLAC -> bytes.contentEquals("fLaC".toByteArray())
+            // Raw MPEG Layer III stream starts on a frame sync (11 set bits); shine writes
+            // no ID3 tag.
+            RecordingFormat.MP3 ->
+                bytes[0] == 0xFF.toByte() && (bytes[1].toInt() and 0xE0) == 0xE0
         }
     }.getOrDefault(false)
 
     private fun mimeType(format: RecordingFormat): String = when (format) {
         RecordingFormat.WAV -> "audio/wav"
         RecordingFormat.FLAC -> "audio/flac"
+        RecordingFormat.MP3 -> "audio/mpeg"
     }
 
     internal fun displayName(sessionId: String, format: RecordingFormat, partIndex: Int): String {

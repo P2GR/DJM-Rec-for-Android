@@ -13,6 +13,7 @@ import android.os.Build
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
@@ -26,11 +27,13 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
@@ -40,6 +43,8 @@ import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
@@ -49,6 +54,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -72,7 +78,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.audiopro.djmrec.BuildConfig
@@ -89,6 +98,8 @@ import com.audiopro.djmrec.streaming.YouTubeBroadcastStatus
 import com.audiopro.djmrec.ui.theme.AccentAmber
 import com.audiopro.djmrec.ui.theme.AccentGreen
 import com.audiopro.djmrec.ui.theme.AccentRed
+import com.audiopro.djmrec.ui.theme.DjmRecMotion
+import com.audiopro.djmrec.ui.theme.rememberReducedMotion
 import com.google.android.gms.auth.api.identity.AuthorizationClient
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
 import com.google.android.gms.auth.api.identity.Identity
@@ -282,10 +293,11 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
         }
     }
 
-    if (liveState.isActive && liveState.usesCamera) {
+    if (liveState.isActive && liveState.usesCamera && viewModel.cameraConsoleOpen.value) {
         CameraLiveScreen(viewModel)
         return
     }
+
     LaunchedEffect(youtubeBroadcast.status) {
         if (platform == LivePlatform.YOUTUBE && youtubeBroadcast.status == YouTubeBroadcastStatus.COMPLETE) {
             streamKey = ""
@@ -320,7 +332,13 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (liveState.isActive) {
                 LiveStatusCard(liveState, captureReady)
-                Text("Your artwork and mixer audio are streaming. You can keep recording locally.")
+                Text(if (liveState.usesCamera) "Your camera and mixer audio are streaming to viewers."
+                    else "Your artwork and mixer audio are streaming. You can keep recording locally.")
+                if (liveState.usesCamera) {
+                    Button(onClick = { viewModel.cameraConsoleOpen.value = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Return to camera")
+                    }
+                }
                 youtubeBroadcast.viewerCount?.let { count ->
                     Text("${formatViewerCount(count)} watching now",
                         style = MaterialTheme.typography.titleMedium, color = AccentGreen)
@@ -345,7 +363,18 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                             label = { Text("${index + 1} $label") })
                     }
                 }
-                when (step) {
+                val reducedMotion = rememberReducedMotion()
+                AnimatedContent(
+                    targetState = step,
+                    transitionSpec = {
+                        DjmRecMotion.pageTransform(forward = targetState >= initialState, vertical = true, reduced = reducedMotion)
+                    },
+                    label = "wizardStep"
+                ) { currentStep ->
+                // AnimatedContent stacks its content roots at one origin; this Column restores
+                // the vertical flow between the step's fields.
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                when (currentStep) {
                     0 -> {
                         Text("Where are you streaming?", style = MaterialTheme.typography.titleMedium)
                         LivePlatform.entries.forEach { option ->
@@ -362,6 +391,9 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                                 }
                             )
                         }
+                        // Field-level validation feedback: errors point at the field that caused them.
+                        val keyError = localError?.takeIf { it.contains("key", ignoreCase = true) }
+                        val serverError = localError?.takeIf { keyError == null }
                         when (platform) {
                             LivePlatform.YOUTUBE -> {
                                 if (destinationReady) {
@@ -375,7 +407,7 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                                         onValueChange = { youtubeTitle = it },
                                         enabled = !setupState.isBusy && !authorizing,
                                         label = { Text("Broadcast title") },
-                                        supportingText = { Text("Shown on YouTube to viewers.") },
+                                        supportingText = { Text(if (youtubeTitle.isBlank()) "Required" else "Shown on YouTube to viewers.") },
                                         singleLine = true,
                                         modifier = Modifier.fillMaxWidth()
                                     )
@@ -390,15 +422,16 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                             LivePlatform.MIXCLOUD -> {
                                 Text("Open Mixcloud, sign in, then copy your stream key here. Mixcloud Pro is required.")
                                 OutlinedButton(onClick = { platform.setupUrl?.let(::openUrl) }) { Text("Open Mixcloud setup") }
-                                OutlinedTextField(streamKey, { streamKey = it; localError = null }, label = { Text("Mixcloud stream key") },
-                                    singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+                                StreamKeyField(streamKey, { streamKey = it; localError = null }, "Mixcloud stream key", keyError != null, keyError)
                             }
                             LivePlatform.CUSTOM -> {
                                 Text("Copy the server and stream key from your streaming service.")
                                 OutlinedTextField(serverUrl, { serverUrl = it; localError = null }, label = { Text("RTMP / RTMPS server") },
-                                    singleLine = true, modifier = Modifier.fillMaxWidth())
-                                OutlinedTextField(streamKey, { streamKey = it; localError = null }, label = { Text("Stream key") },
-                                    singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+                                    singleLine = true, isError = serverError != null,
+                                    supportingText = serverError?.let { text -> { Text(text) } },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                                    modifier = Modifier.fillMaxWidth())
+                                StreamKeyField(streamKey, { streamKey = it; localError = null }, "Stream key", keyError != null, keyError)
                             }
                         }
                         if (setupState.isBusy || authorizing) {
@@ -455,6 +488,8 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
+                }
+                }
                 if (liveState.status == LiveStreamStatus.ERROR) Text(liveState.message, color = MaterialTheme.colorScheme.error)
                 localError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
@@ -474,7 +509,7 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                     0 -> !setupState.isBusy && !authorizing && (destinationReady || platform == LivePlatform.YOUTUBE && youtubeTitle.isNotBlank())
                     1 -> destinationReady && pictureReady
                     else -> destinationReady && pictureReady && device != null
-                }, modifier = Modifier.weight(1f).height(56.dp)) {
+                }, modifier = Modifier.weight(1f).heightIn(min = 56.dp)) {
                     Text(if (liveState.isActive) "End stream" else when (step) {
                         0 -> if (platform == LivePlatform.YOUTUBE && !destinationReady) "Connect YouTube" else "Continue"
                         1 -> "Review stream"
@@ -500,7 +535,7 @@ private fun LiveChoiceButton(
     OutlinedButton(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.fillMaxWidth().height(48.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
         colors = ButtonDefaults.outlinedButtonColors(
             containerColor = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
             else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
@@ -605,6 +640,37 @@ private fun CustomArtworkPicker(
     }
 }
 
+/** Masked stream-key input with a show/hide toggle (keys are sensitive but must be checkable). */
+@Composable
+private fun StreamKeyField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    isError: Boolean,
+    supportingText: String?
+) {
+    var visible by remember { mutableStateOf(false) }
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        singleLine = true,
+        isError = isError,
+        supportingText = supportingText?.let { text -> { Text(text) } },
+        visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
+        trailingIcon = {
+            IconButton(onClick = { visible = !visible }) {
+                Icon(
+                    if (visible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                    contentDescription = if (visible) "Hide stream key" else "Show stream key"
+                )
+            }
+        },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
+        modifier = Modifier.fillMaxWidth()
+    )
+}
+
 private fun decodeArtworkPreview(context: Context, artworkUri: String): Bitmap? = runCatching {
     ImageDecoder.decodeBitmap(ImageDecoder.createSource(context.contentResolver, Uri.parse(artworkUri))) {
             decoder, info, _ ->
@@ -661,7 +727,7 @@ private fun appSigningSha1(context: Context): String = runCatching {
 @Composable
 private fun LiveStatusCard(liveState: LiveStreamState, captureReady: Boolean) {
     val color = when (liveState.status) {
-        LiveStreamStatus.LIVE -> AccentGreen
+        LiveStreamStatus.LIVE -> AccentRed
         LiveStreamStatus.PREPARING,
         LiveStreamStatus.CONNECTING,
         LiveStreamStatus.RECONNECTING -> AccentAmber

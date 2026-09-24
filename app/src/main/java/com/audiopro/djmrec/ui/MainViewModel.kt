@@ -24,6 +24,7 @@ import com.audiopro.djmrec.service.RecordingService
 import com.audiopro.djmrec.streaming.LiveStreamConfig
 import com.audiopro.djmrec.streaming.LiveStreamState
 import com.audiopro.djmrec.streaming.LiveStreamStatus
+import com.audiopro.djmrec.streaming.LiveVideoMode
 import com.audiopro.djmrec.streaming.LivePlatform
 import com.audiopro.djmrec.streaming.StreamSetupState
 import com.audiopro.djmrec.streaming.StreamSetupStatus
@@ -95,8 +96,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             ?: if (device.pioneerMixerProfile != null) UsbAudioManager.AUTO_CHANNEL_OFFSET else 0
     private val sessionEvents = (application as DjmRecApplication).sessionEvents
     val lastSaved = sessionEvents.lastSaved.asStateFlow()
-    val markerCount = sessionEvents.markerCount.asStateFlow()
-    val keepScreenOn = MutableStateFlow(prefs.getBoolean("keep_screen_on", false))
+    // Default ON unless the user granted the battery-optimization exemption (Background usage):
+    // without it Android may kill capture when the screen sleeps, so staying awake is safer.
+    private val batteryExempt: Boolean = runCatching {
+        (application.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager)
+            .isIgnoringBatteryOptimizations(application.packageName)
+    }.getOrDefault(false)
+    val keepScreenOn = MutableStateFlow(prefs.getBoolean("keep_screen_on", !batteryExempt))
     val smoothWaveform = MutableStateFlow(prefs.getBoolean("smooth_waveform", true))
     val confirmStop = MutableStateFlow(prefs.getBoolean("confirm_stop", true))
 
@@ -112,8 +118,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setSmoothWaveform(value: Boolean) { prefs.edit().putBoolean("smooth_waveform", value).apply(); smoothWaveform.value = value }
     fun setConfirmStop(value: Boolean) { prefs.edit().putBoolean("confirm_stop", value).apply(); confirmStop.value = value }
     fun dismissSavedRecording() { sessionEvents.lastSaved.value = null }
-    fun addTrackMarker() = sendCommand(RecordingService.ACTION_MARK_TRACK)
-    fun stopAndClose() = sendCommand(RecordingService.ACTION_STOP_ALL)
 
 
     private val floorLevel = ChannelLevel(peakDb = -60f, rmsDb = -60f, isClipping = false)
@@ -143,12 +147,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val youtubeBroadcastState = youtubeCoordinator.youtubeBroadcastState
     val liveStreamKey = androidx.compose.runtime.mutableStateOf("")
 
+    /**
+     * True while the fullscreen camera console is showing. Closing it returns to the app
+     * WITHOUT ending the stream (the service keeps it running) — the console is a view, not
+     * the stream itself.
+     */
+    val cameraConsoleOpen = androidx.compose.runtime.mutableStateOf(true)
+
+    /**
+     * True while the fullscreen power-saving overlay covers the workspace. Hoisted here so
+     * MainScreen can hide the top/bottom chrome for a true fullscreen takeover.
+     */
+    val powerSaveActive = androidx.compose.runtime.mutableStateOf(false)
+
+    /** Deeplink route (djmrec://record etc.) awaiting navigation; consumed by MainScreen. */
+    val pendingRoute = MutableStateFlow<String?>(null)
+
     private val _waveformEnabled = MutableStateFlow(
         prefs.getBoolean(KEY_WAVEFORM_ENABLED, true)
     )
     val waveformEnabled: StateFlow<Boolean> = _waveformEnabled.asStateFlow()
 
-    private val _recordingGainDb = MutableStateFlow(prefs.getInt("recording_gain_db", 12).coerceIn(-12, 24))
+    // Gain range 0..+12 dB with +12 as the default (per product decision).
+    private val _recordingGainDb = MutableStateFlow(prefs.getInt("recording_gain_db", 12).coerceIn(0, 12))
     val recordingGainDb: StateFlow<Int> = _recordingGainDb.asStateFlow()
 
     private val _selectedFormat = MutableStateFlow(
@@ -257,7 +278,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (_recordingState.value is RecordingState.Recording ||
             _recordingState.value is RecordingState.Paused ||
             _recordingState.value is RecordingState.Preparing) return
-        val value = gainDb.coerceIn(-12, 24)
+        val value = gainDb.coerceIn(0, 12)
         _recordingGainDb.value = value
         prefs.edit().putInt("recording_gain_db", value).apply()
         boundService?.setRecordingGainDb(value)
@@ -519,6 +540,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             state is RecordingState.Paused
 
     fun startLiveStream(config: LiveStreamConfig) {
+        if (config.videoMode != LiveVideoMode.ARTWORK) cameraConsoleOpen.value = true
         val context = getApplication<Application>()
         _liveStreamState.value = LiveStreamState(
             status = LiveStreamStatus.PREPARING,

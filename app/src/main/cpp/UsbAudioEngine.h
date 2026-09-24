@@ -17,7 +17,8 @@ namespace djmrec {
 
 enum class ContainerFormat : int {
     Wav = 0,
-    Flac = 1
+    Flac = 1,
+    Mp3 = 2
 };
 
 /**

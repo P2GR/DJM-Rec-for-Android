@@ -9,5 +9,4 @@ data class SavedRecording(val uri: Uri, val name: String, val durationMillis: Lo
 class SessionEvents {
     val closeRequested = MutableStateFlow(false)
     val lastSaved = MutableStateFlow<SavedRecording?>(null)
-    val markerCount = MutableStateFlow(0)
 }

@@ -45,15 +45,15 @@ fun LibraryScreen(onBack: (() -> Unit)? = null) {
     var rename by remember { mutableStateOf<LibraryRecording?>(null) }
     var renameText by remember { mutableStateOf("") }
     var delete by remember { mutableStateOf<LibraryRecording?>(null) }
-    var markerTarget by remember { mutableStateOf<LibraryRecording?>(null) }
-    var markers by remember { mutableStateOf<List<TrackMarker>>(emptyList()) }
     var exportTarget by remember { mutableStateOf<LibraryRecording?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
         val target = exportTarget
         if (uri != null && target != null) scope.launch {
             busy = true
             withContext(Dispatchers.IO) { runCatching { RecordingLibrary.export(context, target, uri) } }
-                .onFailure { error = it.message ?: "Export failed" }
+                .onSuccess { snackbarHostState.showSnackbar("Exported \"${target.displayName}\"") }
+                .onFailure { error = it.message ?: "Could not export a copy. Check free storage and choose a different location." }
             busy = false
         }
         exportTarget = null
@@ -68,7 +68,7 @@ fun LibraryScreen(onBack: (() -> Unit)? = null) {
     }
     LaunchedEffect(refresh) {
         withContext(Dispatchers.IO) { runCatching { RecordingLibrary.list(context) } }
-            .onSuccess { recordings = it }.onFailure { error = it.message ?: "Could not load recordings" }
+            .onSuccess { recordings = it }.onFailure { error = it.message ?: "Could not load recordings. Check storage permission and refresh." }
         loading = false
     }
     DisposableEffect(Unit) {
@@ -78,13 +78,10 @@ fun LibraryScreen(onBack: (() -> Unit)? = null) {
         context.contentResolver.registerContentObserver(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, true, observer)
         onDispose { context.contentResolver.unregisterContentObserver(observer) }
     }
-    LaunchedEffect(markerTarget) {
-        markers = markerTarget?.let { withContext(Dispatchers.IO) { TrackMarkerStore.read(context, it.uri) } } ?: emptyList()
-    }
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Your sets", style = MaterialTheme.typography.headlineSmall)
+                Text("Your recordings", style = MaterialTheme.typography.headlineSmall)
                 Text("${recordings.size} recordings / ${sizeLabel(recordings.sumOf { it.size })}", color = TextSecondary,
                     style = MaterialTheme.typography.bodySmall)
             }
@@ -96,8 +93,8 @@ fun LibraryScreen(onBack: (() -> Unit)? = null) {
         val visible = recordings.filter { it.displayName.contains(query, ignoreCase = true) }
         if (visible.isEmpty() && !loading) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Text(if (query.isBlank()) "Your saved sets will appear here.\nRecordings in progress stay hidden."
-                    else "No matching sets", color = TextSecondary)
+                Text(if (query.isBlank()) "Your saved recordings will appear here.\nRecordings in progress stay hidden."
+                    else "No matching recordings", color = TextSecondary)
             }
         } else LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 8.dp)) {
             items(visible, key = { it.uri.toString() }) { recording ->
@@ -116,7 +113,6 @@ fun LibraryScreen(onBack: (() -> Unit)? = null) {
                                 DropdownMenuItem(text = { Text("Play") }, onClick = { menu = false; selected = recording })
                                 DropdownMenuItem(text = { Text("Share") }, onClick = { menu = false; share(recording) })
                                 DropdownMenuItem(text = { Text("Export a copy") }, enabled = !busy, onClick = { menu = false; exportTarget = recording; export.launch(recording.displayName) })
-                                DropdownMenuItem(text = { Text("Track markers") }, onClick = { menu = false; markerTarget = recording })
                                 DropdownMenuItem(text = { Text("Rename") }, enabled = !busy, onClick = { menu = false; rename = recording; renameText = recording.title })
                                 DropdownMenuItem(text = { Text("Delete", color = AccentRed) }, enabled = !busy, onClick = { menu = false; delete = recording })
                             }
@@ -126,6 +122,7 @@ fun LibraryScreen(onBack: (() -> Unit)? = null) {
             }
         }
         selected?.let { recording -> SetPlayer(recording, onClose = { selected = null }, onError = { error = it }) }
+        SnackbarHost(snackbarHostState, Modifier.fillMaxWidth())
     }
     rename?.let { recording -> AlertDialog(onDismissRequest = { if (!busy) rename = null }, title = { Text("Rename set") },
         text = { OutlinedTextField(renameText, { renameText = it }, label = { Text("Recording name") }, singleLine = true) },
@@ -135,30 +132,45 @@ fun LibraryScreen(onBack: (() -> Unit)? = null) {
                 val requestedName = renameText
                 selected = selected?.takeUnless { it.uri == recording.uri }
                 withContext(Dispatchers.IO) { runCatching { RecordingLibrary.rename(context, recording, requestedName) } }
-                    .onSuccess { rename = null; refresh++ }.onFailure { error = it.message ?: "File action failed" }
+                    .onSuccess {
+                        rename = null
+                        refresh++
+                        snackbarHostState.showSnackbar("Renamed to \"$requestedName\"")
+                    }
+                    .onFailure { error = it.message ?: "Could not rename this recording. Try a different name." }
                 busy = false
             }
         }) { Text("Save") } }, dismissButton = { TextButton(onClick = { rename = null }, enabled = !busy) { Text("Cancel") } }) }
-    delete?.let { recording -> AlertDialog(onDismissRequest = { if (!busy) delete = null }, title = { Text("Delete this set?") },
-        text = { Text("${recording.displayName}\nThis permanently deletes the recording.") },
+    delete?.let { recording -> AlertDialog(onDismissRequest = { if (!busy) delete = null }, title = { Text("Delete this recording?") },
+        text = { Text("${recording.displayName}\nYou can undo this right after deleting. Older file-based recordings are removed permanently.") },
         confirmButton = { TextButton(enabled = !busy, onClick = {
-            selected = selected?.takeUnless { it.uri == recording.uri }
+            val target = recording
+            selected = selected?.takeUnless { it.uri == target.uri }
             scope.launch {
                 busy = true
-                withContext(Dispatchers.IO) { runCatching { RecordingLibrary.delete(context, recording) } }
-                    .onSuccess { delete = null; refresh++ }.onFailure { error = it.message ?: "File action failed" }
+                val result = withContext(Dispatchers.IO) { runCatching { RecordingLibrary.trash(context, target) } }
                 busy = false
+                delete = null
+                result.onSuccess { undoable ->
+                    refresh++
+                    if (undoable) {
+                        val outcome = snackbarHostState.showSnackbar(
+                            message = "Moved to Trash", actionLabel = "Undo",
+                            duration = SnackbarDuration.Short
+                        )
+                        if (outcome == SnackbarResult.ActionPerformed) {
+                            withContext(Dispatchers.IO) { runCatching { RecordingLibrary.untrash(context, target) } }
+                        }
+                        refresh++
+                    } else {
+                        snackbarHostState.showSnackbar("Recording deleted")
+                    }
+                }.onFailure {
+                    error = "Could not delete \"${target.displayName}\": ${it.message ?: "the file is busy"}. Close other apps using it and try again."
+                    refresh++
+                }
             }
         }) { Text("Delete", color = AccentRed) } }, dismissButton = { TextButton(onClick = { delete = null }, enabled = !busy) { Text("Keep") } }) }
-    markerTarget?.let { recording -> AlertDialog(onDismissRequest = { markerTarget = null }, title = { Text("Track markers") },
-        text = { LazyColumn { if (markers.isEmpty()) item { Text("No markers. Tap Mark while recording your next set.") }
-            items(markers) { Text("${elapsedText(it.positionMillis)}  ${it.label}", Modifier.padding(vertical = 6.dp)) } } },
-        confirmButton = { TextButton(enabled = markers.isNotEmpty(), onClick = {
-            val text = recording.title + "\n" + markers.joinToString("\n") { "${elapsedText(it.positionMillis)} ${it.label}" }
-            runCatching { context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-                type = "text/plain"; putExtra(Intent.EXTRA_TEXT, text)
-            }, "Export track list")) }.onFailure { error = "No sharing app is available" }
-        }) { Text("Export track list") } }, dismissButton = { TextButton(onClick = { markerTarget = null }) { Text("Close") } }) }
     error?.let { message -> AlertDialog(onDismissRequest = { error = null }, title = { Text("Could not complete action") },
         text = { Text(message) }, confirmButton = { TextButton(onClick = { error = null }) { Text("OK") } }) }
 }

@@ -13,7 +13,11 @@ import java.io.File
 data class LibraryRecording(val uri: Uri, val displayName: String, val size: Long, val duration: Long, val modified: Long, val legacyFile: File? = null) {
     val extension get() = displayName.substringAfterLast('.').lowercase()
     val title get() = displayName.substringBeforeLast('.')
-    val mimeType get() = if (extension == "flac") "audio/flac" else "audio/wav"
+    val mimeType get() = when (extension) {
+        "flac" -> "audio/flac"
+        "mp3" -> "audio/mpeg"
+        else -> "audio/wav"
+    }
 }
 
 /** Uses published MediaStore rows; never lists, renames or deletes an active capture. */
@@ -30,7 +34,7 @@ object RecordingLibrary {
                     val name = cursor.getString(1)
                     indexedNames += name
                     if (cursor.getInt(5) != 0) continue
-                    if (name.substringAfterLast('.').lowercase() !in listOf("wav", "flac")) continue
+                    if (name.substringAfterLast('.').lowercase() !in listOf("wav", "flac", "mp3")) continue
                     add(LibraryRecording(ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
                         cursor.getLong(0)), name, cursor.getLong(2), cursor.getLong(3), cursor.getLong(4) * 1000))
                 }
@@ -41,7 +45,7 @@ object RecordingLibrary {
             val privateDir = context.getExternalFilesDir(Environment.DIRECTORY_MUSIC)?.let { File(it, "DJMRec") }
             listOfNotNull(publicDir, privateDir).forEach { dir ->
                 dir.listFiles().orEmpty().filter { file ->
-                    file.isFile && file.extension.lowercase() in listOf("wav", "flac") &&
+                    file.isFile && file.extension.lowercase() in listOf("wav", "flac", "mp3") &&
                         (dir != publicDir || file.name !in indexedNames)
                 }.forEach { file ->
                     val duration = runCatching {
@@ -74,11 +78,42 @@ object RecordingLibrary {
 
     fun delete(context: Context, recording: LibraryRecording) {
         recording.legacyFile?.let { file ->
-            check(file.delete()) { "Could not delete this set" }
+            check(file.delete()) { "Could not delete this recording. Close other apps using it and try again." }
             return
         }
         check(context.contentResolver.delete(recording.uri, "${MediaStore.Audio.Media.IS_PENDING}=0", null) == 1) {
-            "Could not delete this set"
+            "Could not delete this recording. Close other apps using it and try again."
+        }
+    }
+
+    /**
+     * Moves a recording to the system Trash so the delete can be undone (own MediaStore rows).
+     * Returns true when an undo is possible; legacy file-based recordings fall back to a
+     * permanent delete. Throws when neither works.
+     */
+    fun trash(context: Context, recording: LibraryRecording): Boolean {
+        recording.legacyFile?.let { file ->
+            check(file.delete()) { "Could not delete this recording. Close other apps using it and try again." }
+            return false
+        }
+        val trashed = runCatching {
+            context.contentResolver.update(recording.uri, ContentValues().apply {
+                put(MediaStore.MediaColumns.IS_TRASHED, 1)
+            }, "${MediaStore.Audio.Media.IS_PENDING}=0", null) == 1
+        }.getOrDefault(false)
+        if (!trashed) {
+            delete(context, recording)
+            return false
+        }
+        return true
+    }
+
+    /** Reverses [trash] while the undo snackbar is still on screen. */
+    fun untrash(context: Context, recording: LibraryRecording) {
+        runCatching {
+            context.contentResolver.update(recording.uri, ContentValues().apply {
+                put(MediaStore.MediaColumns.IS_TRASHED, 0)
+            }, null, null)
         }
     }
 
