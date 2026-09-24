@@ -6,16 +6,8 @@ import org.junit.Test
 class WaveformTimelineTest {
     private fun snapshot(cursor: Int) = FloatArray(2050).apply { this[2048] = cursor.toFloat(); this[2049] = 6f }
 
-    @Test fun additiveBandsProducePrimariesAndMixedColors() {
-        assertEquals(0xffff0000.toInt(), waveformRgb(1f, 0f, 0f))
-        assertEquals(0xff00ff00.toInt(), waveformRgb(0f, 1f, 0f))
-        assertEquals(0xff0000ff.toInt(), waveformRgb(0f, 0f, 1f))
-        assertEquals(0xffffff00.toInt(), waveformRgb(1f, 1f, 0f))
-        assertEquals(0xff00ffff.toInt(), waveformRgb(0f, 1f, 1f))
-        assertEquals(0xffff00ff.toInt(), waveformRgb(1f, 0f, 1f))
-        assertEquals(0xffffffff.toInt(), waveformRgb(1f, 1f, 1f))
-        assertEquals(0xff000000.toInt(), waveformRgb(Float.NaN, -1f, 0f))
-    }
+    // The old additive waveformRgb color-mixing test was removed together with the additive
+    // RGB renderer; the current CDJ layered renderer draws theme-colored band paths instead.
 
     @Test fun snapshotsTranslateWithoutMorphingHistory() {
         val timeline = WaveformTimeline()

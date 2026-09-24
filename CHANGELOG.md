@@ -1,5 +1,38 @@
 # Changelog
 
+## v0.44.0 (2026-09-24)
+
+- Add a first-run onboarding stepper that walks through microphone, notification, camera,
+  Do Not Disturb, background-usage and USB mixer permissions with clear grant status and
+  skip options for the optional steps.
+- Add MP3 recording at 320 kbps CBR (shine encoder) alongside WAV and FLAC, including
+  high-rate input decimation, correct library listing and `audio/mpeg` sharing.
+- Make background recording reliable: session opening no longer blocks intents, stale opens
+  are abandoned safely, zombie notifications are dismissed, and the notification offers
+  Pause/Resume plus Stop & save with proper shutdown while waiting for a mixer.
+- Redesign the app shell: top bar with overflow menu and a bottom navigation with mint
+  indicator (the double menu is gone), full Material 3 type scale, and animated page/step
+  transitions that respect the system reduced-motion setting.
+- Rework the Go Live flow: three-step wizard (Connect, Picture, Go live) with YouTube,
+  Mixcloud and custom RTMP destinations, plus a camera console with exit pill, live
+  indicator, viewer count, share and broadcast controls.
+- Replace the waveform with the Pioneer CDJ-3000 style layered three-band rendering and
+  path caching for smooth, low-overhead scrolling.
+- Add a power-saving mode: fullscreen AMOLED overlay with a blinking red record dot,
+  elapsed time and close/stop controls that hides the app chrome entirely.
+- Add VU meter peak-hold markers with a latched dB readout.
+- Move recordings to the system Trash on delete with an Undo snackbar, and show clear
+  success and error feedback (cause plus recovery) for exports, renames and deletes.
+- Add Support & diagnostics with manual Firebase bug reports (optional user description,
+  mixer properties, redacted logs) and diagnostic report export.
+- Add `djmrec://` deep links to Record, Go Live, Recordings, Settings and Support.
+- Constrain the mixer gain slider to 0...+12 dB with +12 dB as the default and 0 as the
+  minimum.
+- Keep the recorder screen awake by default until the battery-optimization exemption is
+  granted.
+- Remove track markers, the Danger Zone settings section and the dead transport controls
+  and device status card components.
+
 ## v0.42.3 (2026-09-16)
 
 - Correct DJM-450 MIX/REC OUT routing to honor the selected USB pair after interface and
