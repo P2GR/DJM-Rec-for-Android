@@ -107,11 +107,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val smoothWaveform = MutableStateFlow(prefs.getBoolean("smooth_waveform", true))
     val confirmStop = MutableStateFlow(prefs.getBoolean("confirm_stop", true))
 
-    /** User-chosen livestream quality (resolution + bitrate); defaults to safe 720p. */
-    val streamQuality = MutableStateFlow(
-        LiveStreamQuality.entries.firstOrNull { it.name == prefs.getString("live_stream_quality", null) }
-            ?: LiveStreamQuality.STANDARD
-    )
+    /** User-chosen livestream quality (resolution + bitrate); presets are named by resolution. */
+    private fun persistedStreamQuality(): LiveStreamQuality {
+        val custom = LiveStreamQuality(
+            id = "custom",
+            label = "Custom",
+            width = prefs.getInt("live_stream_custom_width", 1920),
+            height = prefs.getInt("live_stream_custom_height", 1080),
+            videoBitrate = prefs.getInt("live_stream_custom_bitrate", 8_000_000),
+            preset = false
+        )
+        return when (val id = prefs.getString("live_stream_quality", null)) {
+            null -> LiveStreamQuality.P720
+            "custom" -> custom
+            else -> LiveStreamQuality.PRESETS.firstOrNull { it.id == id } ?: LiveStreamQuality.P720
+        }
+    }
+
+    val streamQuality = MutableStateFlow(persistedStreamQuality())
 
     private val _onboardingComplete = MutableStateFlow(prefs.getBoolean(KEY_ONBOARDING_COMPLETE, false))
     val onboardingComplete: StateFlow<Boolean> = _onboardingComplete.asStateFlow()
@@ -124,7 +137,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setKeepScreenOn(value: Boolean) { prefs.edit().putBoolean("keep_screen_on", value).apply(); keepScreenOn.value = value }
     fun setSmoothWaveform(value: Boolean) { prefs.edit().putBoolean("smooth_waveform", value).apply(); smoothWaveform.value = value }
     fun setConfirmStop(value: Boolean) { prefs.edit().putBoolean("confirm_stop", value).apply(); confirmStop.value = value }
-    fun setStreamQuality(value: LiveStreamQuality) { prefs.edit().putString("live_stream_quality", value.name).apply(); streamQuality.value = value }
+    fun setStreamQuality(value: LiveStreamQuality) {
+        prefs.edit()
+            .putString("live_stream_quality", value.id)
+            .putInt("live_stream_custom_width", value.width)
+            .putInt("live_stream_custom_height", value.height)
+            .putInt("live_stream_custom_bitrate", value.videoBitrate)
+            .apply()
+        streamQuality.value = value
+    }
     fun dismissSavedRecording() { sessionEvents.lastSaved.value = null }
 
 
@@ -601,7 +622,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     .putExtra(RecordingService.EXTRA_LIVE_PORTRAIT, config.portrait)
                     .putExtra(RecordingService.EXTRA_LIVE_ARTWORK_URI, config.artworkUri)
                     .putExtra(RecordingService.EXTRA_LIVE_AUDIO_BITRATE, config.audioBitrate)
-                    .putExtra(RecordingService.EXTRA_LIVE_VIDEO_QUALITY, config.quality.name)
+                    .putExtra(RecordingService.EXTRA_LIVE_VIDEO_WIDTH, config.quality.width)
+                    .putExtra(RecordingService.EXTRA_LIVE_VIDEO_HEIGHT, config.quality.height)
+                    .putExtra(RecordingService.EXTRA_LIVE_VIDEO_BITRATE, config.quality.videoBitrate)
             )
         }
     }

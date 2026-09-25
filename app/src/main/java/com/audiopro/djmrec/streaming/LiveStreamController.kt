@@ -488,7 +488,7 @@ internal data class LiveVideoProfile(
 internal fun liveVideoProfiles(
     videoMode: LiveVideoMode,
     portrait: Boolean,
-    quality: LiveStreamQuality = LiveStreamQuality.STANDARD
+    quality: LiveStreamQuality = LiveStreamQuality.P720
 ): List<LiveVideoProfile> {
     val rotation = if (portrait) 90 else 0
     // The requested quality leads; classic sizes remain as encoder-capability fallbacks.

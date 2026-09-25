@@ -58,6 +58,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -465,14 +466,48 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                         Text("Matches how you hold your phone when you go live. The stream keeps this shape; on-screen controls rotate with your phone.",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text("Stream quality", style = MaterialTheme.typography.titleMedium)
-                        LiveStreamQuality.entries.forEach { option ->
+                        LiveStreamQuality.PRESETS.forEach { option ->
                             LiveChoiceButton(
-                                label = "${option.label} \u00b7 ${option.detail}",
+                                label = option.detail,
                                 selected = streamQuality == option,
                                 onClick = { viewModel.setStreamQuality(option) }
                             )
                         }
-                        Text("1080p needs a strong upstream connection. If viewers see stuttering or the stream drops, choose Standard.",
+                        LiveChoiceButton(
+                            label = "Custom",
+                            selected = !streamQuality.preset,
+                            onClick = {
+                                if (streamQuality.preset) {
+                                    viewModel.setStreamQuality(
+                                        streamQuality.copy(id = "custom", label = "Custom", preset = false)
+                                    )
+                                }
+                            }
+                        )
+                        if (!streamQuality.preset) {
+                            Text("Resolution", style = MaterialTheme.typography.titleSmall)
+                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                listOf(720 to 1280, 1080 to 1920, 1440 to 2560).forEach { (height, width) ->
+                                    FilterChip(
+                                        selected = streamQuality.height == height,
+                                        onClick = { viewModel.setStreamQuality(streamQuality.copy(width = width, height = height)) },
+                                        label = { Text("${height}p") }
+                                    )
+                                }
+                            }
+                            Text("Bitrate: ${streamQuality.videoBitrate / 1_000_000} Mbps",
+                                style = MaterialTheme.typography.titleSmall)
+                            Slider(
+                                value = (streamQuality.videoBitrate / 1_000_000).toFloat(),
+                                onValueChange = {
+                                    viewModel.setStreamQuality(streamQuality.copy(videoBitrate = it.toInt() * 1_000_000))
+                                },
+                                valueRange = 5f..30f,
+                                steps = 24
+                            )
+                        }
+                        Text("Higher resolutions and bitrates need a strong upstream connection. If viewers see stuttering or the stream drops, choose 720p or lower the bitrate.",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text("Meters, timers and controls stay on your phone. Viewers see only your camera or artwork.")
                     }
@@ -482,7 +517,7 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(platform.label, fontWeight = FontWeight.Bold)
                                 Text("${videoMode.label} / $orientationLabel")
-                                Text("${streamQuality.label} \u00b7 ${streamQuality.detail}")
+                                Text(streamQuality.detail)
                                 Text(device?.productName ?: "No mixer selected")
                                 Text(
                                     when {

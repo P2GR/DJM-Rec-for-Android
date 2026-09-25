@@ -115,16 +115,26 @@ class LiveStreamConfigTest {
     }
 
     @Test
-    fun qualityPresetsMatchPlatformRecommendations() {
-        assertEquals(LiveStreamQuality.STANDARD, config().quality)
-        assertEquals(3_000_000, config().videoBitrate)
-        assertEquals(4_500_000, config(quality = LiveStreamQuality.HIGH).videoBitrate)
+    fun qualityPresetsMatchRequestedResolutionsAndBitrates() {
+        assertEquals(5_000_000, LiveStreamQuality.P720.videoBitrate)
+        assertEquals(8_000_000, LiveStreamQuality.P1080.videoBitrate)
+        assertEquals(15_000_000, LiveStreamQuality.P1440.videoBitrate)
+        assertEquals(2560, LiveStreamQuality.P1440.width)
+        assertEquals(LiveStreamQuality.P720, config().quality)
+        assertEquals(5_000_000, config().videoBitrate)
+    }
+
+    @Test
+    fun customQualityCarriesItsOwnSizeAndBitrate() {
+        val custom = LiveStreamQuality("custom", "Custom", 2560, 1440, 22_000_000, preset = false)
+        assertEquals(22_000_000, config(quality = custom).videoBitrate)
+        assertEquals("Custom \u00b7 1440p \u00b7 22 Mbps", custom.detail)
     }
 
     @Test
     fun qualityProfilesPreferRequestedSizeWithFallbacks() {
         val profiles = liveVideoProfiles(
-            LiveVideoMode.BACK_CAMERA, portrait = true, quality = LiveStreamQuality.HIGH
+            LiveVideoMode.BACK_CAMERA, portrait = true, quality = LiveStreamQuality.P1080
         )
         assertEquals(1920 to 1080, profiles.first().sourceWidth to profiles.first().sourceHeight)
         assertEquals(1080, profiles.first().encodedWidth)
@@ -139,7 +149,7 @@ class LiveStreamConfigTest {
         platform: LivePlatform = LivePlatform.CUSTOM,
         serverUrl: String = "rtmp://example.com/live",
         streamKey: String = "key",
-        quality: LiveStreamQuality = LiveStreamQuality.STANDARD
+        quality: LiveStreamQuality = LiveStreamQuality.P720
     ) = LiveStreamConfig(
         platform = platform,
         serverUrl = serverUrl,

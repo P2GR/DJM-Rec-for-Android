@@ -30,20 +30,27 @@ enum class LiveVideoMode(val label: String) {
 }
 
 /**
- * Stream quality presets. Bitrates follow YouTube's live encoder recommendations
- * (720p30 ~3 Mbps, 1080p30 ~4.5 Mbps); the Maximum tier simply gives more headroom
- * for high-motion scenes on excellent connections.
+ * Concrete stream quality: encoder source size + video bitrate. Presets are named by
+ * their resolution (720p/1080p/1440p); Custom carries the user-chosen size and a
+ * 5-30 Mbps bitrate. [detail] renders resolution + bitrate for buttons and summaries.
  */
-enum class LiveStreamQuality(
+data class LiveStreamQuality(
+    val id: String,
     val label: String,
-    val detail: String,
     val width: Int,
     val height: Int,
-    val videoBitrate: Int
+    val videoBitrate: Int,
+    val preset: Boolean = true
 ) {
-    STANDARD("Standard", "720p \u00b7 3 Mbps", 1280, 720, 3_000_000),
-    HIGH("High", "1080p \u00b7 4.5 Mbps", 1920, 1080, 4_500_000),
-    MAXIMUM("Maximum", "1080p \u00b7 6 Mbps", 1920, 1080, 6_000_000)
+    val detail: String
+        get() = (if (preset) "" else "Custom \u00b7 ") + "${height}p \u00b7 ${videoBitrate / 1_000_000} Mbps"
+
+    companion object {
+        val P720 = LiveStreamQuality("720", "720p", 1280, 720, 5_000_000)
+        val P1080 = LiveStreamQuality("1080", "1080p", 1920, 1080, 8_000_000)
+        val P1440 = LiveStreamQuality("1440", "1440p", 2560, 1440, 15_000_000)
+        val PRESETS = listOf(P720, P1080, P1440)
+    }
 }
 
 data class LiveStreamConfig(
@@ -58,7 +65,7 @@ data class LiveStreamConfig(
         LivePlatform.MIXCLOUD -> 320_000
         else -> 256_000
     },
-    val quality: LiveStreamQuality = LiveStreamQuality.STANDARD
+    val quality: LiveStreamQuality = LiveStreamQuality.P720
 ) {
     /** Video bitrate follows the selected [quality] preset. */
     val videoBitrate: Int

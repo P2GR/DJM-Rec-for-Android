@@ -91,7 +91,9 @@ class RecordingService : LifecycleService() {
         const val EXTRA_LIVE_PORTRAIT = "extra_live_portrait"
         const val EXTRA_LIVE_ARTWORK_URI = "extra_live_artwork_uri"
         const val EXTRA_LIVE_AUDIO_BITRATE = "extra_live_audio_bitrate"
-        const val EXTRA_LIVE_VIDEO_QUALITY = "extra_live_video_quality"
+        const val EXTRA_LIVE_VIDEO_WIDTH = "extra_live_video_width"
+        const val EXTRA_LIVE_VIDEO_HEIGHT = "extra_live_video_height"
+        const val EXTRA_LIVE_VIDEO_BITRATE = "extra_live_video_bitrate"
 
         /** [EXTRA_CAPTURE_MODE] value: standard AAudio/AudioRecord path via [EXTRA_DEVICE_ID]. */
         const val CAPTURE_MODE_AAUDIO = 0
@@ -558,9 +560,15 @@ class RecordingService : LifecycleService() {
                     else -> 256_000
                 }
             ).coerceIn(96_000, 320_000),
-            quality = com.audiopro.djmrec.streaming.LiveStreamQuality.entries.firstOrNull {
-                it.name == intent.getStringExtra(EXTRA_LIVE_VIDEO_QUALITY)
-            } ?: com.audiopro.djmrec.streaming.LiveStreamQuality.STANDARD
+            quality = com.audiopro.djmrec.streaming.LiveStreamQuality(
+                id = "custom",
+                label = "Custom",
+                width = intent.getIntExtra(EXTRA_LIVE_VIDEO_WIDTH, 1280).coerceIn(320, 3840),
+                height = intent.getIntExtra(EXTRA_LIVE_VIDEO_HEIGHT, 720).coerceIn(240, 2160),
+                videoBitrate = intent.getIntExtra(EXTRA_LIVE_VIDEO_BITRATE, 5_000_000)
+                    .coerceIn(1_000_000, 30_000_000),
+                preset = false
+            )
         )
         cameraForegroundActive = usesCamera
         if (!startForegroundNotification()) {
