@@ -132,7 +132,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
         Text("Display", style = MaterialTheme.typography.titleLarge)
         PreferenceSwitch("Live waveform", "CDJ-style layered bands: blue = low, amber = mid, white = high.", waveform, viewModel::setWaveformEnabled)
         PreferenceSwitch("Smooth waveform", "Scroll at the display frame rate. Turn off to reduce graphics work.", smooth, viewModel::setSmoothWaveform)
-        PreferenceSwitch("Keep recorder screen awake", "Applies while monitoring or recording. Capture also works with screen locked.", keepScreen, viewModel::setKeepScreenOn)
+        PreferenceSwitch("Keep recorder screen awake", "Recording always keeps the device awake; this also keeps the screen on while monitoring. Capture continues if the screen locks.", keepScreen, viewModel::setKeepScreenOn)
         Text("Background recording", style = MaterialTheme.typography.titleLarge)
         Text("Keep the persistent notification enabled. Allow background battery use in Android settings for long sets. Force-stop, reboot or disconnecting USB still ends capture.", color = TextSecondary)
         OutlinedButton(onClick = {

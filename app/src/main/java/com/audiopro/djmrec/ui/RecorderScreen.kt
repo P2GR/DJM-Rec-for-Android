@@ -1,7 +1,5 @@
 package com.audiopro.djmrec.ui
 
-import android.view.WindowManager
-import androidx.activity.ComponentActivity
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -43,7 +41,6 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
     val elapsed by viewModel.elapsedMillis.collectAsState()
     val waveform by viewModel.waveformEnabled.collectAsState()
     val smooth by viewModel.smoothWaveform.collectAsState()
-    val keepScreenOn by viewModel.keepScreenOn.collectAsState()
     val confirmStop by viewModel.confirmStop.collectAsState()
     val health by viewModel.recordingHealth.collectAsState()
     val format by viewModel.selectedFormat.collectAsState()
@@ -59,12 +56,8 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
     val context = LocalContext.current
     val active = state is RecordingState.Recording || state is RecordingState.Paused
     val signal = levels.left.peakDb > -55 || levels.right.peakDb > -55
-    DisposableEffect(keepScreenOn, active, state) {
-        val window = (context as? ComponentActivity)?.window
-        if (keepScreenOn && (active || state is RecordingState.Monitoring))
-            window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
-    }
+    // Keep-awake is owned by MainActivity (window flag) so it holds on every screen while a
+    // recording is active; this screen no longer toggles it.
     if (inputsOpen) InputPicker(viewModel) { inputsOpen = false }
     if (setupOpen) ModalBottomSheet(onDismissRequest = { setupOpen = false },
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {

@@ -1123,15 +1123,21 @@ class RecordingService : LifecycleService() {
 
     // --- WakeLock -----------------------------------------------------------------------
 
+    /**
+     * Keeps the CPU awake while capturing. Called on every health tick, which also RENEWS the
+     * safety timeout -- `WakeLock.acquire(timeout)` does NOT extend an existing timeout (the
+     * earlier release callback still fires), so the lock is released and re-acquired here.
+     * Without this renewal any recording longer than the timeout would silently die.
+     */
     private fun acquireWakeLock() {
-        if (wakeLock?.isHeld == true) return
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        wakeLock = powerManager.newWakeLock(
+        val lock = wakeLock ?: powerManager.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK, "djmrec:recording"
         ).apply {
             setReferenceCounted(false)
-            acquire(TimeUnit.HOURS.toMillis(6)) // safety timeout; renewed implicitly by continued use
-        }
+        }.also { wakeLock = it }
+        if (lock.isHeld) lock.release()
+        lock.acquire(TimeUnit.HOURS.toMillis(6))
     }
 
     private fun releaseWakeLock() {
