@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.44.1 (2026-09-25)
+
+- Keep the device awake on every screen while a recording is running or paused: the screen
+  can no longer sleep or auto-lock mid-set. Previously the USB audio stream could stall after
+  the device idled and the recording stopped minutes later. The "Keep recorder screen awake"
+  setting now only applies to monitoring.
+- Fix the capture wake lock so its safety timeout is properly renewed, so long recordings no
+  longer risk dying at the timeout.
+- Add stream quality selection to the Go Live wizard: 720p (5 Mbps), 1080p (8 Mbps) and
+  1440p (15 Mbps) presets named by resolution, plus a Custom mode with a resolution picker
+  and a 5-30 Mbps bitrate slider. The choice is remembered between sessions and falls back
+  automatically when the device encoder cannot handle the requested size.
+- Show a DJM-A9 USB port diagram in onboarding: use the USB-B port at the top left of the
+  mixer (or the rear USB port) and never the MULTI I/O ports at the top right.
+
 ## v0.44.0 (2026-09-24)
 
 - Add a first-run onboarding stepper that walks through microphone, notification, camera,
