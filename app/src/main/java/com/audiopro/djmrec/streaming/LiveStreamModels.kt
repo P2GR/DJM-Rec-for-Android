@@ -29,6 +29,23 @@ enum class LiveVideoMode(val label: String) {
     FRONT_CAMERA("Front camera")
 }
 
+/**
+ * Stream quality presets. Bitrates follow YouTube's live encoder recommendations
+ * (720p30 ~3 Mbps, 1080p30 ~4.5 Mbps); the Maximum tier simply gives more headroom
+ * for high-motion scenes on excellent connections.
+ */
+enum class LiveStreamQuality(
+    val label: String,
+    val detail: String,
+    val width: Int,
+    val height: Int,
+    val videoBitrate: Int
+) {
+    STANDARD("Standard", "720p \u00b7 3 Mbps", 1280, 720, 3_000_000),
+    HIGH("High", "1080p \u00b7 4.5 Mbps", 1920, 1080, 4_500_000),
+    MAXIMUM("Maximum", "1080p \u00b7 6 Mbps", 1920, 1080, 6_000_000)
+}
+
 data class LiveStreamConfig(
     val platform: LivePlatform,
     val serverUrl: String,
@@ -41,8 +58,11 @@ data class LiveStreamConfig(
         LivePlatform.MIXCLOUD -> 320_000
         else -> 256_000
     },
-    val videoBitrate: Int = 3_000_000
+    val quality: LiveStreamQuality = LiveStreamQuality.STANDARD
 ) {
+    /** Video bitrate follows the selected [quality] preset. */
+    val videoBitrate: Int
+        get() = quality.videoBitrate
     fun endpoint(): String {
         val server = serverUrl.trim().trimEnd('/')
         val key = streamKey.trim().trimStart('/')

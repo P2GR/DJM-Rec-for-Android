@@ -91,6 +91,7 @@ class RecordingService : LifecycleService() {
         const val EXTRA_LIVE_PORTRAIT = "extra_live_portrait"
         const val EXTRA_LIVE_ARTWORK_URI = "extra_live_artwork_uri"
         const val EXTRA_LIVE_AUDIO_BITRATE = "extra_live_audio_bitrate"
+        const val EXTRA_LIVE_VIDEO_QUALITY = "extra_live_video_quality"
 
         /** [EXTRA_CAPTURE_MODE] value: standard AAudio/AudioRecord path via [EXTRA_DEVICE_ID]. */
         const val CAPTURE_MODE_AAUDIO = 0
@@ -556,7 +557,10 @@ class RecordingService : LifecycleService() {
                     LivePlatform.MIXCLOUD -> 320_000
                     else -> 256_000
                 }
-            ).coerceIn(96_000, 320_000)
+            ).coerceIn(96_000, 320_000),
+            quality = com.audiopro.djmrec.streaming.LiveStreamQuality.entries.firstOrNull {
+                it.name == intent.getStringExtra(EXTRA_LIVE_VIDEO_QUALITY)
+            } ?: com.audiopro.djmrec.streaming.LiveStreamQuality.STANDARD
         )
         cameraForegroundActive = usesCamera
         if (!startForegroundNotification()) {

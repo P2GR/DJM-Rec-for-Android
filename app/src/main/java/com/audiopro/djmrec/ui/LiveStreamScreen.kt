@@ -88,6 +88,7 @@ import com.audiopro.djmrec.BuildConfig
 import com.audiopro.djmrec.audio.RecordingState
 import com.audiopro.djmrec.streaming.LivePlatform
 import com.audiopro.djmrec.streaming.LiveStreamConfig
+import com.audiopro.djmrec.streaming.LiveStreamQuality
 import com.audiopro.djmrec.streaming.LiveStreamState
 import com.audiopro.djmrec.streaming.LiveStreamStatus
 import com.audiopro.djmrec.streaming.LiveVideoMode
@@ -310,11 +311,12 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
         LiveStreamConfig(platform, serverUrl, streamKey, videoMode, streamPortrait).endpoint()
     }.isSuccess
     val pictureReady = videoMode != LiveVideoMode.ARTWORK || !artworkUri.isNullOrBlank()
+    val streamQuality by viewModel.streamQuality.collectAsState()
     val health by viewModel.recordingHealth.collectAsState()
     val device by viewModel.deviceState.collectAsState()
 
     fun goLive() {
-        val config = LiveStreamConfig(platform, serverUrl, streamKey, videoMode, streamPortrait, artworkUri)
+        val config = LiveStreamConfig(platform, serverUrl, streamKey, videoMode, streamPortrait, artworkUri, quality = streamQuality)
         localError = runCatching { config.endpoint() }.exceptionOrNull()?.message
         if (localError != null) { step = 0; return }
         if (!pictureReady) { step = 1; return }
@@ -462,6 +464,16 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                         }
                         Text("Matches how you hold your phone when you go live. The stream keeps this shape; on-screen controls rotate with your phone.",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Stream quality", style = MaterialTheme.typography.titleMedium)
+                        LiveStreamQuality.entries.forEach { option ->
+                            LiveChoiceButton(
+                                label = "${option.label} \u00b7 ${option.detail}",
+                                selected = streamQuality == option,
+                                onClick = { viewModel.setStreamQuality(option) }
+                            )
+                        }
+                        Text("1080p needs a strong upstream connection. If viewers see stuttering or the stream drops, choose Standard.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text("Meters, timers and controls stay on your phone. Viewers see only your camera or artwork.")
                     }
                     else -> {
@@ -470,6 +482,7 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(platform.label, fontWeight = FontWeight.Bold)
                                 Text("${videoMode.label} / $orientationLabel")
+                                Text("${streamQuality.label} \u00b7 ${streamQuality.detail}")
                                 Text(device?.productName ?: "No mixer selected")
                                 Text(
                                     when {

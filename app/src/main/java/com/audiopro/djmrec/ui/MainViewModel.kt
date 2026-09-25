@@ -22,6 +22,7 @@ import com.audiopro.djmrec.audio.RecordingState
 import com.audiopro.djmrec.audio.StereoLevels
 import com.audiopro.djmrec.service.RecordingService
 import com.audiopro.djmrec.streaming.LiveStreamConfig
+import com.audiopro.djmrec.streaming.LiveStreamQuality
 import com.audiopro.djmrec.streaming.LiveStreamState
 import com.audiopro.djmrec.streaming.LiveStreamStatus
 import com.audiopro.djmrec.streaming.LiveVideoMode
@@ -106,6 +107,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val smoothWaveform = MutableStateFlow(prefs.getBoolean("smooth_waveform", true))
     val confirmStop = MutableStateFlow(prefs.getBoolean("confirm_stop", true))
 
+    /** User-chosen livestream quality (resolution + bitrate); defaults to safe 720p. */
+    val streamQuality = MutableStateFlow(
+        LiveStreamQuality.entries.firstOrNull { it.name == prefs.getString("live_stream_quality", null) }
+            ?: LiveStreamQuality.STANDARD
+    )
+
     private val _onboardingComplete = MutableStateFlow(prefs.getBoolean(KEY_ONBOARDING_COMPLETE, false))
     val onboardingComplete: StateFlow<Boolean> = _onboardingComplete.asStateFlow()
 
@@ -117,6 +124,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setKeepScreenOn(value: Boolean) { prefs.edit().putBoolean("keep_screen_on", value).apply(); keepScreenOn.value = value }
     fun setSmoothWaveform(value: Boolean) { prefs.edit().putBoolean("smooth_waveform", value).apply(); smoothWaveform.value = value }
     fun setConfirmStop(value: Boolean) { prefs.edit().putBoolean("confirm_stop", value).apply(); confirmStop.value = value }
+    fun setStreamQuality(value: LiveStreamQuality) { prefs.edit().putString("live_stream_quality", value.name).apply(); streamQuality.value = value }
     fun dismissSavedRecording() { sessionEvents.lastSaved.value = null }
 
 
@@ -593,6 +601,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     .putExtra(RecordingService.EXTRA_LIVE_PORTRAIT, config.portrait)
                     .putExtra(RecordingService.EXTRA_LIVE_ARTWORK_URI, config.artworkUri)
                     .putExtra(RecordingService.EXTRA_LIVE_AUDIO_BITRATE, config.audioBitrate)
+                    .putExtra(RecordingService.EXTRA_LIVE_VIDEO_QUALITY, config.quality.name)
             )
         }
     }

@@ -450,7 +450,7 @@ class LiveStreamController(context: Context) : ConnectChecker {
         }
 
     private fun prepareVideo(candidate: RtmpStream, config: LiveStreamConfig): Boolean {
-        return liveVideoProfiles(config.videoMode, config.portrait).any { profile ->
+        return liveVideoProfiles(config.videoMode, config.portrait, config.quality).any { profile ->
             val prepared = runCatching {
                 candidate.prepareVideo(
                     width = profile.sourceWidth,
@@ -465,7 +465,8 @@ class LiveStreamController(context: Context) : ConnectChecker {
                 Log.i(
                     TAG,
                     "H.264 output ${profile.encodedWidth}x${profile.encodedHeight} " +
-                        "at ${if (config.videoMode == LiveVideoMode.ARTWORK) 15 else 30}fps"
+                        "at ${if (config.videoMode == LiveVideoMode.ARTWORK) 15 else 30}fps" +
+                        " / ${config.videoBitrate / 1000} kbps"
                 )
             }
             prepared
@@ -484,13 +485,18 @@ internal data class LiveVideoProfile(
         get() = if (rotation == 90 || rotation == 270) sourceWidth else sourceHeight
 }
 
-internal fun liveVideoProfiles(videoMode: LiveVideoMode, portrait: Boolean): List<LiveVideoProfile> {
+internal fun liveVideoProfiles(
+    videoMode: LiveVideoMode,
+    portrait: Boolean,
+    quality: LiveStreamQuality = LiveStreamQuality.STANDARD
+): List<LiveVideoProfile> {
     val rotation = if (portrait) 90 else 0
-    val sizes = if (videoMode == LiveVideoMode.ARTWORK) {
-        listOf(1280 to 720)
-    } else {
-        listOf(1280 to 720, 640 to 480)
-    }
+    // The requested quality leads; classic sizes remain as encoder-capability fallbacks.
+    val sizes = buildList {
+        add(quality.width to quality.height)
+        add(1280 to 720)
+        if (videoMode != LiveVideoMode.ARTWORK) add(640 to 480)
+    }.distinct()
     return sizes.map { (width, height) -> LiveVideoProfile(width, height, rotation) }
 }
 

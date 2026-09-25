@@ -114,15 +114,38 @@ class LiveStreamConfigTest {
         )
     }
 
+    @Test
+    fun qualityPresetsMatchPlatformRecommendations() {
+        assertEquals(LiveStreamQuality.STANDARD, config().quality)
+        assertEquals(3_000_000, config().videoBitrate)
+        assertEquals(4_500_000, config(quality = LiveStreamQuality.HIGH).videoBitrate)
+    }
+
+    @Test
+    fun qualityProfilesPreferRequestedSizeWithFallbacks() {
+        val profiles = liveVideoProfiles(
+            LiveVideoMode.BACK_CAMERA, portrait = true, quality = LiveStreamQuality.HIGH
+        )
+        assertEquals(1920 to 1080, profiles.first().sourceWidth to profiles.first().sourceHeight)
+        assertEquals(1080, profiles.first().encodedWidth)
+        assertEquals(1920, profiles.first().encodedHeight)
+        assertEquals(
+            listOf(1920 to 1080, 1280 to 720, 640 to 480),
+            profiles.map { it.sourceWidth to it.sourceHeight }
+        )
+    }
+
     private fun config(
         platform: LivePlatform = LivePlatform.CUSTOM,
         serverUrl: String = "rtmp://example.com/live",
-        streamKey: String = "key"
+        streamKey: String = "key",
+        quality: LiveStreamQuality = LiveStreamQuality.STANDARD
     ) = LiveStreamConfig(
         platform = platform,
         serverUrl = serverUrl,
         streamKey = streamKey,
         videoMode = LiveVideoMode.ARTWORK,
-        portrait = false
+        portrait = false,
+        quality = quality
     )
 }
