@@ -13,6 +13,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -57,8 +58,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -68,6 +71,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.audiopro.djmrec.DjmRecApplication
+import com.audiopro.djmrec.R
 import com.audiopro.djmrec.ui.theme.AccentAmber
 import com.audiopro.djmrec.ui.theme.AccentGreen
 import com.audiopro.djmrec.ui.theme.DjmRecMotion
@@ -441,6 +445,34 @@ private fun UsbAccessContent() {
     val notice by usbAudioManager.connectionNotice.collectAsState()
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Image(
+            painter = painterResource(R.drawable.a9_usb),
+            contentDescription = "Pioneer DJM-A9 top panel diagram: the USB-B port is at the top " +
+                "left. The MULTI I/O ports at the top right are crossed out and cannot be used " +
+                "for recording.",
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+        )
+        Text(
+            text = "Connect the USB cable to the USB-B port at the TOP LEFT of your mixer " +
+                "(or the USB port on the rear of the mixer).",
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextPrimary
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Filled.WarningAmber,
+                contentDescription = null,
+                tint = AccentAmber,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = "Do NOT use the MULTI I/O port in the top right \u2014 those S/PDIF optical " +
+                    "and coaxial ports do not carry the USB audio mix.",
+                style = MaterialTheme.typography.bodySmall,
+                color = AccentAmber
+            )
+        }
         if (inputs.isEmpty()) {
             Text(
                 text = "No USB device is connected right now. Plug in your mixer with a data " +
