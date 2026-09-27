@@ -15,6 +15,20 @@
   length. If a recording is stopped before any audio arrives, the short lead-in is still saved
   as a valid file.
 - Include the trim setting and the amount of trimmed silence in diagnostic reports.
+- Livestream: fix streams ending for good after a handful of network drops. The reconnect
+  budget was only 5 attempts for the whole broadcast and was never refilled after a successful
+  reconnect, so the sixth short drop in a long set took the stream off air. Each outage now
+  gets up to 10 reconnect attempts.
+- Livestream: adapt the video bitrate to the uplink. When the connection cannot keep up, the
+  video bitrate steps down (to no less than 0.5 Mbps) and recovers once the uplink is clear.
+  Previously the send queue overflowed and dropped audio frames as well, which viewers heard
+  as gaps in the mix. Audio bitrate is never reduced.
+- Livestream: keep the screen awake for the whole broadcast, not only while recording or with
+  the camera console open. An idle device could stall the USB audio stream and end the stream.
+- Livestream: a recording that stops because of a storage problem (low storage, a write or
+  publish failure) no longer takes the livestream off air. The recording is finalized, a
+  dialog explains why it stopped, and the stream keeps running.
+- README: list MP3 recording and drop the track markers that were removed in v0.44.0.
 
 ## v0.44.1 (2026-09-25)
 

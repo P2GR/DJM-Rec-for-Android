@@ -290,10 +290,12 @@ class RecordingService : LifecycleService() {
             if (recording) {
                 checkpointIfDue()
                 when {
-                    health.level == RecordingHealthLevel.ERROR -> requestSafetyStop(health.message)
-                    health.level == RecordingHealthLevel.LOW_STORAGE -> requestSafetyStop(health.message)
+                    health.level == RecordingHealthLevel.ERROR ->
+                        requestSafetyStop(health.message, captureLost = !AudioEngine.isStreamOpen())
+                    health.level == RecordingHealthLevel.LOW_STORAGE ->
+                        requestSafetyStop(health.message, captureLost = false)
                     stalledUsbChecks >= MAX_STALLED_USB_CHECKS ->
-                        requestSafetyStop("USB audio stopped. Recording finalized safely.")
+                        requestSafetyStop("USB audio stopped. Recording finalized safely.", captureLost = true)
                 }
             }
             monitorHandler.postDelayed(this, HEALTH_UPDATE_INTERVAL_MS)
@@ -870,14 +872,14 @@ class RecordingService : LifecycleService() {
         lastCheckpointRealtime = now
         val partBytes = AudioEngine.checkpointRecording()
         if (partBytes < 0) {
-            requestSafetyStop("Could not checkpoint recording. File finalized at last safe point.")
+            requestSafetyStop("Could not checkpoint recording. File finalized at last safe point.", captureLost = false)
             return
         }
         val journalSaved = runCatching {
             RecordingSessionStore.checkpoint(this, AudioEngine.getElapsedMillis())
         }.isSuccess
         if (!journalSaved) {
-            requestSafetyStop("Could not save recovery checkpoint. Recording finalized safely.")
+            requestSafetyStop("Could not save recovery checkpoint. Recording finalized safely.", captureLost = false)
             return
         }
         if (currentFormat == RecordingFormat.WAV && RecordingStoragePolicy.shouldRollWav(partBytes)) {
@@ -891,14 +893,14 @@ class RecordingService : LifecycleService() {
         val nextIndex = currentPartIndex + 1
         val next = RecordingOutputManager.create(this, sessionId, RecordingFormat.WAV, nextIndex)
         if (next == null) {
-            requestSafetyStop("Could not create next WAV part. Recording finalized safely.")
+            requestSafetyStop("Could not create next WAV part. Recording finalized safely.", captureLost = false)
             return
         }
         val rolled = AudioEngine.rollRecordingFd(next.descriptor.fd, RecordingFormat.WAV.nativeValue)
         runCatching { next.descriptor.close() }
         if (!rolled) {
             RecordingOutputManager.abandon(this, next)
-            requestSafetyStop("Could not continue WAV recording. Current part finalized safely.")
+            requestSafetyStop("Could not continue WAV recording. Current part finalized safely.", captureLost = false)
             return
         }
 
@@ -914,18 +916,22 @@ class RecordingService : LifecycleService() {
         currentPartIndex = nextIndex
         currentPartStartedElapsed = elapsed
         if (!partJournaled) {
-            requestSafetyStop("Could not journal next WAV part. Recording stopped safely.")
+            requestSafetyStop("Could not journal next WAV part. Recording stopped safely.", captureLost = false)
         } else if (!previousFinalized) {
-            requestSafetyStop("Previous WAV part could not be published. Recording stopped safely.")
+            requestSafetyStop("Previous WAV part could not be published. Recording stopped safely.", captureLost = false)
         }
     }
 
-    private fun requestSafetyStop(message: String) {
+    /**
+     * @param captureLost true when the mixer audio itself failed (USB stalled, stream closed).
+     *   Storage-side failures pass false so an active livestream can stay on air.
+     */
+    private fun requestSafetyStop(message: String, captureLost: Boolean) {
         if (safetyStopPending || _saving.value) return
         safetyStopPending = true
         mainHandler.post {
             if (!_saving.value && (_state.value is RecordingState.Recording || _state.value is RecordingState.Paused)) {
-                stopSessionWithError(message)
+                stopSessionWithError(message, captureLost = captureLost)
             } else {
                 safetyStopPending = false
             }
@@ -1026,7 +1032,8 @@ class RecordingService : LifecycleService() {
             currentPartIndex = 0
             val (duration, complete, savedOutput) = result.getOrDefault(Triple(0L, false, null))
             if (!complete) {
-                stopSessionWithError("Recording stopped; publication failed. Recovery will retry on next launch.", alreadyStopped = true)
+                stopSessionWithError("Recording stopped; publication failed. Recovery will retry on next launch.",
+                    alreadyStopped = true, captureLost = false)
             } else {
                 savedOutput?.let { events.lastSaved.value = com.audiopro.djmrec.audio.SavedRecording(it.uri, it.displayName, duration) }
                 _state.value = RecordingState.Monitoring
@@ -1080,11 +1087,42 @@ class RecordingService : LifecycleService() {
     }
 
     @Synchronized
-    private fun stopSessionWithError(message: String, alreadyStopped: Boolean = false) {
-        stopLiveStream("Mixer audio stopped: $message")
+    private fun stopSessionWithError(message: String, alreadyStopped: Boolean = false, captureLost: Boolean = true) {
+        // A storage-side failure only ends the recording: the mixer audio is still healthy, so a
+        // running livestream must not be taken off air with it.
+        val keepCapture = !captureLost && _liveState.value.isActive && AudioEngine.isStreamOpen()
+        if (!keepCapture) stopLiveStream("Mixer audio stopped: $message")
+        val savedOutput = currentOutput
+        val partStart = currentPartStartedElapsed
         val duration = if (alreadyStopped) AudioEngine.getElapsedMillis() else AudioEngine.stopRecording()
         val finalized = finalizeCurrentOutput(duration)
         if (finalized) RecordingSessionStore.completeIfFinalized(this)
+        if (keepCapture) {
+            val reason = message.trimEnd().let { if (it.endsWith('.')) it else "$it." }
+            currentSessionId = null
+            currentPartIndex = 0
+            isMonitoringOnly = true
+            _awaitingAudio.value = false
+            _elapsedMillis.value = 0L
+            _state.value = RecordingState.Monitoring
+            _health.value = RecordingHealth(
+                RecordingHealthLevel.ERROR,
+                "$reason Livestream continues.",
+                RecordingOutputManager.freeBytes(),
+                0
+            )
+            if (finalized && savedOutput != null) {
+                events.lastSaved.value = com.audiopro.djmrec.audio.SavedRecording(
+                    savedOutput.uri,
+                    savedOutput.displayName,
+                    (duration - partStart).coerceAtLeast(0L),
+                    notice = "$reason The livestream is still running."
+                )
+            }
+            safetyStopPending = false
+            updateNotification()
+            return
+        }
         AudioEngine.close()
         releaseIsoConnectionIfNeeded()
         releaseWakeLock()

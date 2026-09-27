@@ -40,8 +40,9 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             DjmRecTheme {
-                // A recording must never die because the device dozed off or auto-locked: while
-                // recording or paused, keep the device awake on EVERY screen (not just Record).
+                // A recording or livestream must never die because the device dozed off or
+                // auto-locked: while recording, paused or live, keep the device awake on EVERY
+                // screen (not just Record); an idle device can stall the USB audio stream.
                 // Monitoring only stays awake when the user opted in, and the power-save overlay
                 // always needs the screen to remain on to be meaningful. FLAG_KEEP_SCREEN_ON is
                 // the supported replacement for the deprecated FULL_WAKE_LOCK and blocks both
@@ -49,9 +50,11 @@ class MainActivity : ComponentActivity() {
                 // locks manually, capture continues in the foreground service (wake lock held).
                 val recordingState by viewModel.recordingState.collectAsState()
                 val keepScreenOnSetting by viewModel.keepScreenOn.collectAsState()
+                val liveState by viewModel.liveStreamState.collectAsState()
                 val powerSaveActive = viewModel.powerSaveActive.value
                 val keepAwake = recordingState is RecordingState.Recording ||
                     recordingState is RecordingState.Paused ||
+                    liveState.isActive ||
                     powerSaveActive ||
                     (keepScreenOnSetting && recordingState is RecordingState.Monitoring)
                 DisposableEffect(keepAwake) {

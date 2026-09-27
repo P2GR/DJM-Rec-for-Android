@@ -39,7 +39,7 @@ analog output.
 - RGB waveform: red bass, green mids, blue highs, with blended colors and up to 60 fps scrolling.
   Waveform processing sleeps when the display is hidden.
 - Stereo meters and clipping indication.
-- WAV/FLAC recording, pause/resume and track markers.
+- WAV, FLAC and MP3 (320 kbps) recording with pause/resume.
 - Saved-set search, playback, sharing, export, rename and deletion.
 - Automatic trimming of the silence before the first audio of a set (on by default, can be
   turned off in Settings).

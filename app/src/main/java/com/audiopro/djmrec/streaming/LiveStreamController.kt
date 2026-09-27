@@ -27,6 +27,9 @@ import java.util.concurrent.atomic.AtomicLong
 class LiveStreamController(context: Context) : ConnectChecker {
     private companion object {
         const val TAG = "LiveStreamController"
+        /** Reconnect attempts per outage; refilled after every successful (re)connect. */
+        const val MAX_RECONNECT_ATTEMPTS = 10
+        const val RECONNECT_DELAY_MS = 3_000L
     }
 
     private val appContext = context.applicationContext
@@ -44,6 +47,9 @@ class LiveStreamController(context: Context) : ConnectChecker {
     private var progressFuture: ScheduledFuture<*>? = null
     private val progressWatchdog = MediaProgressWatchdog()
     private val cameraFramesCaptured = AtomicLong(0)
+    // Replaced per stream on the executor; only read by onNewBitrate on the main thread.
+    @Volatile
+    private var adaptiveVideoBitrate: AdaptiveVideoBitrate? = null
     @Volatile
     private var userStopping = false
 
@@ -97,6 +103,7 @@ class LiveStreamController(context: Context) : ConnectChecker {
         }
         this.config = config
         cameraFramesCaptured.set(0)
+        adaptiveVideoBitrate = AdaptiveVideoBitrate(config.videoBitrate)
         userStopping = false
         Log.i(TAG, "Preparing ${config.platform.label} stream: ${config.videoMode}, ${sampleRate}Hz")
         val sourceFailure: (String) -> Unit = { reason ->
@@ -137,7 +144,7 @@ class LiveStreamController(context: Context) : ConnectChecker {
         val preparation = runCatching {
             candidate.getStreamClient().apply {
                 setLogs(false)
-                setReTries(5)
+                setReTries(MAX_RECONNECT_ATTEMPTS)
                 setCheckServerAlive(true)
             }
             com.audiopro.djmrec.diagnostics.RemoteDiagnostics.event("StreamingAudio",
@@ -284,6 +291,9 @@ class LiveStreamController(context: Context) : ConnectChecker {
     private fun connectionSucceeded() {
         val current = config ?: return
         Log.i(TAG, "Connected to ${current.platform.label}")
+        // RootEncoder only refills its retry budget on a user stop, so without this every
+        // network blip in a multi-hour set permanently spends one attempt until the stream dies.
+        stream?.getStreamClient()?.setReTries(MAX_RECONNECT_ATTEMPTS)
         _state.update { state ->
             state.copy(
                 status = LiveStreamStatus.CONNECTING,
@@ -323,7 +333,7 @@ class LiveStreamController(context: Context) : ConnectChecker {
         val active = stream ?: return
         val current = config ?: return
         val retrying = runCatching {
-            active.getStreamClient().reTry(3_000, reason, null)
+            active.getStreamClient().reTry(RECONNECT_DELAY_MS, reason, null)
         }.getOrDefault(false)
         if (retrying) {
             _state.update { it.copy(
@@ -349,6 +359,12 @@ class LiveStreamController(context: Context) : ConnectChecker {
     override fun onNewBitrate(bitrate: Long) {
         val active = stream ?: return
         val client = active.getStreamClient()
+        if (_state.value.status == LiveStreamStatus.LIVE) {
+            adaptiveVideoBitrate?.onSample(client.hasCongestion())?.let { video ->
+                Log.i(TAG, "Adaptive video bitrate: ${video / 1000} kbps")
+                runCatching { active.setVideoBitrateOnFly(video) }
+            }
+        }
         _state.update { current ->
             if (!current.isActive) {
                 current

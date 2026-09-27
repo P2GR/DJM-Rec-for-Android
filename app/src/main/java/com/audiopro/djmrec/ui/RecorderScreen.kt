@@ -234,8 +234,12 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
     }
     }
     saved?.let { recording ->
-        AlertDialog(onDismissRequest = viewModel::dismissSavedRecording, title = { Text("Set saved") },
-            text = { Text("${recording.name}\n${elapsedText(recording.durationMillis)} / Music/DJMRec") },
+        AlertDialog(onDismissRequest = viewModel::dismissSavedRecording,
+            title = { Text(if (recording.notice != null) "Recording stopped" else "Set saved") },
+            text = {
+                Text(listOfNotNull(recording.notice,
+                    "${recording.name}\n${elapsedText(recording.durationMillis)} / Music/DJMRec").joinToString("\n\n"))
+            },
             confirmButton = { TextButton(onClick = { viewModel.dismissSavedRecording(); onOpenLibrary() }) { Text("Open sets") } },
             dismissButton = { TextButton(onClick = viewModel::dismissSavedRecording) { Text("Done") } })
     }
