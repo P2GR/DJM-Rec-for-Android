@@ -1,5 +1,55 @@
 # Changelog
 
+## v0.45.0 (2026-09-27)
+
+### Recording
+- Add a safety limiter. The recording gain (+12 dB by default) used to hard-clip loud peaks;
+  a look-ahead limiter now holds peaks at -1 dBFS with a smooth gain change instead, for the
+  recording and the livestream alike. It is inaudible when nothing needs limiting, and the
+  recorder shows when it is working hard. Settings > Capture > Safety limiter (on by default).
+- Add a 15-second pre-record buffer: while the mixer is connected, the last 15 seconds are
+  kept, so pressing Record late still captures the start of the mix. Leading silence in the
+  buffer is still trimmed. Settings > Capture > Pre-record buffer (on by default).
+- Add an optional MP3 copy (320 kbps) next to a WAV or FLAC set, written at the same time
+  from the same audio. Turn it on under the file format in Recording setup. A problem with
+  the copy never stops the master recording.
+- Stop a recording automatically after a long silence, for sets left running at the end of
+  the night. Choose 5, 10 (default), 20 or 30 minutes, or off, in Settings > Capture. The
+  saved-set dialog says why it stopped; a livestream keeps running.
+- Warn when the battery is at 15 % or lower and the phone is not charging (also when it is
+  plugged in but not actually charging), and when the phone is overheating. Warnings show in
+  the recorder and in the notification.
+
+### Set editor
+- Add an editor to Sets (menu > Edit): trim the start and end with a waveform overview and
+  listen-at-start/end previews, add fade-in and fade-out, normalize loudness to -14, -16 or
+  -11 LUFS (ITU-R BS.1770, gated like EBU R128) and export to MP3 320 kbps, WAV or FLAC.
+  The export is a new "(edit)" file in Music/DJMRec; the original recording is never
+  changed. Raised levels pass through the same -1 dBFS limiter as the recorder.
+
+### Livestreaming and video
+- Add "Also record the set" to the Go Live review step, on by default: the lossless audio
+  recording starts together with the stream, because the stream is compressed and platforms
+  may mute DJ sets.
+- Keep a YouTube broadcast open when the stream fails after going live. The Go Live screen
+  offers Resume broadcast (same watch link for viewers) or End broadcast. YouTube's
+  auto-stop is now off so the broadcast survives a network outage; the app ends it when you
+  stop the stream.
+- Add video recording: camera video with 320 kbps mixer audio saved as MP4 in Movies/DJMRec,
+  either as a "Phone only (record video)" destination or with "Save video to phone" while
+  streaming. While streaming, the file uses its own encoder at 8, 12 or 20 Mbps (720p,
+  1080p, 1440p), so a lower stream bitrate never lowers the saved quality. Portrait and
+  landscape follow how the phone is held.
+- Save video in 10-minute parts that start on a keyframe, so a crash can only lose the part
+  being written; an unfinished part is cleaned up on the next launch.
+- Show how much video fits before starting (about 5.5 GB per hour at 1080p), warn when less
+  than 30 minutes of space is left, and stop the video below 1 GB free so the audio
+  recording can finish.
+- Add exposure, focus and white-balance locks to the camera console, so club lights and
+  strobes do not make the picture pump.
+- Protect against overheating: at Android's "severe" thermal status the camera drops to
+  15 fps and the video bitrate to 60 %; full quality returns when the phone cools down.
+
 ## v0.44.2 (2026-09-27)
 
 - Automatically trim the silence at the start of a recording. Mixers often take a few seconds
