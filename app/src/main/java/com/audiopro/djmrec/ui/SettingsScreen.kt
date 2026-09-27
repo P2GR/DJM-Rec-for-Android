@@ -35,6 +35,9 @@ fun SettingsScreen(viewModel: MainViewModel) {
     val keepScreen by viewModel.keepScreenOn.collectAsState()
     val confirm by viewModel.confirmStop.collectAsState()
     val trimSilence by viewModel.trimLeadingSilence.collectAsState()
+    val limiter by viewModel.safetyLimiter.collectAsState()
+    val preRecord by viewModel.preRecord.collectAsState()
+    val autoStopMinutes by viewModel.silenceAutoStopMinutes.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val diagnostics by com.audiopro.djmrec.diagnostics.RemoteDiagnostics.enabled.collectAsState()
@@ -122,6 +125,9 @@ fun SettingsScreen(viewModel: MainViewModel) {
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Capture", style = MaterialTheme.typography.titleLarge)
         Text("Monitoring arms automatically after USB connection and permission. Recording starts only when you press Record.", color = TextSecondary)
+        PreferenceSwitch("Safety limiter", "Catches loud peaks at -1 dBFS instead of clipping them, so a hot mix or +12 dB gain stays clean in the recording and the livestream.", limiter, viewModel::setSafetyLimiter)
+        PreferenceSwitch("Pre-record buffer", "Keeps the last 15 seconds while the mixer is connected, so pressing Record late still captures the start of the mix.", preRecord, viewModel::setPreRecord)
+        SilenceAutoStopPreference(autoStopMinutes, viewModel::setSilenceAutoStopMinutes)
         PreferenceSwitch("Trim leading silence", "Start the file at the first sound, keeping half a second of lead-in. Removes the few silent seconds before the mixer's audio arrives. Applies to the next recording.", trimSilence, viewModel::setTrimLeadingSilence)
         PreferenceSwitch("Confirm stop", "Ask before stopping from the recorder. Notification Save & close always acts immediately.", confirm, viewModel::setConfirmStop)
         Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 1.dp) {
@@ -174,6 +180,27 @@ fun SettingsScreen(viewModel: MainViewModel) {
                         "Download is verified before Android asks you to confirm installation.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SilenceAutoStopPreference(minutes: Int, onChange: (Int) -> Unit) {
+    Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 1.dp) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Auto-stop after silence", style = MaterialTheme.typography.titleSmall)
+            Text("Saves and stops a recording left running after the music ends, for example at the end of the night. A livestream keeps running.",
+                style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(0, 5, 10, 20, 30).forEach { option ->
+                    FilterChip(
+                        selected = minutes == option,
+                        onClick = { onChange(option) },
+                        label = { Text(if (option == 0) "Off" else "$option min") }
                     )
                 }
             }

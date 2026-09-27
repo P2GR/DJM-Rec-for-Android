@@ -40,6 +40,7 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
     val levels by viewModel.levels.collectAsState()
     val elapsed by viewModel.elapsedMillis.collectAsState()
     val awaitingAudio by viewModel.awaitingAudio.collectAsState()
+    val limiterReduction by viewModel.limiterReductionDb.collectAsState()
     val waveform by viewModel.waveformEnabled.collectAsState()
     val smooth by viewModel.smoothWaveform.collectAsState()
     val confirmStop by viewModel.confirmStop.collectAsState()
@@ -139,6 +140,8 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
                 saving -> "Finalizing your recording..."
                 state is RecordingState.Error -> (state as RecordingState.Error).message
                 active && (levels.left.isClipping || levels.right.isClipping) -> "Clipping: lower mixer output"
+                active && limiterReduction >= 3f ->
+                    String.format(Locale.US, "Limiter catching peaks (-%.0f dB): lower mixer output or gain", limiterReduction)
                 state is RecordingState.Recording && awaitingAudio &&
                     (health.level == RecordingHealthLevel.GOOD || health.level == RecordingHealthLevel.SILENCE) ->
                     "Waiting for audio. Silence before the first sound is trimmed from the file."
@@ -147,7 +150,8 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
                 else -> health.message
             }
             val attention = saving || state is RecordingState.Error ||
-                (active && (levels.left.isClipping || levels.right.isClipping))
+                (active && (levels.left.isClipping || levels.right.isClipping || limiterReduction >= 3f)) ||
+                health.level == RecordingHealthLevel.LOW_BATTERY || health.level == RecordingHealthLevel.OVERHEATING
             Surface(shape = RoundedCornerShape(14.dp), color = SurfaceVariantDark.copy(alpha = 0.5f)) {
                 Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { detailsOpen = true }
                     .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -238,7 +242,8 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
             title = { Text(if (recording.notice != null) "Recording stopped" else "Set saved") },
             text = {
                 Text(listOfNotNull(recording.notice,
-                    "${recording.name}\n${elapsedText(recording.durationMillis)} / Music/DJMRec").joinToString("\n\n"))
+                    "${recording.name}\n${elapsedText(recording.durationMillis)} / Music/DJMRec",
+                    recording.alsoSaved?.let { "MP3 copy: $it" }).joinToString("\n\n"))
             },
             confirmButton = { TextButton(onClick = { viewModel.dismissSavedRecording(); onOpenLibrary() }) { Text("Open sets") } },
             dismissButton = { TextButton(onClick = viewModel::dismissSavedRecording) { Text("Done") } })
@@ -258,6 +263,17 @@ internal fun RecordingSetupControls(viewModel: MainViewModel) {
     if (!enabled) Text("Capture settings locked while recording or streaming.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
     Text("File format", style = MaterialTheme.typography.titleSmall)
     FormatSelector(format, viewModel.availableFormats, enabled, viewModel::selectFormat)
+    if (format != RecordingFormat.MP3) {
+        val mp3Copy by viewModel.mp3Copy.collectAsState()
+        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Also save an MP3 copy", style = MaterialTheme.typography.bodyMedium)
+                Text("320 kbps, ready to share while the ${format.name} master stays lossless.",
+                    style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+            }
+            Switch(mp3Copy, viewModel::setMp3Copy, enabled = enabled)
+        }
+    }
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text("Gain: ${if (gain > 0) "+" else ""}$gain dB", modifier = Modifier.weight(1f))
         TextButton(onClick = { viewModel.setRecordingGainDb(0) }, enabled = enabled) { Text("Reset to 0 dB") }

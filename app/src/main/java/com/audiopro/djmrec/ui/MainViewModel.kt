@@ -107,6 +107,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val smoothWaveform = MutableStateFlow(prefs.getBoolean("smooth_waveform", true))
     val confirmStop = MutableStateFlow(prefs.getBoolean("confirm_stop", true))
     val trimLeadingSilence = MutableStateFlow(prefs.getBoolean(RecordingService.PREF_TRIM_LEADING_SILENCE, true))
+    val safetyLimiter = MutableStateFlow(prefs.getBoolean(RecordingService.PREF_SAFETY_LIMITER, true))
+    val preRecord = MutableStateFlow(prefs.getBoolean(RecordingService.PREF_PRE_RECORD, true))
+    val mp3Copy = MutableStateFlow(prefs.getBoolean(RecordingService.PREF_MP3_COPY, false))
+    val silenceAutoStopMinutes = MutableStateFlow(
+        prefs.getInt(RecordingService.PREF_SILENCE_AUTO_STOP_MINUTES, RecordingService.DEFAULT_SILENCE_AUTO_STOP_MINUTES)
+    )
 
     /** User-chosen livestream quality (resolution + bitrate); presets are named by resolution. */
     private fun persistedStreamQuality(): LiveStreamQuality {
@@ -142,6 +148,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().putBoolean(RecordingService.PREF_TRIM_LEADING_SILENCE, value).apply()
         trimLeadingSilence.value = value
     }
+    fun setSafetyLimiter(value: Boolean) {
+        prefs.edit().putBoolean(RecordingService.PREF_SAFETY_LIMITER, value).apply()
+        safetyLimiter.value = value
+        boundService?.applyCapturePreferences()
+    }
+    fun setPreRecord(value: Boolean) {
+        prefs.edit().putBoolean(RecordingService.PREF_PRE_RECORD, value).apply()
+        preRecord.value = value
+        boundService?.applyCapturePreferences()
+    }
+    fun setMp3Copy(value: Boolean) {
+        prefs.edit().putBoolean(RecordingService.PREF_MP3_COPY, value).apply()
+        mp3Copy.value = value
+    }
+    fun setSilenceAutoStopMinutes(minutes: Int) {
+        prefs.edit().putInt(RecordingService.PREF_SILENCE_AUTO_STOP_MINUTES, minutes.coerceAtLeast(0)).apply()
+        silenceAutoStopMinutes.value = minutes.coerceAtLeast(0)
+    }
     fun setStreamQuality(value: LiveStreamQuality) {
         prefs.edit()
             .putString("live_stream_quality", value.id)
@@ -168,6 +192,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _awaitingAudio = MutableStateFlow(false)
     val awaitingAudio: StateFlow<Boolean> = _awaitingAudio.asStateFlow()
+
+    private val _limiterReductionDb = MutableStateFlow(0f)
+    val limiterReductionDb: StateFlow<Float> = _limiterReductionDb.asStateFlow()
 
     private val emptyWaveform = FloatArray(0)
     private val _waveformBins = MutableStateFlow(emptyWaveform)
@@ -256,6 +283,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             viewModelScope.launch { service.levels.collect { _levels.value = it } }
             viewModelScope.launch { service.elapsedMillis.collect { _elapsedMillis.value = it } }
             viewModelScope.launch { service.awaitingAudio.collect { _awaitingAudio.value = it } }
+            viewModelScope.launch { service.limiterReductionDb.collect { _limiterReductionDb.value = it } }
             viewModelScope.launch { service.waveformBins.collect { _waveformBins.value = it } }
             viewModelScope.launch { service.health.collect { _recordingHealth.value = it } }
             viewModelScope.launch { service.liveState.collect { _liveStreamState.value = it } }

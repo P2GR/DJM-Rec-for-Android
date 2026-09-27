@@ -72,4 +72,32 @@ class RecordingHealthEvaluatorTest {
         val health = RecordingHealthEvaluator.evaluate(input(xRuns = 1))
         assertEquals(RecordingHealthLevel.USB_UNSTABLE, health.level)
     }
+
+    @Test
+    fun `low battery warns only when not charging`() {
+        assertEquals(RecordingHealthLevel.LOW_BATTERY,
+            RecordingHealthEvaluator.evaluate(input().copy(batteryPercent = 12, charging = false)).level)
+        assertEquals(RecordingHealthLevel.GOOD,
+            RecordingHealthEvaluator.evaluate(input().copy(batteryPercent = 12, charging = true)).level)
+        assertEquals(RecordingHealthLevel.GOOD,
+            RecordingHealthEvaluator.evaluate(input().copy(batteryPercent = 40, charging = false)).level)
+    }
+
+    @Test
+    fun `critical battery outranks usb warnings but not storage`() {
+        assertEquals(RecordingHealthLevel.LOW_BATTERY,
+            RecordingHealthEvaluator.evaluate(input(missedPacketDelta = 3).copy(batteryPercent = 4, charging = false)).level)
+        assertEquals(RecordingHealthLevel.USB_UNSTABLE,
+            RecordingHealthEvaluator.evaluate(input(missedPacketDelta = 3).copy(batteryPercent = 12, charging = false)).level)
+        assertEquals(RecordingHealthLevel.LOW_STORAGE,
+            RecordingHealthEvaluator.evaluate(input(remainingSeconds = 30).copy(batteryPercent = 4, charging = false)).level)
+    }
+
+    @Test
+    fun `severe thermal status warns about overheating`() {
+        assertEquals(RecordingHealthLevel.OVERHEATING,
+            RecordingHealthEvaluator.evaluate(input().copy(thermalStatus = 3)).level)
+        assertEquals(RecordingHealthLevel.GOOD,
+            RecordingHealthEvaluator.evaluate(input().copy(thermalStatus = 2)).level)
+    }
 }
