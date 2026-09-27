@@ -61,6 +61,8 @@ enum class YouTubeBroadcastStatus {
     WAITING_FOR_INGEST,
     STARTING,
     LIVE,
+    /** The stream dropped after going live; the broadcast stays open for a resume. */
+    INTERRUPTED,
     COMPLETING,
     COMPLETE,
     ERROR

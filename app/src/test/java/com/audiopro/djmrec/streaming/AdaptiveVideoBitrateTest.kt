@@ -59,4 +59,17 @@ class AdaptiveVideoBitrateTest {
         assertNull(adaptive.onSample(congested = true))
         assertEquals(400_000, adaptive.current)
     }
+
+    @Test
+    fun capLowersImmediatelyAndRecoveryStaysBelowIt() {
+        val adaptive = AdaptiveVideoBitrate(maxBitrate = 8_000_000, recoverAfterSamples = 1)
+
+        assertEquals(4_800_000, adaptive.setCap(4_800_000))
+        assertNull(adaptive.onSample(congested = false))
+        assertEquals(4_800_000, adaptive.current)
+
+        // Lifting the cap lets clear reports climb back to the chosen bitrate.
+        assertNull(adaptive.setCap(null))
+        assertEquals(5_520_000, adaptive.onSample(congested = false))
+    }
 }

@@ -20,7 +20,9 @@ enum class LivePlatform(
         "Mixcloud Pro required. Open Mixcloud setup and paste its reusable key.",
         "https://www.mixcloud.com/live/new/"
     ),
-    CUSTOM("Custom", "", "Enter RTMP or RTMPS server credentials.", null)
+    CUSTOM("Custom", "", "Enter RTMP or RTMPS server credentials.", null),
+    /** No stream: camera video with mixer audio is only saved to the phone. */
+    LOCAL("Phone only (record video)", "", "Save camera video with mixer audio to Movies/DJMRec. Nothing is streamed.", null)
 }
 
 enum class LiveVideoMode(val label: String) {
@@ -65,12 +67,22 @@ data class LiveStreamConfig(
         LivePlatform.MIXCLOUD -> 320_000
         else -> 256_000
     },
-    val quality: LiveStreamQuality = LiveStreamQuality.P720
+    val quality: LiveStreamQuality = LiveStreamQuality.P720,
+    /** Also save camera video + mixer audio as MP4 segments in Movies/DJMRec. */
+    val recordVideo: Boolean = platform == LivePlatform.LOCAL,
+    /** Start the normal lossless audio recording together with the stream. */
+    val alsoRecordAudio: Boolean = true
 ) {
     /** Video bitrate follows the selected [quality] preset. */
     val videoBitrate: Int
         get() = quality.videoBitrate
+
+    /** False for [LivePlatform.LOCAL], which only records video to the phone. */
+    val streams: Boolean
+        get() = platform != LivePlatform.LOCAL
+
     fun endpoint(): String {
+        require(streams) { "Phone-only recording has no stream destination" }
         val server = serverUrl.trim().trimEnd('/')
         val key = streamKey.trim().trimStart('/')
         require(server.startsWith("rtmp://") || server.startsWith("rtmps://")) {
@@ -108,7 +120,17 @@ data class LiveStreamState(
     val cameraOpened: Boolean = false,
     val audioPcmBytes: Long = 0,
     val audioPeakDb: Float = -60f,
-    val startedAtMillis: Long = 0
+    val startedAtMillis: Long = 0,
+    /** MP4 video is being saved to the phone (with or without a stream). */
+    val recordingVideo: Boolean = false,
+    /** 1-based index of the MP4 segment being written. */
+    val videoSegment: Int = 0,
+    val videoStartedAtMillis: Long = 0,
+    /** Storage/recording warning for the video file, shown next to the stream status. */
+    val videoMessage: String? = null,
+    /** Frame rate and bitrate are reduced because the phone is overheating. */
+    val overheated: Boolean = false,
+    val cameraLocks: CameraLocks = CameraLocks()
 ) {
     val isActive: Boolean
         get() = status == LiveStreamStatus.PREPARING ||
@@ -118,4 +140,15 @@ data class LiveStreamState(
 
     val usesCamera: Boolean
         get() = videoMode == LiveVideoMode.BACK_CAMERA || videoMode == LiveVideoMode.FRONT_CAMERA
+
+    /** Phone-only video recording: "live" means recording, nothing goes to viewers. */
+    val localOnly: Boolean
+        get() = platform == LivePlatform.LOCAL
 }
+
+/** Camera auto-adjustments frozen at their current values (club lights make them pump). */
+data class CameraLocks(
+    val exposure: Boolean = false,
+    val focus: Boolean = false,
+    val whiteBalance: Boolean = false
+)

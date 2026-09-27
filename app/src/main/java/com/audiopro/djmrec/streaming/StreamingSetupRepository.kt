@@ -51,7 +51,9 @@ object StreamingSetupRepository {
                     .put("selfDeclaredMadeForKids", false))
                 .put("contentDetails", JSONObject()
                     .put("enableAutoStart", true)
-                    .put("enableAutoStop", true)
+                    // The app ends the broadcast itself. With auto-stop, YouTube would close it
+                    // shortly after a network drop, so a resumed stream would need a new link.
+                    .put("enableAutoStop", false)
                     .put("recordFromStart", true)
                     .put("monitorStream", JSONObject().put("enableMonitorStream", false)))
             val broadcast = requestJson(

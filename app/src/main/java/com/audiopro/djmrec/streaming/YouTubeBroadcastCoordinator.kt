@@ -14,14 +14,23 @@ class YouTubeBroadcastCoordinator {
         val previous = liveStreamState.value
         liveStreamState.value = state
         if (previous.platform == LivePlatform.YOUTUBE && previous.isActive && !state.isActive) {
-            if (retainPlannedYouTubeBroadcast(state.status, youtubeTransitionRequested)) {
-                youtubeLifecycleJob?.cancel()
-                youtubeLifecycleJob = null
-                youtubeStatsJob?.cancel()
-                youtubeStatsJob = null
-                _youtubeBroadcastState.value = _youtubeBroadcastState.value.copy(
-                    status = YouTubeBroadcastStatus.PLANNED, message = "Broadcast kept ready. Fix the input/camera issue and retry.")
-            } else finishYouTubeSession()
+            when (youtubeStreamEndAction(state.status, youtubeTransitionRequested)) {
+                YouTubeStreamEndAction.KEEP_PLANNED -> {
+                    stopLifecycleJobs()
+                    _youtubeBroadcastState.value = _youtubeBroadcastState.value.copy(
+                        status = YouTubeBroadcastStatus.PLANNED, message = "Broadcast kept ready. Fix the input/camera issue and retry.")
+                }
+                YouTubeStreamEndAction.KEEP_INTERRUPTED -> {
+                    stopLifecycleJobs()
+                    _youtubeBroadcastState.value = _youtubeBroadcastState.value.copy(
+                        status = YouTubeBroadcastStatus.INTERRUPTED,
+                        message = "Stream dropped: ${state.message}. The broadcast stays open, so viewers keep " +
+                            "the same link. Resume to continue, or end the broadcast.",
+                        viewerCount = null
+                    )
+                }
+                YouTubeStreamEndAction.FINISH -> finishYouTubeSession()
+            }
         }
     }
     private val _streamSetupState = MutableStateFlow(StreamSetupState())
@@ -39,6 +48,18 @@ class YouTubeBroadcastCoordinator {
     private companion object {
         const val STATS_POLL_INTERVAL_MS = 15_000L
     }
+
+    private fun stopLifecycleJobs() {
+        youtubeLifecycleJob?.cancel()
+        youtubeLifecycleJob = null
+        youtubeStatsJob?.cancel()
+        youtubeStatsJob = null
+    }
+
+    /** True while a dropped broadcast waits for [startYouTubeLifecycle] on a resumed stream. */
+    val canResume: Boolean
+        get() = youtubeLiveSession != null &&
+            _youtubeBroadcastState.value.status == YouTubeBroadcastStatus.INTERRUPTED
 
     fun prepareYouTubeDestination(accessToken: String, title: String, privacy: YouTubePrivacy) {
         youtubeTransitionRequested = false
@@ -216,3 +237,16 @@ class YouTubeBroadcastCoordinator {
 
 internal fun retainPlannedYouTubeBroadcast(status: LiveStreamStatus, transitionRequested: Boolean): Boolean =
     status == LiveStreamStatus.ERROR && !transitionRequested
+
+internal enum class YouTubeStreamEndAction { KEEP_PLANNED, KEEP_INTERRUPTED, FINISH }
+
+/**
+ * What happens to the YouTube broadcast when its RTMP stream stops. A user stop finishes it; a
+ * failure before going live keeps the planned event; a failure after going live keeps the live
+ * broadcast open so the DJ can resume on the same link.
+ */
+internal fun youtubeStreamEndAction(status: LiveStreamStatus, transitionRequested: Boolean): YouTubeStreamEndAction = when {
+    status != LiveStreamStatus.ERROR -> YouTubeStreamEndAction.FINISH
+    retainPlannedYouTubeBroadcast(status, transitionRequested) -> YouTubeStreamEndAction.KEEP_PLANNED
+    else -> YouTubeStreamEndAction.KEEP_INTERRUPTED
+}
