@@ -45,6 +45,7 @@ fun LibraryScreen(onBack: (() -> Unit)? = null) {
     var rename by remember { mutableStateOf<LibraryRecording?>(null) }
     var renameText by remember { mutableStateOf("") }
     var delete by remember { mutableStateOf<LibraryRecording?>(null) }
+    var editing by remember { mutableStateOf<LibraryRecording?>(null) }
     var exportTarget by remember { mutableStateOf<LibraryRecording?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
@@ -111,6 +112,11 @@ fun LibraryScreen(onBack: (() -> Unit)? = null) {
                             IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "Actions for ${recording.title}") }
                             DropdownMenu(menu, { menu = false }) {
                                 DropdownMenuItem(text = { Text("Play") }, onClick = { menu = false; selected = recording })
+                                DropdownMenuItem(text = { Text("Edit: trim, fades, loudness") }, enabled = !busy, onClick = {
+                                    menu = false
+                                    selected = selected?.takeUnless { it.uri == recording.uri }
+                                    editing = recording
+                                })
                                 DropdownMenuItem(text = { Text("Share") }, onClick = { menu = false; share(recording) })
                                 DropdownMenuItem(text = { Text("Export a copy") }, enabled = !busy, onClick = { menu = false; exportTarget = recording; export.launch(recording.displayName) })
                                 DropdownMenuItem(text = { Text("Rename") }, enabled = !busy, onClick = { menu = false; rename = recording; renameText = recording.title })
@@ -171,6 +177,9 @@ fun LibraryScreen(onBack: (() -> Unit)? = null) {
                 }
             }
         }) { Text("Delete", color = AccentRed) } }, dismissButton = { TextButton(onClick = { delete = null }, enabled = !busy) { Text("Keep") } }) }
+    editing?.let { recording ->
+        SetEditorDialog(recording, onClose = { editing = null; refresh++ })
+    }
     error?.let { message -> AlertDialog(onDismissRequest = { error = null }, title = { Text("Could not complete action") },
         text = { Text(message) }, confirmButton = { TextButton(onClick = { error = null }) { Text("OK") } }) }
 }
