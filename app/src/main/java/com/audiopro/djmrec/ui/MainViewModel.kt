@@ -106,6 +106,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val keepScreenOn = MutableStateFlow(prefs.getBoolean("keep_screen_on", !batteryExempt))
     val smoothWaveform = MutableStateFlow(prefs.getBoolean("smooth_waveform", true))
     val confirmStop = MutableStateFlow(prefs.getBoolean("confirm_stop", true))
+    val trimLeadingSilence = MutableStateFlow(prefs.getBoolean(RecordingService.PREF_TRIM_LEADING_SILENCE, true))
 
     /** User-chosen livestream quality (resolution + bitrate); presets are named by resolution. */
     private fun persistedStreamQuality(): LiveStreamQuality {
@@ -137,6 +138,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setKeepScreenOn(value: Boolean) { prefs.edit().putBoolean("keep_screen_on", value).apply(); keepScreenOn.value = value }
     fun setSmoothWaveform(value: Boolean) { prefs.edit().putBoolean("smooth_waveform", value).apply(); smoothWaveform.value = value }
     fun setConfirmStop(value: Boolean) { prefs.edit().putBoolean("confirm_stop", value).apply(); confirmStop.value = value }
+    fun setTrimLeadingSilence(value: Boolean) {
+        prefs.edit().putBoolean(RecordingService.PREF_TRIM_LEADING_SILENCE, value).apply()
+        trimLeadingSilence.value = value
+    }
     fun setStreamQuality(value: LiveStreamQuality) {
         prefs.edit()
             .putString("live_stream_quality", value.id)
@@ -160,6 +165,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _elapsedMillis = MutableStateFlow(0L)
     val elapsedMillis: StateFlow<Long> = _elapsedMillis.asStateFlow()
+
+    private val _awaitingAudio = MutableStateFlow(false)
+    val awaitingAudio: StateFlow<Boolean> = _awaitingAudio.asStateFlow()
 
     private val emptyWaveform = FloatArray(0)
     private val _waveformBins = MutableStateFlow(emptyWaveform)
@@ -247,6 +255,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             viewModelScope.launch { service.state.collect { _recordingState.value = it } }
             viewModelScope.launch { service.levels.collect { _levels.value = it } }
             viewModelScope.launch { service.elapsedMillis.collect { _elapsedMillis.value = it } }
+            viewModelScope.launch { service.awaitingAudio.collect { _awaitingAudio.value = it } }
             viewModelScope.launch { service.waveformBins.collect { _waveformBins.value = it } }
             viewModelScope.launch { service.health.collect { _recordingHealth.value = it } }
             viewModelScope.launch { service.liveState.collect { _liveStreamState.value = it } }

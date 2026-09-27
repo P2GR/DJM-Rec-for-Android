@@ -219,4 +219,15 @@ Java_com_audiopro_djmrec_audio_AudioEngine_setWaveformEnabled(
     JNIEnv* /*env*/, jobject /*thiz*/, jboolean enabled) {
     UsbAudioEngine::instance().setWaveformEnabled(enabled == JNI_TRUE);
 }
+
+JNIEXPORT void JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_setTrimLeadingSilence(
+    JNIEnv* /*env*/, jobject /*thiz*/, jboolean enabled) {
+    UsbAudioEngine::instance().setTrimLeadingSilence(enabled == JNI_TRUE);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_isAwaitingAudio(JNIEnv* /*env*/, jobject /*thiz*/) {
+    return UsbAudioEngine::instance().isAwaitingAudio() ? JNI_TRUE : JNI_FALSE;
+}
 } // extern "C"

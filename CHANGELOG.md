@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.44.2 (2026-09-27)
+
+- Automatically trim the silence at the start of a recording. Mixers often take a few seconds
+  after Record is pressed before the first audio arrives over USB; that dead air is no longer
+  written to the file. The file starts at the first sound (above about -60 dBFS) with half a
+  second of lead-in kept, so fade-ins and the first transient are not clipped. Works for WAV,
+  FLAC and MP3.
+- Add a **Trim leading silence** switch under Settings > Capture. It is on by default; turn it
+  off to keep every second from the moment Record is pressed. The change applies to the next
+  recording.
+- While silence is being trimmed, the recorder and the notification show "Waiting for audio"
+  and the timer starts counting once audio arrives, so it always matches the saved file's
+  length. If a recording is stopped before any audio arrives, the short lead-in is still saved
+  as a valid file.
+- Include the trim setting and the amount of trimmed silence in diagnostic reports.
+
 ## v0.44.1 (2026-09-25)
 
 - Keep the device awake on every screen while a recording is running or paused: the screen

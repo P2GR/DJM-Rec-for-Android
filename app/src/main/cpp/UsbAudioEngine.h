@@ -8,6 +8,7 @@
 
 #include <oboe/Oboe.h>
 
+#include "LeadingSilenceGate.h"
 #include "RingBuffer.h"
 #include "UsbIsoAudioSource.h"
 #include "WaveformAnalyzer.h"
@@ -85,6 +86,10 @@ public:
     void getWaveformBins(float* outBins) const;
     void setRecordingGainDb(int gainDb);
     void setWaveformEnabled(bool enabled);
+    /** Applies to the next startRecording*(): drop digital silence before the first audio. */
+    void setTrimLeadingSilence(bool enabled);
+    /** True while a recording is running but still discarding leading silence. */
+    bool isAwaitingAudio() const;
     static constexpr int kWaveformBinCount = WaveformAnalyzer::kBinCount;
 
     // oboe::AudioStreamDataCallback
@@ -97,6 +102,8 @@ private:
     UsbAudioEngine() = default;
 
     void encoderThreadLoop();
+    void resetSilenceGate();
+    void publishSilenceGateState();
     static size_t bytesPerFrameFor(oboe::AudioFormat format, int32_t channelCount);
 
     /** Shared tail of both capture paths once a canonical stereo I32 frame batch is in hand:
@@ -122,6 +129,10 @@ private:
     std::atomic<bool> mPaused{false};
     std::atomic<bool> mStopRequested{false};
     std::atomic<bool> mWaveformEnabled{true};
+    std::atomic<bool> mTrimLeadingSilence{true};
+    std::atomic<bool> mAwaitingAudio{false};
+    std::atomic<int64_t> mTrimmedLeadingMillis{0};
+    LeadingSilenceGate mSilenceGate; // owned by the encoder thread while recording
     std::atomic<float> mRecordingGainLinear{3.9810717f};
     std::atomic<bool> mLivePcmActive{false};
     std::atomic<uint64_t> mLiveDroppedFrames{0};

@@ -41,6 +41,8 @@ analog output.
 - Stereo meters and clipping indication.
 - WAV/FLAC recording, pause/resume and track markers.
 - Saved-set search, playback, sharing, export, rename and deletion.
+- Automatic trimming of the silence before the first audio of a set (on by default, can be
+  turned off in Settings).
 - Settings for automatic arming, waveform animation, screen wake and stop confirmation.
 - Background recording with a persistent notification. **Save & close** saves and ends capture.
 - Experimental livestreaming: YouTube with Google sign-in, Mixcloud and custom RTMP/RTMPS.

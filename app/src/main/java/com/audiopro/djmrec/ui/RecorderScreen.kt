@@ -39,6 +39,7 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
     val saving by viewModel.saving.collectAsState()
     val levels by viewModel.levels.collectAsState()
     val elapsed by viewModel.elapsedMillis.collectAsState()
+    val awaitingAudio by viewModel.awaitingAudio.collectAsState()
     val waveform by viewModel.waveformEnabled.collectAsState()
     val smooth by viewModel.smoothWaveform.collectAsState()
     val confirmStop by viewModel.confirmStop.collectAsState()
@@ -137,7 +138,11 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
             val message = when {
                 saving -> "Finalizing your recording..."
                 state is RecordingState.Error -> (state as RecordingState.Error).message
-                active -> if (levels.left.isClipping || levels.right.isClipping) "Clipping: lower mixer output" else health.message
+                active && (levels.left.isClipping || levels.right.isClipping) -> "Clipping: lower mixer output"
+                state is RecordingState.Recording && awaitingAudio &&
+                    (health.level == RecordingHealthLevel.GOOD || health.level == RecordingHealthLevel.SILENCE) ->
+                    "Waiting for audio. Silence before the first sound is trimmed from the file."
+                active -> health.message
                 device == null -> connectionNotice ?: "Connect mixer, grant USB access, check signal"
                 else -> health.message
             }

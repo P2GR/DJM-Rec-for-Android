@@ -34,6 +34,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
     val smooth by viewModel.smoothWaveform.collectAsState()
     val keepScreen by viewModel.keepScreenOn.collectAsState()
     val confirm by viewModel.confirmStop.collectAsState()
+    val trimSilence by viewModel.trimLeadingSilence.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val diagnostics by com.audiopro.djmrec.diagnostics.RemoteDiagnostics.enabled.collectAsState()
@@ -121,6 +122,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("Capture", style = MaterialTheme.typography.titleLarge)
         Text("Monitoring arms automatically after USB connection and permission. Recording starts only when you press Record.", color = TextSecondary)
+        PreferenceSwitch("Trim leading silence", "Start the file at the first sound, keeping half a second of lead-in. Removes the few silent seconds before the mixer's audio arrives. Applies to the next recording.", trimSilence, viewModel::setTrimLeadingSilence)
         PreferenceSwitch("Confirm stop", "Ask before stopping from the recorder. Notification Save & close always acts immediately.", confirm, viewModel::setConfirmStop)
         Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 1.dp) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { RecordingSetupControls(viewModel) }
