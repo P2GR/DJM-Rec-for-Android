@@ -380,6 +380,7 @@ bool UsbAudioEngine::startRecording(const std::string& path, ContainerFormat for
     mStopRequested.store(false, std::memory_order_relaxed);
     mPaused.store(false, std::memory_order_relaxed);
     mRingBuffer->reset();
+    resetSilenceGate();
     // Keep live history: monitoring is already writing the analyzer on the audio thread.
     mRecording.store(true, std::memory_order_release);
 
@@ -408,6 +409,7 @@ bool UsbAudioEngine::startRecordingFd(int fd, ContainerFormat format) {
     mStopRequested.store(false, std::memory_order_relaxed);
     mPaused.store(false, std::memory_order_relaxed);
     mRingBuffer->reset();
+    resetSilenceGate();
     // Keep live history: monitoring is already writing the analyzer on the audio thread.
     mRecording.store(true, std::memory_order_release);
     mEncoderThread = std::thread(&UsbAudioEngine::encoderThreadLoop, this);
@@ -588,6 +590,17 @@ void UsbAudioEngine::encoderThreadLoop() {
     std::vector<int32_t> chunk(kChunkFrames * mFormat.channelCount);
     uint64_t framesEncoded = 0;
     const size_t bytesPerFrame = sizeof(int32_t) * mFormat.channelCount;
+    // Writes frames that passed the leading-silence gate; elapsed time counts only audio
+    // that actually lands in the file.
+    auto writeEncoded = [&](const int32_t* frames, size_t frameCount) {
+        std::lock_guard<std::mutex> writerLock(mWriterMutex);
+        if (!mWriter || !mWriter->writeFrames(frames, frameCount)) return false;
+        framesEncoded += frameCount;
+        mElapsedMillis.store(
+            static_cast<int64_t>(framesEncoded * 1000 / mFormat.sampleRate),
+            std::memory_order_relaxed);
+        return true;
+    };
 
     while (true) {
         if (mStopRequested.load(std::memory_order_acquire) && mRingBuffer->availableToRead() == 0) {
@@ -611,18 +624,41 @@ void UsbAudioEngine::encoderThreadLoop() {
         const size_t framesRead = bytesRead / bytesPerFrame;
 
         if (framesRead > 0) {
-            std::lock_guard<std::mutex> writerLock(mWriterMutex);
-            if (!mWriter || !mWriter->writeFrames(chunk.data(), framesRead)) {
+            const bool wasAwaiting = mSilenceGate.awaiting();
+            if (!mSilenceGate.process(chunk.data(), framesRead, writeEncoded)) {
                 LOGE("Encoder write failed after %llu frames",
                      static_cast<unsigned long long>(framesEncoded));
                 mRecordingErrorCode.store(1, std::memory_order_release);
-                break;
+                return;
             }
-            framesEncoded += framesRead;
-            mElapsedMillis.store(
-                static_cast<int64_t>(framesEncoded * 1000 / mFormat.sampleRate),
-                std::memory_order_relaxed);
+            if (wasAwaiting) publishSilenceGateState();
         }
+    }
+
+    // Stopped before any audio arrived: keep the short pre-roll so the file stays playable.
+    const bool wasAwaiting = mSilenceGate.awaiting();
+    if (!mSilenceGate.flush(writeEncoded)) {
+        LOGE("Encoder write failed while flushing leading-silence pre-roll");
+        mRecordingErrorCode.store(1, std::memory_order_release);
+    }
+    if (wasAwaiting) publishSilenceGateState();
+}
+
+void UsbAudioEngine::resetSilenceGate() {
+    mSilenceGate.reset(mTrimLeadingSilence.load(std::memory_order_acquire),
+                       mFormat.channelCount, mFormat.sampleRate);
+    mTrimmedLeadingMillis.store(0, std::memory_order_relaxed);
+    mAwaitingAudio.store(mSilenceGate.awaiting(), std::memory_order_release);
+}
+
+void UsbAudioEngine::publishSilenceGateState() {
+    const int64_t trimmedMillis = mFormat.sampleRate > 0
+        ? static_cast<int64_t>(mSilenceGate.discardedFrames() * 1000 / mFormat.sampleRate)
+        : 0;
+    mTrimmedLeadingMillis.store(trimmedMillis, std::memory_order_relaxed);
+    if (!mSilenceGate.awaiting()) {
+        mAwaitingAudio.store(false, std::memory_order_release);
+        LOGI("Leading silence trimmed: %lld ms", static_cast<long long>(trimmedMillis));
     }
 }
 
@@ -683,6 +719,9 @@ std::string UsbAudioEngine::getDiagnosticSummary() {
         << "live_pcm_frames_read=" << mLivePcmFramesRead.load(std::memory_order_relaxed) << '\n'
         << "live_pcm_nonzero_samples=" << mLivePcmNonZeroSamples.load(std::memory_order_relaxed) << '\n'
         << "elapsed_ms=" << mElapsedMillis.load(std::memory_order_relaxed) << '\n'
+        << "trim_leading_silence=" << (mTrimLeadingSilence.load(std::memory_order_relaxed) ? "true" : "false") << '\n'
+        << "awaiting_audio=" << (mAwaitingAudio.load(std::memory_order_relaxed) ? "true" : "false") << '\n'
+        << "trimmed_leading_ms=" << mTrimmedLeadingMillis.load(std::memory_order_relaxed) << '\n'
         << "levels_db=peak_l:" << mLeftPeakDb.load(std::memory_order_relaxed)
         << " rms_l:" << mLeftRmsDb.load(std::memory_order_relaxed)
         << " peak_r:" << mRightPeakDb.load(std::memory_order_relaxed)
@@ -714,6 +753,15 @@ void UsbAudioEngine::getWaveformBins(float* outBins) const {
 
 void UsbAudioEngine::setWaveformEnabled(bool enabled) {
     mWaveformEnabled.store(enabled, std::memory_order_release);
+}
+
+void UsbAudioEngine::setTrimLeadingSilence(bool enabled) {
+    mTrimLeadingSilence.store(enabled, std::memory_order_release);
+}
+
+bool UsbAudioEngine::isAwaitingAudio() const {
+    return mRecording.load(std::memory_order_acquire) &&
+           mAwaitingAudio.load(std::memory_order_acquire);
 }
 
 } // namespace djmrec

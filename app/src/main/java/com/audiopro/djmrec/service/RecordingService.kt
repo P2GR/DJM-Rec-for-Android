@@ -101,6 +101,9 @@ class RecordingService : LifecycleService() {
         const val CAPTURE_MODE_USB_ISO = 1
         const val EXTRA_CAPTURE_MODE = "extra_capture_mode"
 
+        /** Settings key: drop the silence before the first audio of each recording (default on). */
+        const val PREF_TRIM_LEADING_SILENCE = "trim_leading_silence"
+
         // --- Raw USB iso capture params (only used when EXTRA_CAPTURE_MODE == CAPTURE_MODE_USB_ISO) ---
         /** `UsbDeviceConnection.getFileDescriptor()`; see [UsbAudioManager.openIsoCaptureHandle]. */
         const val EXTRA_USB_FD = "extra_usb_fd"
@@ -148,6 +151,10 @@ class RecordingService : LifecycleService() {
 
     private val _elapsedMillis = MutableStateFlow(0L)
     val elapsedMillis: StateFlow<Long> = _elapsedMillis.asStateFlow()
+
+    /** True while recording but still trimming leading silence (nothing written yet). */
+    private val _awaitingAudio = MutableStateFlow(false)
+    val awaitingAudio: StateFlow<Boolean> = _awaitingAudio.asStateFlow()
 
     private val emptyWaveform = FloatArray(0)
     private val _waveformBins = MutableStateFlow(emptyWaveform)
@@ -208,6 +215,7 @@ class RecordingService : LifecycleService() {
                     right = ChannelLevel(peakDb = raw[2], rmsDb = raw[3], isClipping = clipping)
                 )
                 _elapsedMillis.value = AudioEngine.getElapsedMillis()
+                _awaitingAudio.value = AudioEngine.isAwaitingAudio()
                 monitorHandler.postDelayed(this, if (uiVisible) METER_UPDATE_INTERVAL_MS else 1_000L)
             }
         }
@@ -771,6 +779,9 @@ class RecordingService : LifecycleService() {
             return
         }
         currentFormat = format
+        AudioEngine.setTrimLeadingSilence(
+            getSharedPreferences("settings", Context.MODE_PRIVATE).getBoolean(PREF_TRIM_LEADING_SILENCE, true)
+        )
         val started = AudioEngine.startRecordingFd(output.descriptor.fd, format.nativeValue)
         runCatching { output.descriptor.close() }
         if (!started) {
@@ -1021,6 +1032,7 @@ class RecordingService : LifecycleService() {
                 _state.value = RecordingState.Monitoring
                 isMonitoringOnly = true
                 _elapsedMillis.value = 0L
+                _awaitingAudio.value = false
                 _health.value = RecordingHealth(RecordingHealthLevel.GOOD, "Saved to Music/DJMRec", RecordingOutputManager.freeBytes(), Long.MAX_VALUE)
                 safetyStopPending = false
             }
@@ -1079,6 +1091,7 @@ class RecordingService : LifecycleService() {
         currentSessionId = null
         currentPartIndex = 0
         isMonitoringOnly = false
+        _awaitingAudio.value = false
         _state.value = RecordingState.Error(message)
         _health.value = RecordingHealth(
             RecordingHealthLevel.ERROR,
@@ -1266,6 +1279,7 @@ class RecordingService : LifecycleService() {
                 String.format(Locale.US, "Streaming %.1f Mbps%s", mbps, if (isRecording) " | REC $elapsed" else "")
             }
             live.isActive -> live.message
+            isRecording && !isPaused && _awaitingAudio.value -> "Waiting for audio: leading silence is trimmed"
             isRecording -> getString(R.string.notification_text_elapsed, elapsed) +
                 if (hasSignal && !isPaused) " | signal" else ""
             else -> if (hasSignal) "USB signal ready" else "Waiting for mixer signal"

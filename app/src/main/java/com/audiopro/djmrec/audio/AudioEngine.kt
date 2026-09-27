@@ -143,4 +143,13 @@ object AudioEngine {
     external fun setRecordingGainDb(gainDb: Int)
 
     external fun setWaveformEnabled(enabled: Boolean)
+
+    /**
+     * Applies to the next [startRecording]/[startRecordingFd]: drop the digital silence before
+     * the first audible sample (about -60 dBFS), keeping a short pre-roll before the onset.
+     */
+    external fun setTrimLeadingSilence(enabled: Boolean)
+
+    /** True while a recording is running but still discarding leading silence. */
+    external fun isAwaitingAudio(): Boolean
 }
