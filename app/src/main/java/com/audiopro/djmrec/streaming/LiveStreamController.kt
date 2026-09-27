@@ -1,6 +1,8 @@
 package com.audiopro.djmrec.streaming
 
 import android.content.Context
+import android.hardware.camera2.CaptureRequest
+import android.hardware.camera2.CaptureResult
 import android.media.MediaCodec
 import android.os.SystemClock
 import android.util.Log
@@ -13,11 +15,20 @@ import com.pedro.encoder.input.video.CameraCallbacks
 import com.pedro.encoder.input.video.CameraHelper
 import com.pedro.encoder.input.video.FrameCapturedCallback
 import com.pedro.encoder.utils.CodecUtil.CodecTypeError
+import com.pedro.library.base.recording.RecordController
 import com.pedro.library.rtmp.RtmpStream
+import com.audiopro.djmrec.storage.PendingVideoOutput
+import com.audiopro.djmrec.storage.RecordingOutputManager
+import com.audiopro.djmrec.storage.VideoOutputManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import java.io.FileDescriptor
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ScheduledFuture
@@ -30,6 +41,12 @@ class LiveStreamController(context: Context) : ConnectChecker {
         /** Reconnect attempts per outage; refilled after every successful (re)connect. */
         const val MAX_RECONNECT_ATTEMPTS = 10
         const val RECONNECT_DELAY_MS = 3_000L
+        /** RootEncoder wants a path; SegmentedMp4RecordController takes files from its sink. */
+        const val VIDEO_RECORD_LABEL = "djmrec-video-segments"
+        const val STORAGE_CHECK_SECONDS = 10L
+        /** Heat protection: frame rate and share of the chosen bitrate while overheating. */
+        const val OVERHEAT_FPS = 15
+        const val OVERHEAT_BITRATE_PERCENT = 60
     }
 
     private val appContext = context.applicationContext
@@ -52,15 +69,39 @@ class LiveStreamController(context: Context) : ConnectChecker {
     private var adaptiveVideoBitrate: AdaptiveVideoBitrate? = null
     @Volatile
     private var userStopping = false
+    private var storageFuture: ScheduledFuture<*>? = null
+    /** Open MP4 segments by index; written from RootEncoder's muxer coroutine. */
+    private val videoSegments = ConcurrentHashMap<Int, PendingVideoOutput>()
+    private var recordBitrate = 0
+    @Volatile
+    private var overheating = false
+    /** Latest lens focus distance from the camera, used to freeze focus where it is. */
+    @Volatile
+    private var lastFocusDistance: Float? = null
+
+    private val recordListener = object : RecordController.Listener {
+        override fun onStatusChange(status: RecordController.Status) {
+            Log.i(TAG, "Video recording: $status")
+        }
+
+        override fun onError(e: Exception?) {
+            val reason = e?.message ?: "write error"
+            runCatching { executor.execute { stopVideoRecording("Video recording stopped: $reason") } }
+        }
+    }
 
     fun start(config: LiveStreamConfig, sampleRate: Int) {
-        val endpoint = runCatching { config.endpoint() }.getOrElse {
+        val endpoint = if (!config.streams) null else runCatching { config.endpoint() }.getOrElse {
             _state.value = LiveStreamState(
                 LiveStreamStatus.ERROR,
                 it.message ?: "Invalid streaming settings",
                 config.platform,
                 config.videoMode
             )
+            return
+        }
+        if (!config.streams && config.videoMode == LiveVideoMode.ARTWORK) {
+            reject("Choose the rear or front camera to record video", config.platform, config.videoMode)
             return
         }
         if (_state.value.isActive) return
@@ -79,7 +120,7 @@ class LiveStreamController(context: Context) : ConnectChecker {
         }
     }
 
-    private fun startInternal(config: LiveStreamConfig, sampleRate: Int, endpoint: String) {
+    private fun startInternal(config: LiveStreamConfig, sampleRate: Int, endpoint: String?) {
         // Compose can create its SurfaceView before the service handles ACTION_START_LIVE.
         // Keep that view across stream replacement or preview remains permanently black.
         stopInternal(null, preservePreview = true)
@@ -104,7 +145,21 @@ class LiveStreamController(context: Context) : ConnectChecker {
         this.config = config
         cameraFramesCaptured.set(0)
         adaptiveVideoBitrate = AdaptiveVideoBitrate(config.videoBitrate)
+        recordBitrate = VideoRecordingPolicy.recordBitrate(config.quality.height)
+        lastFocusDistance = null
         userStopping = false
+        // The saved file gets full mixer quality; the one AAC encoder feeds stream and file alike.
+        val audioBitrate = if (config.recordVideo) VideoRecordingPolicy.AUDIO_BITRATE else config.audioBitrate
+        val freeBytes = RecordingOutputManager.freeBytes()
+        val videoStorageOk = !config.recordVideo || freeBytes == Long.MAX_VALUE ||
+            VideoRecordingPolicy.minutesRemaining(freeBytes, recordBitrate) >= 5
+        if (!config.streams && !videoStorageOk) {
+            stopInternal(LiveStreamState(LiveStreamStatus.ERROR,
+                "Not enough free storage for video. Free at least ${VideoRecordingPolicy.MIN_FREE_BYTES / 1_000_000_000 + 1} GB and try again.",
+                config.platform, config.videoMode))
+            return
+        }
+        val recordVideo = config.recordVideo && videoStorageOk
         Log.i(TAG, "Preparing ${config.platform.label} stream: ${config.videoMode}, ${sampleRate}Hz")
         val sourceFailure: (String) -> Unit = { reason ->
             Log.e(TAG, "Livestream source failed: $reason")
@@ -149,12 +204,12 @@ class LiveStreamController(context: Context) : ConnectChecker {
             }
             com.audiopro.djmrec.diagnostics.RemoteDiagnostics.event("StreamingAudio",
                 "LiveStreamController.prepare: capture=${audioFormat.captureRate}Hz stereo PCM16; " +
-                    "AAC=${audioFormat.encoderRate}Hz/${config.audioBitrate}bps; FIR resampling=${sampleRate != audioFormat.encoderRate}")
+                    "AAC=${audioFormat.encoderRate}Hz/${audioBitrate}bps; FIR resampling=${sampleRate != audioFormat.encoderRate}")
             check(candidate.prepareAudio(sampleRate = audioFormat.encoderRate, isStereo = true,
-                bitrate = config.audioBitrate)) {
+                bitrate = audioBitrate)) {
                 "AAC audio preparation failed at ${audioFormat.encoderRate} Hz stereo. Check device encoder support."
             }
-            check(prepareVideo(candidate, config)) {
+            check(prepareVideo(candidate, config, recordVideo)) {
                 if (config.videoMode == LiveVideoMode.ARTWORK) "Artwork/H.264 preparation failed. Choose a readable image."
                 else "Camera/H.264 preparation failed. Close other camera apps and check camera permission."
             }
@@ -165,11 +220,31 @@ class LiveStreamController(context: Context) : ConnectChecker {
                 config.platform, config.videoMode))
             return
         }
+        if (endpoint == null) {
+            // Phone-only: the MP4 recording is the whole session.
+            if (!startVideoRecording(candidate)) {
+                stopInternal(LiveStreamState(LiveStreamStatus.ERROR,
+                    "Could not start video recording. Check storage and camera access.",
+                    config.platform, config.videoMode))
+                return
+            }
+            _state.update {
+                it.copy(
+                    status = LiveStreamStatus.LIVE,
+                    message = "Recording video to Movies/DJMRec",
+                    startedAtMillis = SystemClock.elapsedRealtime()
+                )
+            }
+            previewView?.let(::startPreviewIfReady)
+            if (overheating) applyThermalLimits()
+            return
+        }
         _state.value = LiveStreamState(
             LiveStreamStatus.CONNECTING,
             "Connecting securely to ${config.platform.label}",
             config.platform,
-            config.videoMode
+            config.videoMode,
+            videoMessage = if (config.recordVideo && !recordVideo) "Not enough free storage to save video" else null
         )
         runCatching {
             candidate.startStream(endpoint)
@@ -184,6 +259,139 @@ class LiveStreamController(context: Context) : ConnectChecker {
                     config.videoMode
                 )
             )
+            return
+        }
+        // A failed video start never takes the stream down; the state explains it instead.
+        if (recordVideo) startVideoRecording(candidate)
+        if (overheating) applyThermalLimits()
+    }
+
+    /** Starts MP4 segments on the prepared [candidate]. Executor thread only. */
+    private fun startVideoRecording(candidate: RtmpStream): Boolean {
+        val sessionId = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+        val segments = SegmentedMp4RecordController(
+            VideoRecordingPolicy.SEGMENT_DURATION_US,
+            videoSegmentSink(sessionId)
+        ) { index -> _state.update { if (it.recordingVideo) it.copy(videoSegment = index) else it } }
+        return runCatching {
+            candidate.setRecordController(segments)
+            candidate.startRecord(VIDEO_RECORD_LABEL, RecordController.RecordTracks.ALL, recordListener)
+            _state.update {
+                it.copy(recordingVideo = true, videoSegment = 1,
+                    videoStartedAtMillis = SystemClock.elapsedRealtime(), videoMessage = null)
+            }
+            scheduleStorageChecks()
+            Log.i(TAG, "Saving video: ${recordBitrate / 1000} kbps, ${VideoRecordingPolicy.SEGMENT_MINUTES} min segments")
+            true
+        }.getOrElse { error ->
+            Log.e(TAG, "Could not start video recording", error)
+            _state.update { it.copy(recordingVideo = false, videoMessage = "Could not start video recording") }
+            false
+        }
+    }
+
+    private fun videoSegmentSink(sessionId: String) = object : VideoSegmentSink {
+        override fun open(index: Int): FileDescriptor? {
+            val output = VideoOutputManager.create(appContext, sessionId, index) ?: return null
+            videoSegments[index] = output
+            return output.descriptor.fileDescriptor
+        }
+
+        override fun close(index: Int, durationMillis: Long, playable: Boolean) {
+            val output = videoSegments.remove(index) ?: return
+            val published = playable && VideoOutputManager.finalize(appContext, output, durationMillis)
+            if (!playable) VideoOutputManager.abandon(appContext, output)
+            Log.i(TAG, "Video segment $index ${if (published) "saved (${durationMillis / 1000} s)" else "discarded"}")
+        }
+    }
+
+    /** Stops video before free space runs out so the lossless audio recording can finish. */
+    private fun scheduleStorageChecks() {
+        storageFuture?.cancel(false)
+        storageFuture = executor.scheduleWithFixedDelay({
+            val freeBytes = RecordingOutputManager.freeBytes()
+            if (freeBytes == Long.MAX_VALUE) return@scheduleWithFixedDelay
+            if (freeBytes < VideoRecordingPolicy.MIN_FREE_BYTES) {
+                stopVideoRecording("Storage almost full: video stopped so the audio recording can finish.")
+                return@scheduleWithFixedDelay
+            }
+            val minutes = VideoRecordingPolicy.minutesRemaining(freeBytes, recordBitrate)
+            val warning = if (minutes < VideoRecordingPolicy.WARN_MINUTES) "Storage: about $minutes min of video left" else null
+            _state.update { if (it.recordingVideo && it.videoMessage != warning) it.copy(videoMessage = warning) else it }
+        }, STORAGE_CHECK_SECONDS, STORAGE_CHECK_SECONDS, TimeUnit.SECONDS)
+    }
+
+    /** Stops saving video; a phone-only session ends, a livestream keeps running. */
+    fun stopVideoRecording() {
+        executor.execute { stopVideoRecording(null) }
+    }
+
+    private fun stopVideoRecording(message: String?) {
+        val active = stream ?: return
+        storageFuture?.cancel(false)
+        storageFuture = null
+        if (active.isRecording) runCatching { active.stopRecord() }.onFailure { Log.e(TAG, "Stopping video failed", it) }
+        val current = config
+        if (current != null && !current.streams) {
+            stopInternal(
+                if (message == null) LiveStreamState()
+                else LiveStreamState(LiveStreamStatus.ERROR, message, current.platform, current.videoMode)
+            )
+        } else {
+            _state.update { it.copy(recordingVideo = false, videoSegment = 0, videoMessage = message) }
+        }
+    }
+
+    /** Heat protection: lower frame rate and video bitrate while the phone is overheating. */
+    fun setOverheating(hot: Boolean) {
+        runCatching {
+            executor.execute {
+                if (overheating == hot) return@execute
+                overheating = hot
+                applyThermalLimits()
+            }
+        }
+    }
+
+    private fun applyThermalLimits() {
+        val active = stream ?: return
+        val current = config ?: return
+        val fps = videoFps(current)
+        runCatching { active.getGlInterface().forceFpsLimit(if (overheating) minOf(fps, OVERHEAT_FPS) else fps) }
+        if (current.streams) {
+            val cap = if (overheating) current.videoBitrate * OVERHEAT_BITRATE_PERCENT / 100 else null
+            adaptiveVideoBitrate?.setCap(cap)?.let { runCatching { active.setVideoBitrateOnFly(it) } }
+        } else {
+            // Phone-only uses one encoder for the file: cap it directly.
+            val bitrate = if (overheating) recordBitrate * OVERHEAT_BITRATE_PERCENT / 100 else recordBitrate
+            runCatching { active.setVideoBitrateOnFly(bitrate) }
+        }
+        Log.i(TAG, if (overheating) "Overheating: ${OVERHEAT_FPS} fps, reduced bitrate" else "Temperature normal: full quality")
+        _state.update { if (it.isActive) it.copy(overheated = overheating) else it }
+    }
+
+    /**
+     * Freezes camera exposure, white balance and/or focus at their current values, so club
+     * lights and strobes do not make the picture pump. Focus locks at the last measured distance.
+     */
+    fun setCameraLocks(locks: CameraLocks) {
+        executor.execute {
+            val camera = stream?.videoSource as? Camera2Source ?: return@execute
+            val focusDistance = lastFocusDistance
+            val lockFocus = locks.focus && focusDistance != null
+            val wasFocusLocked = _state.value.cameraLocks.focus
+            val applied = runCatching {
+                camera.setCustomRequest { builder ->
+                    builder.set(CaptureRequest.CONTROL_AE_LOCK, locks.exposure)
+                    builder.set(CaptureRequest.CONTROL_AWB_LOCK, locks.whiteBalance)
+                    if (locks.focus && focusDistance != null) {
+                        builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF)
+                        builder.set(CaptureRequest.LENS_FOCUS_DISTANCE, focusDistance)
+                    }
+                }
+            }.getOrDefault(false)
+            if (applied && wasFocusLocked && !lockFocus) runCatching { camera.enableAutoFocus() }
+            if (applied) _state.update { it.copy(cameraLocks = locks.copy(focus = lockFocus)) }
         }
     }
 
@@ -222,16 +430,33 @@ class LiveStreamController(context: Context) : ConnectChecker {
         validationFuture = null
         progressFuture?.cancel(false)
         progressFuture = null
+        storageFuture?.cancel(false)
+        storageFuture = null
         val active = stream
         stream = null
+        // Finalize the open MP4 segment first, so a later teardown failure cannot lose it.
+        runCatching { if (active?.isRecording == true) active.stopRecord() }
+            .onFailure { Log.e(TAG, "Finalizing video failed", it) }
         runCatching {
             if (active?.isOnPreview == true) active.stopPreview(removeCallbacks = true)
             if (active?.isStreaming == true) active.stopStream()
             active?.release()
         }
+        // Anything the muxer never handed back (e.g. teardown raced a segment switch) is unplayable.
+        videoSegments.keys.toList().forEach { index ->
+            videoSegments.remove(index)?.let { VideoOutputManager.abandon(appContext, it) }
+        }
         config = null
+        lastFocusDistance = null
         if (!preservePreview) previewView = null
-        if (finalState != null) _state.value = finalState
+        if (finalState != null) {
+            _state.value = finalState.copy(
+                recordingVideo = false,
+                videoSegment = 0,
+                overheated = false,
+                cameraLocks = CameraLocks()
+            )
+        }
     }
 
     fun attachPreview(surfaceView: SurfaceView) {
@@ -273,6 +498,9 @@ class LiveStreamController(context: Context) : ConnectChecker {
     fun switchCamera() {
         executor.execute {
             (stream?.videoSource as? Camera2Source)?.let { runCatching { it.switchCamera() } }
+            // The other camera starts with automatic exposure, focus and white balance.
+            lastFocusDistance = null
+            _state.update { it.copy(cameraLocks = CameraLocks()) }
         }
     }
 
@@ -463,26 +691,39 @@ class LiveStreamController(context: Context) : ConnectChecker {
                     cameraFramesCaptured.incrementAndGet()
                 }
             })
+            setCustomOnCaptureCompletedCallback { _, _, result ->
+                result.get(CaptureResult.LENS_FOCUS_DISTANCE)?.let { lastFocusDistance = it }
+            }
         }
 
-    private fun prepareVideo(candidate: RtmpStream, config: LiveStreamConfig): Boolean {
+    private fun videoFps(config: LiveStreamConfig): Int = if (config.videoMode == LiveVideoMode.ARTWORK) 15 else 30
+
+    /**
+     * Streaming + saving video uses a second encoder for the file at [recordBitrate], so the
+     * adaptive stream bitrate never lowers the saved quality. Phone-only uses one encoder.
+     */
+    private fun prepareVideo(candidate: RtmpStream, config: LiveStreamConfig, recordVideo: Boolean): Boolean {
         return liveVideoProfiles(config.videoMode, config.portrait, config.quality).any { profile ->
+            val separateRecordEncoder = recordVideo && config.streams
             val prepared = runCatching {
                 candidate.prepareVideo(
                     width = profile.sourceWidth,
                     height = profile.sourceHeight,
-                    bitrate = config.videoBitrate,
-                    fps = if (config.videoMode == LiveVideoMode.ARTWORK) 15 else 30,
+                    bitrate = if (config.streams) config.videoBitrate else recordBitrate,
+                    fps = videoFps(config),
                     iFrameInterval = 2,
-                    rotation = profile.rotation
+                    rotation = profile.rotation,
+                    recordWidth = if (separateRecordEncoder) profile.sourceWidth else 0,
+                    recordHeight = if (separateRecordEncoder) profile.sourceHeight else 0,
+                    recordBitrate = recordBitrate
                 )
             }.getOrDefault(false)
             if (prepared) {
                 Log.i(
                     TAG,
-                    "H.264 output ${profile.encodedWidth}x${profile.encodedHeight} " +
-                        "at ${if (config.videoMode == LiveVideoMode.ARTWORK) 15 else 30}fps" +
-                        " / ${config.videoBitrate / 1000} kbps"
+                    "H.264 output ${profile.encodedWidth}x${profile.encodedHeight} at ${videoFps(config)}fps / " +
+                        "${(if (config.streams) config.videoBitrate else recordBitrate) / 1000} kbps" +
+                        if (separateRecordEncoder) " + file ${recordBitrate / 1000} kbps" else ""
                 )
             }
             prepared

@@ -605,7 +605,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             state is RecordingState.Recording ||
             state is RecordingState.Paused
 
+    /** Last Go Live settings, kept in memory to resume an interrupted YouTube broadcast. */
+    private var lastLiveConfig: LiveStreamConfig? = null
+
     fun startLiveStream(config: LiveStreamConfig) {
+        lastLiveConfig = config
         if (config.videoMode != LiveVideoMode.ARTWORK) cameraConsoleOpen.value = true
         val context = getApplication<Application>()
         _liveStreamState.value = LiveStreamState(
@@ -649,6 +653,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 platform = config.platform,
                 videoMode = config.videoMode
             )
+            // The stream is lossy and platforms may mute DJ sets: keep a lossless local copy.
+            if (config.alsoRecordAudio && _recordingState.value is RecordingState.Monitoring) startRecording()
             context.startService(
                 Intent(context, RecordingService::class.java)
                     .setAction(RecordingService.ACTION_START_LIVE)
@@ -662,6 +668,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     .putExtra(RecordingService.EXTRA_LIVE_VIDEO_WIDTH, config.quality.width)
                     .putExtra(RecordingService.EXTRA_LIVE_VIDEO_HEIGHT, config.quality.height)
                     .putExtra(RecordingService.EXTRA_LIVE_VIDEO_BITRATE, config.quality.videoBitrate)
+                    .putExtra(RecordingService.EXTRA_LIVE_RECORD_VIDEO, config.recordVideo)
             )
         }
     }
@@ -670,6 +677,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         sendCommand(RecordingService.ACTION_STOP_LIVE)
         youtubeCoordinator.finishYouTubeSession()
     }
+
+    /** Restarts the stream into the YouTube broadcast that dropped, keeping its watch link. */
+    fun resumeYouTubeBroadcast() {
+        val config = lastLiveConfig?.takeIf { it.platform == LivePlatform.YOUTUBE } ?: return
+        if (!youtubeCoordinator.canResume) return
+        startLiveStream(config)
+    }
+
+    /** Ends a dropped YouTube broadcast instead of resuming it. */
+    fun endYouTubeBroadcast() = youtubeCoordinator.finishYouTubeSession()
+
+    /** Stops saving MP4 video (ends a phone-only recording; a livestream keeps running). */
+    fun stopVideoRecording() {
+        boundService?.stopLiveVideoRecording()
+    }
+
+    fun setCameraLocks(locks: com.audiopro.djmrec.streaming.CameraLocks) {
+        boundService?.setCameraLocks(locks)
+    }
+
+    /** Free space for the Go Live storage estimate; Long.MAX_VALUE when unknown. */
+    fun freeStorageBytes(): Long = com.audiopro.djmrec.storage.RecordingOutputManager.freeBytes()
 
     fun prepareYouTubeDestination(accessToken: String, title: String, privacy: YouTubePrivacy) =
         youtubeCoordinator.prepareYouTubeDestination(accessToken, title, privacy)

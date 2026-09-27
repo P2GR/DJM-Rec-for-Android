@@ -134,8 +134,11 @@ fun CameraLiveScreen(viewModel: MainViewModel) {
                         }
                         LiveDot(live.status)
                         Text(
-                            if (live.status == LiveStreamStatus.LIVE) "LIVE · ${live.platform?.label.orEmpty()}"
-                            else live.status.name.replace('_', ' '),
+                            when {
+                                live.status == LiveStreamStatus.LIVE && live.localOnly -> "REC · Phone"
+                                live.status == LiveStreamStatus.LIVE -> "LIVE · ${live.platform?.label.orEmpty()}"
+                                else -> live.status.name.replace('_', ' ')
+                            },
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Bold
                         )
@@ -164,6 +167,8 @@ fun CameraLiveScreen(viewModel: MainViewModel) {
                 }
                 CameraAudioMeter(viewModel)
                 Text(when {
+                    live.overheated -> "Overheating: 15 fps and lower bitrate until the phone cools"
+                    live.localOnly -> live.videoMessage ?: "Saving video · part ${live.videoSegment}"
                     live.status == LiveStreamStatus.RECONNECTING -> "Reconnecting — check network"
                     live.platform == LivePlatform.YOUTUBE && youtube.status != YouTubeBroadcastStatus.LIVE -> youtube.message
                     youtube.healthIssues.isNotEmpty() -> youtube.healthIssues.first()
@@ -180,9 +185,11 @@ fun CameraLiveScreen(viewModel: MainViewModel) {
                     Text(when (recording) {
                         is RecordingState.Recording -> "REC ${cameraTime(elapsed)}"
                         is RecordingState.Paused -> "Recording paused · ${cameraTime(elapsed)}"
-                        else -> "Streaming only · local recording off"
+                        else -> if (live.localOnly) "Video only · audio recording off" else "Streaming only · local recording off"
                     }, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelLarge)
-                    Text("gain ${if (gain > 0) "+" else ""}$gain dB · ${live.bitrateBitsPerSecond / 1000} kbps",
+                    Text("gain ${if (gain > 0) "+" else ""}$gain dB · " +
+                        if (live.localOnly) "part ${live.videoSegment}"
+                        else "${live.bitrateBitsPerSecond / 1000} kbps" + if (live.recordingVideo) " · saving video" else "",
                         style = MaterialTheme.typography.labelMedium)
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly,
@@ -203,7 +210,7 @@ fun CameraLiveScreen(viewModel: MainViewModel) {
                         Icon(Icons.Default.Cameraswitch, "Switch camera")
                     }
                     Button(onClick = { confirmStop = true }, colors = ButtonDefaults.buttonColors(containerColor = AccentRed)) {
-                        Icon(Icons.Default.Stop, null); Text("End stream")
+                        Icon(Icons.Default.Stop, null); Text(if (live.localOnly) "Stop video" else "End stream")
                     }
                     IconButton(onClick = { settings = true }, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.Default.Settings, "Stream controls")
@@ -214,10 +221,13 @@ fun CameraLiveScreen(viewModel: MainViewModel) {
     }
     if (confirmStop) AlertDialog(
         onDismissRequest = { confirmStop = false },
-        title = { Text("End livestream?") },
-        text = { Text("Viewers will disconnect. Any local recording continues.") },
-        confirmButton = { TextButton(onClick = { confirmStop = false; viewModel.stopLiveStream() }) { Text("End stream") } },
-        dismissButton = { TextButton(onClick = { confirmStop = false }) { Text("Keep streaming") } }
+        title = { Text(if (live.localOnly) "Stop video recording?" else "End livestream?") },
+        text = { Text(if (live.localOnly) "The video is saved to Movies/DJMRec. Any audio recording continues."
+            else "Viewers will disconnect. Any local recording continues.") },
+        confirmButton = { TextButton(onClick = { confirmStop = false; viewModel.stopLiveStream() }) {
+            Text(if (live.localOnly) "Stop video" else "End stream") } },
+        dismissButton = { TextButton(onClick = { confirmStop = false }) {
+            Text(if (live.localOnly) "Keep recording" else "Keep streaming") } }
     )
     if (settings) ModalBottomSheet(onDismissRequest = { settings = false }) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp),
@@ -243,6 +253,22 @@ fun CameraLiveScreen(viewModel: MainViewModel) {
                     Text("Open YouTube Studio")
                 }
             }
+            if (live.recordingVideo && !live.localOnly) {
+                Text("Saving video · part ${live.videoSegment}", style = MaterialTheme.typography.bodyMedium)
+                OutlinedButton(onClick = viewModel::stopVideoRecording, modifier = Modifier.fillMaxWidth()) {
+                    Text("Stop saving video")
+                }
+            }
+            live.videoMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = AccentAmber) }
+            HorizontalDivider()
+            Text("Camera", style = MaterialTheme.typography.titleLarge)
+            Text("Club lights and strobes make automatic exposure, focus and white balance pump. " +
+                "Point the camera at the booth, then lock them. Switching camera unlocks.",
+                style = MaterialTheme.typography.bodySmall)
+            val locks = live.cameraLocks
+            CameraLockRow("Lock exposure", locks.exposure) { viewModel.setCameraLocks(locks.copy(exposure = it)) }
+            CameraLockRow("Lock focus", locks.focus) { viewModel.setCameraLocks(locks.copy(focus = it)) }
+            CameraLockRow("Lock white balance", locks.whiteBalance) { viewModel.setCameraLocks(locks.copy(whiteBalance = it)) }
             HorizontalDivider()
             Text("Stream controls", style = MaterialTheme.typography.titleLarge)
             Text("Meters, timers and guides appear only on your screen.")
@@ -259,6 +285,14 @@ fun CameraLiveScreen(viewModel: MainViewModel) {
             Text(if (recording is RecordingState.Monitoring) "Gain changes the audio sent to viewers. Watch for clipping."
                 else "Gain is locked while recording or saving a set.", style = MaterialTheme.typography.bodySmall)
         }
+    }
+}
+
+@Composable
+private fun CameraLockRow(label: String, locked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically) {
+        Text(label); Switch(locked, onChange)
     }
 }
 

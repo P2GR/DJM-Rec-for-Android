@@ -95,6 +95,7 @@ import com.audiopro.djmrec.streaming.LiveStreamStatus
 import com.audiopro.djmrec.streaming.LiveVideoMode
 import com.audiopro.djmrec.streaming.StreamSetupStatus
 import com.audiopro.djmrec.streaming.StreamingSetupRepository
+import com.audiopro.djmrec.streaming.VideoRecordingPolicy
 import com.audiopro.djmrec.streaming.YouTubePrivacy
 import com.audiopro.djmrec.streaming.YouTubeBroadcastStatus
 import com.audiopro.djmrec.ui.theme.AccentAmber
@@ -149,6 +150,9 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
     var youtubePrivacy by rememberSaveable { mutableStateOf(YouTubePrivacy.UNLISTED) }
     var destinationUrl by rememberSaveable { mutableStateOf<String?>(null) }
     var openedVerificationUrl by remember { mutableStateOf<String?>(null) }
+    // A lossless local copy is the only safe copy of a streamed set, so it is on by default.
+    var alsoRecordAudio by rememberSaveable { mutableStateOf(true) }
+    var saveVideo by rememberSaveable { mutableStateOf(false) }
 
     fun openUrl(url: String) {
         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
@@ -308,17 +312,20 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
         }
     }
 
-    val destinationReady = runCatching {
+    val localOnly = platform == LivePlatform.LOCAL
+    val destinationReady = localOnly || runCatching {
         LiveStreamConfig(platform, serverUrl, streamKey, videoMode, streamPortrait).endpoint()
     }.isSuccess
+    val videoWillSave = localOnly || (saveVideo && videoMode != LiveVideoMode.ARTWORK)
     val pictureReady = videoMode != LiveVideoMode.ARTWORK || !artworkUri.isNullOrBlank()
     val streamQuality by viewModel.streamQuality.collectAsState()
     val health by viewModel.recordingHealth.collectAsState()
     val device by viewModel.deviceState.collectAsState()
 
     fun goLive() {
-        val config = LiveStreamConfig(platform, serverUrl, streamKey, videoMode, streamPortrait, artworkUri, quality = streamQuality)
-        localError = runCatching { config.endpoint() }.exceptionOrNull()?.message
+        val config = LiveStreamConfig(platform, serverUrl, streamKey, videoMode, streamPortrait, artworkUri,
+            quality = streamQuality, recordVideo = videoWillSave, alsoRecordAudio = alsoRecordAudio)
+        localError = if (config.streams) runCatching { config.endpoint() }.exceptionOrNull()?.message else null
         if (localError != null) { step = 0; return }
         if (!pictureReady) { step = 1; return }
         if (videoMode != LiveVideoMode.ARTWORK && ContextCompat.checkSelfPermission(context,
@@ -335,8 +342,25 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (liveState.isActive) {
                 LiveStatusCard(liveState, captureReady)
-                Text(if (liveState.usesCamera) "Your camera and mixer audio are streaming to viewers."
-                    else "Your artwork and mixer audio are streaming. You can keep recording locally.")
+                Text(when {
+                    liveState.localOnly -> "Your camera video and mixer audio are being saved to Movies/DJMRec."
+                    liveState.usesCamera -> "Your camera and mixer audio are streaming to viewers."
+                    else -> "Your artwork and mixer audio are streaming. You can keep recording locally."
+                })
+                if (liveState.recordingVideo) {
+                    Text("Saving video · part ${liveState.videoSegment} · new part every ${VideoRecordingPolicy.SEGMENT_MINUTES} min",
+                        style = MaterialTheme.typography.bodyMedium, color = AccentGreen)
+                }
+                liveState.videoMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = AccentAmber) }
+                if (liveState.overheated) {
+                    Text("Phone is overheating: frame rate and video bitrate reduced until it cools down.",
+                        style = MaterialTheme.typography.bodySmall, color = AccentAmber)
+                }
+                if (liveState.recordingVideo && !liveState.localOnly) {
+                    OutlinedButton(onClick = viewModel::stopVideoRecording, modifier = Modifier.fillMaxWidth()) {
+                        Text("Stop saving video")
+                    }
+                }
                 if (liveState.usesCamera) {
                     Button(onClick = { viewModel.cameraConsoleOpen.value = true }, modifier = Modifier.fillMaxWidth()) {
                         Text("Return to camera")
@@ -356,6 +380,23 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                     OutlinedButton(onClick = { openUrl(url) }) { Text("Open YouTube Studio") }
                 }
             } else {
+                if (youtubeBroadcast.status == YouTubeBroadcastStatus.INTERRUPTED) {
+                    Surface(color = AccentAmber.copy(alpha = 0.14f), shape = RoundedCornerShape(16.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("YouTube broadcast still open", style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold)
+                            Text(youtubeBroadcast.message, style = MaterialTheme.typography.bodyMedium)
+                            Button(onClick = viewModel::resumeYouTubeBroadcast,
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                                Text("Resume broadcast")
+                            }
+                            OutlinedButton(onClick = viewModel::endYouTubeBroadcast,
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                                Text("End broadcast")
+                            }
+                        }
+                    }
+                }
                 Text("Share your set", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 Text("Choose a destination and picture, then go live. Your USB mixer arms automatically.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -390,6 +431,9 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                                         viewModel.abandonYouTubeSetup()
                                         platform = option; serverUrl = option.defaultServerUrl
                                         streamKey = ""; destinationUrl = null; localError = null
+                                        if (option == LivePlatform.LOCAL && videoMode == LiveVideoMode.ARTWORK) {
+                                            videoMode = LiveVideoMode.BACK_CAMERA
+                                        }
                                     }
                                 }
                             )
@@ -427,6 +471,11 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                                 OutlinedButton(onClick = { platform.setupUrl?.let(::openUrl) }) { Text("Open Mixcloud setup") }
                                 StreamKeyField(streamKey, { streamKey = it; localError = null }, "Mixcloud stream key", keyError != null, keyError)
                             }
+                            LivePlatform.LOCAL -> {
+                                Text("Nothing is streamed. Your camera video and the mixer audio are saved as MP4 in " +
+                                    "Movies/DJMRec, in ${VideoRecordingPolicy.SEGMENT_MINUTES}-minute parts so a crash " +
+                                    "can only cost the part being written.")
+                            }
                             LivePlatform.CUSTOM -> {
                                 Text("Copy the server and stream key from your streaming service.")
                                 OutlinedTextField(serverUrl, { serverUrl = it; localError = null }, label = { Text("RTMP / RTMPS server") },
@@ -445,8 +494,8 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                         }
                     }
                     1 -> {
-                        Text("What will viewers see?", style = MaterialTheme.typography.titleMedium)
-                        LiveVideoMode.entries.forEach { option ->
+                        Text(if (localOnly) "Which camera?" else "What will viewers see?", style = MaterialTheme.typography.titleMedium)
+                        LiveVideoMode.entries.filter { !localOnly || it != LiveVideoMode.ARTWORK }.forEach { option ->
                             LiveChoiceButton(
                                 label = option.label,
                                 selected = videoMode == option,
@@ -465,7 +514,7 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                         }
                         Text("Matches how you hold your phone when you go live. The stream keeps this shape; on-screen controls rotate with your phone.",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("Stream quality", style = MaterialTheme.typography.titleMedium)
+                        Text(if (localOnly) "Video quality" else "Stream quality", style = MaterialTheme.typography.titleMedium)
                         LiveStreamQuality.PRESETS.forEach { option ->
                             LiveChoiceButton(
                                 label = option.detail,
@@ -512,7 +561,7 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                         Text("Meters, timers and controls stay on your phone. Viewers see only your camera or artwork.")
                     }
                     else -> {
-                        Text("Ready for your audience?", style = MaterialTheme.typography.titleMedium)
+                        Text(if (localOnly) "Ready to record?" else "Ready for your audience?", style = MaterialTheme.typography.titleMedium)
                         Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(16.dp)) {
                             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(platform.label, fontWeight = FontWeight.Bold)
@@ -530,6 +579,27 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                                 )
                                 StreamSetupMeters(viewModel)
                             }
+                        }
+                        GoLiveSwitch(
+                            title = "Also record the set",
+                            detail = "Saves the lossless audio (your chosen format) while you ${if (localOnly) "film" else "stream"}. " +
+                                "Streams are compressed and platforms may mute DJ sets, so this is your safe copy.",
+                            checked = alsoRecordAudio,
+                            onChange = { alsoRecordAudio = it }
+                        )
+                        if (!localOnly && videoMode != LiveVideoMode.ARTWORK) {
+                            GoLiveSwitch(
+                                title = "Save video to phone",
+                                detail = "Keeps an MP4 of the camera with 320 kbps mixer audio in Movies/DJMRec, at full " +
+                                    "quality even when the stream has to lower its bitrate.",
+                                checked = saveVideo,
+                                onChange = { saveVideo = it }
+                            )
+                        }
+                        if (videoWillSave) {
+                            Text(VideoRecordingPolicy.storageSummary(viewModel.freeStorageBytes(),
+                                VideoRecordingPolicy.recordBitrate(streamQuality.height)),
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Text("Play music and check both meters before starting. Your phone microphone is never used.")
                         Text("Livestreaming remains experimental. Check the service's preview after connecting.",
@@ -558,19 +628,35 @@ fun LiveStreamScreen(viewModel: MainViewModel) {
                     1 -> destinationReady && pictureReady
                     else -> destinationReady && pictureReady && device != null
                 }, modifier = Modifier.weight(1f).heightIn(min = 56.dp)) {
-                    Text(if (liveState.isActive) "End stream" else when (step) {
+                    Text(if (liveState.isActive) { if (liveState.localOnly) "Stop video" else "End stream" } else when (step) {
                         0 -> if (platform == LivePlatform.YOUTUBE && !destinationReady) "Connect YouTube" else "Continue"
-                        1 -> "Review stream"
-                        else -> "Go live on ${platform.label}"
+                        1 -> if (localOnly) "Review recording" else "Review stream"
+                        else -> if (localOnly) "Start video recording" else "Go live on ${platform.label}"
                     })
                 }
             }
         }
     }
-    if (confirmEnd) AlertDialog(onDismissRequest = { confirmEnd = false }, title = { Text("End livestream?") },
-        text = { Text("Viewers will disconnect. Any local recording continues.") },
-        confirmButton = { TextButton(onClick = { confirmEnd = false; viewModel.stopLiveStream() }) { Text("End stream") } },
-        dismissButton = { TextButton(onClick = { confirmEnd = false }) { Text("Keep streaming") } })
+    if (confirmEnd) AlertDialog(onDismissRequest = { confirmEnd = false },
+        title = { Text(if (liveState.localOnly) "Stop video recording?" else "End livestream?") },
+        text = { Text(if (liveState.localOnly) "The video is saved to Movies/DJMRec. Any audio recording continues."
+            else "Viewers will disconnect. Any local recording continues.") },
+        confirmButton = { TextButton(onClick = { confirmEnd = false; viewModel.stopLiveStream() }) {
+            Text(if (liveState.localOnly) "Stop video" else "End stream") } },
+        dismissButton = { TextButton(onClick = { confirmEnd = false }) {
+            Text(if (liveState.localOnly) "Keep recording" else "Keep streaming") } })
+}
+
+@Composable
+private fun GoLiveSwitch(title: String, detail: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked, onChange)
+    }
 }
 
 @Composable
@@ -797,7 +883,8 @@ private fun LiveStatusCard(liveState: LiveStreamState, captureReady: Boolean) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Box(Modifier.background(color, CircleShape).padding(5.dp))
                 Text(
-                    liveState.status.name.replace('_', ' '),
+                    if (liveState.localOnly && liveState.status == LiveStreamStatus.LIVE) "RECORDING VIDEO"
+                    else liveState.status.name.replace('_', ' '),
                     color = color,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold
@@ -822,7 +909,7 @@ private fun LiveStatusCard(liveState: LiveStreamState, captureReady: Boolean) {
                     else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            if (liveState.status == LiveStreamStatus.LIVE) {
+            if (liveState.status == LiveStreamStatus.LIVE && !liveState.localOnly) {
                 val mbps = liveState.bitrateBitsPerSecond / 1_000_000f
                 Text(
                     String.format(

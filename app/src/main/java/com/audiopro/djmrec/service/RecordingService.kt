@@ -95,6 +95,8 @@ class RecordingService : LifecycleService() {
         const val EXTRA_LIVE_VIDEO_WIDTH = "extra_live_video_width"
         const val EXTRA_LIVE_VIDEO_HEIGHT = "extra_live_video_height"
         const val EXTRA_LIVE_VIDEO_BITRATE = "extra_live_video_bitrate"
+        /** Also save camera video + mixer audio as MP4 segments in Movies/DJMRec. */
+        const val EXTRA_LIVE_RECORD_VIDEO = "extra_live_record_video"
 
         /** [EXTRA_CAPTURE_MODE] value: standard AAudio/AudioRecord path via [EXTRA_DEVICE_ID]. */
         const val CAPTURE_MODE_AAUDIO = 0
@@ -655,7 +657,8 @@ class RecordingService : LifecycleService() {
                 videoBitrate = intent.getIntExtra(EXTRA_LIVE_VIDEO_BITRATE, 5_000_000)
                     .coerceIn(1_000_000, 30_000_000),
                 preset = false
-            )
+            ),
+            recordVideo = intent.getBooleanExtra(EXTRA_LIVE_RECORD_VIDEO, platform == LivePlatform.LOCAL)
         )
         cameraForegroundActive = usesCamera
         if (!startForegroundNotification()) {
@@ -676,6 +679,11 @@ class RecordingService : LifecycleService() {
     fun detachLivePreview() = liveStreamController.detachPreview()
 
     fun switchLiveCamera() = liveStreamController.switchCamera()
+
+    /** Stops saving MP4 video; a phone-only session ends, a livestream keeps running. */
+    fun stopLiveVideoRecording() = liveStreamController.stopVideoRecording()
+
+    fun setCameraLocks(locks: com.audiopro.djmrec.streaming.CameraLocks) = liveStreamController.setCameraLocks(locks)
 
     fun startSession(
         audioManagerDeviceId: Int,
@@ -1431,12 +1439,19 @@ class RecordingService : LifecycleService() {
         }
         val title = when {
             _saving.value -> "Saving your set..."
+            live.isActive && live.localOnly -> "Recording video"
             live.isActive -> "Live on ${live.platform?.label ?: "RTMP"}"
             isPaused -> getString(R.string.notification_title_paused)
             isRecording -> getString(R.string.notification_title_recording, deviceLabel)
             else -> "$deviceLabel connected"
         }
+        val healthWarning = _health.value.takeIf {
+            it.level == RecordingHealthLevel.LOW_BATTERY || it.level == RecordingHealthLevel.OVERHEATING
+        }?.message
         val text = when {
+            live.status == LiveStreamStatus.LIVE && live.localOnly ->
+                "Video part ${live.videoSegment}" + if (isRecording) " | REC $elapsed" else ""
+            healthWarning != null -> healthWarning + if (isRecording) " | REC $elapsed" else ""
             live.status == LiveStreamStatus.LIVE -> {
                 val mbps = live.bitrateBitsPerSecond / 1_000_000f
                 String.format(Locale.US, "Streaming %.1f Mbps%s", mbps, if (isRecording) " | REC $elapsed" else "")

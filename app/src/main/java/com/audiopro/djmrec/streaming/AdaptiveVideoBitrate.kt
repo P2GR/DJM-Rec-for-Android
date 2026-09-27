@@ -19,11 +19,14 @@ internal class AdaptiveVideoBitrate(
 ) {
     private val minBitrate = minOf(minBitrate, maxBitrate)
     private var clearSamples = 0
+    /** Upper bound for recovery; below [maxBitrate] while a cap (e.g. overheating) applies. */
+    private var limit = maxBitrate
 
     var current: Int = maxBitrate
         private set
 
     /** @return the new video bitrate when it changed, otherwise null. */
+    @Synchronized
     fun onSample(congested: Boolean): Int? {
         val next = if (congested) {
             clearSamples = 0
@@ -31,11 +34,25 @@ internal class AdaptiveVideoBitrate(
         } else {
             if (++clearSamples < recoverAfterSamples) return null
             clearSamples = 0
-            minOf(maxBitrate.toLong(), current.toLong() * 115 / 100).toInt()
+            minOf(limit.toLong(), current.toLong() * 115 / 100).toInt()
         }
         if (next == current) return null
         current = next
         return next
+    }
+
+    /**
+     * Caps the bitrate (e.g. while the phone overheats) or, with null, lifts the cap so
+     * [onSample] recovers towards the chosen bitrate again.
+     * @return the new video bitrate when it changed, otherwise null.
+     */
+    @Synchronized
+    fun setCap(cap: Int?): Int? {
+        limit = (cap ?: maxBitrate).coerceIn(minBitrate, maxBitrate)
+        clearSamples = 0
+        if (current <= limit) return null
+        current = limit
+        return current
     }
 }
 
