@@ -39,14 +39,22 @@ analog output.
 - RGB waveform: red bass, green mids, blue highs, with blended colors and up to 60 fps scrolling.
   Waveform processing sleeps when the display is hidden.
 - Stereo meters and clipping indication.
-- WAV, FLAC and MP3 (320 kbps) recording with pause/resume.
+- WAV, FLAC and MP3 (320 kbps) recording with pause/resume, plus an optional MP3 copy next to a
+  WAV or FLAC master.
+- Safety limiter at -1 dBFS instead of hard clipping, a 15-second pre-record buffer, automatic
+  trimming of the silence before the first audio and auto-stop after a long silence (all
+  configurable in Settings).
+- Low-battery and overheating warnings in the recorder and the notification.
 - Saved-set search, playback, sharing, export, rename and deletion.
-- Automatic trimming of the silence before the first audio of a set (on by default, can be
-  turned off in Settings).
+- Set editor: trim start and end, fades, loudness normalization (BS.1770 LUFS) and export to
+  MP3, WAV or FLAC as a new file; the original is never changed.
 - Settings for automatic arming, waveform animation, screen wake and stop confirmation.
 - Background recording with a persistent notification. **Save & close** saves and ends capture.
 - Experimental livestreaming: YouTube with Google sign-in, Mixcloud and custom RTMP/RTMPS.
-  Follow **Connect, Picture, Go live**, then check the service preview.
+  Follow **Connect, Picture, Go live**, then check the service preview. The set is recorded
+  locally while streaming by default, and a dropped YouTube stream can resume on the same link.
+- Video recording: camera video with mixer audio saved as MP4 in Movies/DJMRec, on its own or
+  while streaming, in 10-minute parts, with exposure/focus/white-balance locks.
   Camera streams open a full preview with local meters, timers, gain controls and confirmed stop.
   Provider setup and real broadcasts still need validation.
 
