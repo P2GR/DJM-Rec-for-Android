@@ -28,6 +28,7 @@
 - Livestream: a recording that stops because of a storage problem (low storage, a write or
   publish failure) no longer takes the livestream off air. The recording is finalized, a
   dialog explains why it stopped, and the stream keeps running.
+- Fix renaming MP3 recordings in Sets: the rename was rejected as an unsupported format.
 - README: list MP3 recording and drop the track markers that were removed in v0.44.0.
 
 ## v0.44.1 (2026-09-25)
