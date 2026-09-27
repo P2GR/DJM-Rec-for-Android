@@ -48,8 +48,15 @@ object RecordingOutputManager {
         sessionId: String,
         format: RecordingFormat,
         partIndex: Int
+    ): PendingRecordingOutput? = createNamed(context, displayName(sessionId, format, partIndex), format, partIndex)
+
+    /** A pending file in Music/DJMRec with an explicit name, e.g. an edited copy of a set. */
+    fun createNamed(
+        context: Context,
+        displayName: String,
+        format: RecordingFormat,
+        partIndex: Int = 1
     ): PendingRecordingOutput? = runCatching {
-        val displayName = displayName(sessionId, format, partIndex)
         val values = ContentValues().apply {
             put(MediaStore.Audio.Media.DISPLAY_NAME, displayName)
             put(MediaStore.Audio.Media.MIME_TYPE, mimeType(format))

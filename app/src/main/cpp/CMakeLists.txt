@@ -151,6 +151,7 @@ add_library(
     writers/FlacWriter.cpp
     writers/Mp3Writer.cpp
     jni/AudioEngineJNI.cpp
+    jni/AudioFileWriterJNI.cpp
 )
 
 target_include_directories(
