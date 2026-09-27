@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
@@ -103,6 +104,17 @@ class RecordingService : LifecycleService() {
 
         /** Settings key: drop the silence before the first audio of each recording (default on). */
         const val PREF_TRIM_LEADING_SILENCE = "trim_leading_silence"
+        /** Look-ahead limiter at -1 dBFS instead of hard clipping (default on). */
+        const val PREF_SAFETY_LIMITER = "safety_limiter"
+        /** Keep the last 15 s while monitoring and add them to the next recording (default on). */
+        const val PREF_PRE_RECORD = "pre_record"
+        /** Also write a 320 kbps MP3 copy next to a WAV or FLAC set (default off). */
+        const val PREF_MP3_COPY = "mp3_copy"
+        /** Stop a recording after this many minutes of silence; 0 disables (default 10). */
+        const val PREF_SILENCE_AUTO_STOP_MINUTES = "silence_auto_stop_minutes"
+        const val DEFAULT_SILENCE_AUTO_STOP_MINUTES = 10
+        /** Rough extra storage for the 320 kbps MP3 copy. */
+        private const val MP3_COPY_BYTES_PER_SECOND = 40_000L
 
         // --- Raw USB iso capture params (only used when EXTRA_CAPTURE_MODE == CAPTURE_MODE_USB_ISO) ---
         /** `UsbDeviceConnection.getFileDescriptor()`; see [UsbAudioManager.openIsoCaptureHandle]. */
@@ -156,6 +168,14 @@ class RecordingService : LifecycleService() {
     private val _awaitingAudio = MutableStateFlow(false)
     val awaitingAudio: StateFlow<Boolean> = _awaitingAudio.asStateFlow()
 
+    /** Largest safety-limiter gain reduction over the last meter interval, in dB. */
+    private val _limiterReductionDb = MutableStateFlow(0f)
+    val limiterReductionDb: StateFlow<Float> = _limiterReductionDb.asStateFlow()
+
+    /** android.os.PowerManager THERMAL_STATUS_* sampled with the health check. */
+    private val _thermalStatus = MutableStateFlow(0)
+    val thermalStatus: StateFlow<Int> = _thermalStatus.asStateFlow()
+
     private val emptyWaveform = FloatArray(0)
     private val _waveformBins = MutableStateFlow(emptyWaveform)
     val waveformBins: StateFlow<FloatArray> = _waveformBins.asStateFlow()
@@ -181,6 +201,8 @@ class RecordingService : LifecycleService() {
     private var currentBitDepth: Int = 24
     private var pendingRecordingFormat: RecordingFormat? = null
     private var currentOutput: PendingRecordingOutput? = null
+    /** MP3 copy written alongside a WAV/FLAC set, when enabled. */
+    private var currentCompanion: PendingRecordingOutput? = null
     private var currentSessionId: String? = null
     private var currentPartIndex = 0
     private var currentPartStartedElapsed = 0L
@@ -216,6 +238,7 @@ class RecordingService : LifecycleService() {
                 )
                 _elapsedMillis.value = AudioEngine.getElapsedMillis()
                 _awaitingAudio.value = AudioEngine.isAwaitingAudio()
+                _limiterReductionDb.value = AudioEngine.takeLimiterReductionDb()
                 monitorHandler.postDelayed(this, if (uiVisible) METER_UPDATE_INTERVAL_MS else 1_000L)
             }
         }
@@ -253,7 +276,10 @@ class RecordingService : LifecycleService() {
             val recording = _state.value is RecordingState.Recording || _state.value is RecordingState.Paused
             val freeBytes = RecordingOutputManager.freeBytes()
             val remaining = if (freeBytes == Long.MAX_VALUE) Long.MAX_VALUE
-            else RecordingStoragePolicy.remainingSeconds(freeBytes, bytesPerSecond)
+            else RecordingStoragePolicy.remainingSeconds(
+                freeBytes,
+                bytesPerSecond + if (currentCompanion != null) MP3_COPY_BYTES_PER_SECOND else 0L
+            )
             val stats = AudioEngine.getUsbIsoTransferStats()
             val packetDelta = if (usbHealthInitialized) stats.getOrElse(0) { 0 } - lastUsbStats.getOrElse(0) { 0 } else 1
             val byteDelta = if (usbHealthInitialized) stats.getOrElse(4) { 0 } - lastUsbStats.getOrElse(4) { 0 } else 1
@@ -262,6 +288,16 @@ class RecordingService : LifecycleService() {
             val resubmitDelta = if (usbHealthInitialized) stats.getOrElse(6) { 0 } - lastUsbStats.getOrElse(6) { 0 } else 0
             val xRunCount = AudioEngine.getXRunCount()
             val xRunDelta = (xRunCount - lastXRunCount).coerceAtLeast(0)
+            val battery = batteryStatus()
+            val thermal = runCatching {
+                (getSystemService(Context.POWER_SERVICE) as PowerManager).currentThermalStatus
+            }.getOrDefault(0)
+            if (thermal != _thermalStatus.value) {
+                _thermalStatus.value = thermal
+                liveStreamController.setOverheating(
+                    com.audiopro.djmrec.audio.DevicePowerPolicy.overheating(thermal)
+                )
+            }
             lastUsbStats = stats
             lastXRunCount = xRunCount
             usbHealthInitialized = true
@@ -280,7 +316,10 @@ class RecordingService : LifecycleService() {
                     resubmitFailures = resubmitDelta,
                     xRuns = xRunDelta,
                     writerErrorCode = AudioEngine.getRecordingErrorCode(),
-                    selectedPeakDb = maxOf(_levels.value.left.peakDb, _levels.value.right.peakDb)
+                    selectedPeakDb = maxOf(_levels.value.left.peakDb, _levels.value.right.peakDb),
+                    batteryPercent = battery.first,
+                    charging = battery.second,
+                    thermalStatus = thermal
                 )
             )
             _health.value = health
@@ -289,6 +328,7 @@ class RecordingService : LifecycleService() {
             stalledUsbChecks = if (isUsbIsoSession && packetDelta <= 0) stalledUsbChecks + 1 else 0
             if (recording) {
                 checkpointIfDue()
+                stopIfSilentTooLong()
                 when {
                     health.level == RecordingHealthLevel.ERROR ->
                         requestSafetyStop(health.message, captureLost = !AudioEngine.isStreamOpen())
@@ -299,6 +339,35 @@ class RecordingService : LifecycleService() {
                 }
             }
             monitorHandler.postDelayed(this, HEALTH_UPDATE_INTERVAL_MS)
+        }
+    }
+
+    /**
+     * (percent, charging); percent is null when unknown. Plugged in but not charging (weak USB
+     * power, or a hot battery) counts as not charging, since the set still drains the battery.
+     */
+    private fun batteryStatus(): Pair<Int?, Boolean> = runCatching {
+        val battery = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+        val percent = battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY).takeIf { it in 0..100 }
+        val status = battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_STATUS)
+        percent to (status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL)
+    }.getOrDefault(null to true)
+
+    /** Ends a set left running after the music stopped (e.g. forgotten at the end of the night). */
+    private fun stopIfSilentTooLong() {
+        if (_state.value !is RecordingState.Recording || _saving.value) return
+        val minutes = getSharedPreferences("settings", Context.MODE_PRIVATE)
+            .getInt(PREF_SILENCE_AUTO_STOP_MINUTES, DEFAULT_SILENCE_AUTO_STOP_MINUTES)
+        if (minutes <= 0) return
+        if (AudioEngine.getTrailingSilenceMillis() < minutes * 60_000L) return
+        mainHandler.post {
+            if (_state.value is RecordingState.Recording && !_saving.value) {
+                Log.i(TAG, "Stopping recording after $minutes minutes of silence")
+                stopSession(
+                    notice = "Stopped automatically after $minutes minutes of silence. " +
+                        "Trim the silent end in the editor."
+                )
+            }
         }
     }
 
@@ -329,6 +398,7 @@ class RecordingService : LifecycleService() {
             }
         }
         setRecordingGainDb(getSharedPreferences("settings", Context.MODE_PRIVATE).getInt("recording_gain_db", 12))
+        applyCapturePreferences()
         createNotificationChannel()
         lifecycleScope.launch {
             var previous: String? = null
@@ -395,6 +465,13 @@ class RecordingService : LifecycleService() {
 
     fun setRecordingGainDb(gainDb: Int) {
         AudioEngine.setRecordingGainDb(gainDb)
+    }
+
+    /** Pushes the limiter and pre-record settings to the native engine; safe at any time. */
+    fun applyCapturePreferences() {
+        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+        AudioEngine.setLimiterEnabled(prefs.getBoolean(PREF_SAFETY_LIMITER, true))
+        AudioEngine.setPreRecordEnabled(prefs.getBoolean(PREF_PRE_RECORD, true))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -745,6 +822,28 @@ class RecordingService : LifecycleService() {
         startPolling()
     }
 
+    /**
+     * Creates and journals the MP3 copy and hands it to the native engine. A failure here only
+     * skips the copy; the master recording still starts.
+     */
+    private fun prepareMp3Companion(sessionId: String): PendingRecordingOutput? {
+        val companion = RecordingOutputManager.create(this, sessionId, RecordingFormat.MP3, 1) ?: run {
+            Log.w(TAG, "Could not create the MP3 copy; recording the master only")
+            return null
+        }
+        val journaled = runCatching { RecordingSessionStore.addPart(this, companion.toRecord()) }.isSuccess
+        val prepared = journaled &&
+            AudioEngine.prepareCompanionFd(companion.descriptor.fd, RecordingFormat.MP3.nativeValue)
+        runCatching { companion.descriptor.close() }
+        if (!prepared) {
+            Log.w(TAG, "MP3 copy could not be opened; recording the master only")
+            RecordingOutputManager.abandon(this, companion)
+            if (journaled) runCatching { RecordingSessionStore.markFinalized(this, companion.uri) }
+            return null
+        }
+        return companion
+    }
+
     /** Shared tail of both [startSession] and [startUsbIsoSession] once the native capture
      *  source is open: creates the output file, starts the encoder, and flips to Recording. */
     private fun beginEncodingOrFail(bitDepth: Int, format: RecordingFormat, openToken: Int = sessionOpenToken) {
@@ -781,17 +880,24 @@ class RecordingService : LifecycleService() {
             return
         }
         currentFormat = format
-        AudioEngine.setTrimLeadingSilence(
-            getSharedPreferences("settings", Context.MODE_PRIVATE).getBoolean(PREF_TRIM_LEADING_SILENCE, true)
-        )
+        val settings = getSharedPreferences("settings", Context.MODE_PRIVATE)
+        AudioEngine.setTrimLeadingSilence(settings.getBoolean(PREF_TRIM_LEADING_SILENCE, true))
+        val companion = if (format != RecordingFormat.MP3 && settings.getBoolean(PREF_MP3_COPY, false)) {
+            prepareMp3Companion(sessionId)
+        } else {
+            null
+        }
         val started = AudioEngine.startRecordingFd(output.descriptor.fd, format.nativeValue)
         runCatching { output.descriptor.close() }
         if (!started) {
             RecordingOutputManager.abandon(this, output)
+            companion?.let { RecordingOutputManager.abandon(this, it) }
+            AudioEngine.clearPendingCompanion()
             RecordingSessionStore.complete(this)
             failEncoding("Failed to start ${format.name} encoder")
             return
         }
+        currentCompanion = companion
 
         currentOutput = output
         currentSessionId = sessionId
@@ -982,7 +1088,7 @@ class RecordingService : LifecycleService() {
         updateNotification()
     }
 
-    fun stopSession() {
+    fun stopSession(notice: String? = null) {
         if (_saving.value) return
         pendingRecordingFormat = null
         if (_state.value is RecordingState.Preparing || _state.value is RecordingState.Error) {
@@ -1021,21 +1127,27 @@ class RecordingService : LifecycleService() {
             val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 synchronized(this@RecordingService) { runCatching {
                     val savedOutput = currentOutput
+                    val companionName = currentCompanion?.displayName
                     val partStart = currentPartStartedElapsed
                     val duration = AudioEngine.stopRecording()
                     val finalized = finalizeCurrentOutput(duration)
                     val complete = finalized && RecordingSessionStore.completeIfFinalized(this@RecordingService)
-                    Triple((duration - partStart).coerceAtLeast(0L), complete, savedOutput)
+                    StopResult((duration - partStart).coerceAtLeast(0L), complete, savedOutput, companionName)
                 } }
             }
             currentSessionId = null
             currentPartIndex = 0
-            val (duration, complete, savedOutput) = result.getOrDefault(Triple(0L, false, null))
+            val (duration, complete, savedOutput, companionName) =
+                result.getOrDefault(StopResult(0L, false, null, null))
             if (!complete) {
                 stopSessionWithError("Recording stopped; publication failed. Recovery will retry on next launch.",
                     alreadyStopped = true, captureLost = false)
             } else {
-                savedOutput?.let { events.lastSaved.value = com.audiopro.djmrec.audio.SavedRecording(it.uri, it.displayName, duration) }
+                savedOutput?.let {
+                    events.lastSaved.value = com.audiopro.djmrec.audio.SavedRecording(
+                        it.uri, it.displayName, duration, notice = notice, alsoSaved = companionName
+                    )
+                }
                 _state.value = RecordingState.Monitoring
                 isMonitoringOnly = true
                 _elapsedMillis.value = 0L
@@ -1078,11 +1190,24 @@ class RecordingService : LifecycleService() {
     }
 
     private fun finalizeCurrentOutput(totalDurationMillis: Long): Boolean {
-        val output = currentOutput ?: return true
+        val companionFinalized = finalizeCompanionOutput(totalDurationMillis)
+        val output = currentOutput ?: return companionFinalized
         val partDuration = (totalDurationMillis - currentPartStartedElapsed).coerceAtLeast(0)
         val finalized = RecordingOutputManager.finalize(this, output, partDuration)
         if (finalized) runCatching { RecordingSessionStore.markFinalized(this, output.uri) }
         currentOutput = null
+        return finalized && companionFinalized
+    }
+
+    /** The MP3 copy spans the whole set (it never rolls over like WAV parts). */
+    private fun finalizeCompanionOutput(totalDurationMillis: Long): Boolean {
+        val companion = currentCompanion ?: return true
+        currentCompanion = null
+        if (AudioEngine.getCompanionErrorCode() != 0) {
+            Log.w(TAG, "MP3 copy reported error ${AudioEngine.getCompanionErrorCode()}; publishing what was written")
+        }
+        val finalized = RecordingOutputManager.finalize(this, companion, totalDurationMillis)
+        if (finalized) runCatching { RecordingSessionStore.markFinalized(this, companion.uri) }
         return finalized
     }
 
@@ -1386,3 +1511,10 @@ class RecordingService : LifecycleService() {
         }
     }
 }
+
+private data class StopResult(
+    val partDurationMillis: Long,
+    val complete: Boolean,
+    val savedOutput: PendingRecordingOutput?,
+    val companionName: String?
+)

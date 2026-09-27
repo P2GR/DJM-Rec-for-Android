@@ -6,6 +6,8 @@ enum class RecordingHealthLevel {
     SILENCE,
     USB_UNSTABLE,
     LOW_STORAGE,
+    LOW_BATTERY,
+    OVERHEATING,
     ERROR
 }
 
@@ -34,8 +36,29 @@ data class RecordingHealthInput(
     val xRuns: Int,
     val writerErrorCode: Int,
     val selectedPeakDb: Float? = null,
-    val minimumFreeBytes: Long = 64L * 1024 * 1024
+    val minimumFreeBytes: Long = 64L * 1024 * 1024,
+    /** Battery charge 0-100, or null when unknown. */
+    val batteryPercent: Int? = null,
+    val charging: Boolean = true,
+    /** android.os.PowerManager THERMAL_STATUS_* value (0 = none). */
+    val thermalStatus: Int = 0
 )
+
+/** Battery and heat thresholds shared by the health check and the video quality guard. */
+object DevicePowerPolicy {
+    const val LOW_BATTERY_PERCENT = 15
+    const val CRITICAL_BATTERY_PERCENT = 5
+    /** PowerManager.THERMAL_STATUS_SEVERE: Android starts throttling hard from here. */
+    const val THERMAL_SEVERE = 3
+
+    fun batteryLow(percent: Int?, charging: Boolean): Boolean =
+        percent != null && !charging && percent <= LOW_BATTERY_PERCENT
+
+    fun batteryCritical(percent: Int?, charging: Boolean): Boolean =
+        percent != null && !charging && percent <= CRITICAL_BATTERY_PERCENT
+
+    fun overheating(thermalStatus: Int): Boolean = thermalStatus >= THERMAL_SEVERE
+}
 
 object RecordingHealthEvaluator {
     fun evaluate(input: RecordingHealthInput): RecordingHealth {
@@ -64,6 +87,9 @@ object RecordingHealthEvaluator {
                 input.remainingSeconds
             )
         }
+        if (DevicePowerPolicy.batteryCritical(input.batteryPercent, input.charging)) {
+            return batteryWarning(input)
+        }
         if (input.usbIso && input.packetDelta <= 0) {
             return RecordingHealth(
                 RecordingHealthLevel.USB_UNSTABLE,
@@ -88,6 +114,17 @@ object RecordingHealthEvaluator {
                 input.remainingSeconds
             )
         }
+        if (DevicePowerPolicy.overheating(input.thermalStatus)) {
+            return RecordingHealth(
+                RecordingHealthLevel.OVERHEATING,
+                "Phone is overheating: video frame rate and bitrate reduced. Shade or cool the phone",
+                input.freeBytes,
+                input.remainingSeconds
+            )
+        }
+        if (DevicePowerPolicy.batteryLow(input.batteryPercent, input.charging)) {
+            return batteryWarning(input)
+        }
         if (input.usbIso && input.byteDelta > 0 && (input.nonZeroByteDelta == 0L || input.selectedPeakDb?.let { it <= -60f } == true)) {
             return RecordingHealth(
                 RecordingHealthLevel.SILENCE,
@@ -103,4 +140,11 @@ object RecordingHealthEvaluator {
             input.remainingSeconds
         )
     }
+
+    private fun batteryWarning(input: RecordingHealthInput) = RecordingHealth(
+        RecordingHealthLevel.LOW_BATTERY,
+        "Battery ${input.batteryPercent}% and not charging: connect power",
+        input.freeBytes,
+        input.remainingSeconds
+    )
 }

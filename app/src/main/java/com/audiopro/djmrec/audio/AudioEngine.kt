@@ -152,4 +152,27 @@ object AudioEngine {
 
     /** True while a recording is running but still discarding leading silence. */
     external fun isAwaitingAudio(): Boolean
+
+    /** Look-ahead safety limiter at -1 dBFS on the recording gain stage (default on). */
+    external fun setLimiterEnabled(enabled: Boolean)
+
+    /** Largest limiter gain reduction since the previous call, in dB (0 when not limiting). */
+    external fun takeLimiterReductionDb(): Float
+
+    /** Keep the last 15 s while monitoring and prepend them when recording starts. */
+    external fun setPreRecordEnabled(enabled: Boolean)
+
+    /** Silent audio (below about -60 dBFS) at the end of the file so far, in ms. */
+    external fun getTrailingSilenceMillis(): Long
+
+    /**
+     * Opens a second writer (e.g. an MP3 copy of a WAV/FLAC set) that the next
+     * [startRecordingFd] fills with the same audio. Call while not recording.
+     */
+    external fun prepareCompanionFd(fd: Int, format: Int): Boolean
+
+    external fun clearPendingCompanion()
+
+    /** Non-zero once the companion writer failed; the master recording is unaffected. */
+    external fun getCompanionErrorCode(): Int
 }

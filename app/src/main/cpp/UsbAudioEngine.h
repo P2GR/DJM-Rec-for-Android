@@ -9,7 +9,9 @@
 #include <oboe/Oboe.h>
 
 #include "LeadingSilenceGate.h"
+#include "PreRecordHistory.h"
 #include "RingBuffer.h"
+#include "SafetyLimiter.h"
 #include "UsbIsoAudioSource.h"
 #include "WaveformAnalyzer.h"
 #include "writers/AudioWriter.h"
@@ -60,6 +62,14 @@ public:
 
     bool startRecording(const std::string& path, ContainerFormat format);
     bool startRecordingFd(int fd, ContainerFormat format);
+    /**
+     * Opens a second writer (e.g. an MP3 copy next to the WAV/FLAC master) that the next
+     * startRecording*() fills with the same audio. Must be called while not recording.
+     * A companion failure mid-set never stops the master; see getCompanionErrorCode().
+     */
+    bool prepareCompanionFd(int fd, ContainerFormat format);
+    void clearPendingCompanion();
+    int32_t getCompanionErrorCode() const;
     bool rollRecordingFd(int fd, ContainerFormat format);
     int64_t checkpointRecording();
     int32_t getRecordingErrorCode() const;
@@ -90,6 +100,15 @@ public:
     void setTrimLeadingSilence(bool enabled);
     /** True while a recording is running but still discarding leading silence. */
     bool isAwaitingAudio() const;
+    /** Safety limiter on the recording gain stage (default on). */
+    void setLimiterEnabled(bool enabled);
+    /** Largest limiter gain reduction since the previous call, in dB. */
+    float takeLimiterReductionDb();
+    /** Keep the last kPreRecordSeconds of audio while monitoring and prepend it on Record. */
+    void setPreRecordEnabled(bool enabled);
+    /** Length of the audio run at the end of the file that is below the silence threshold. */
+    int64_t getTrailingSilenceMillis() const;
+    static constexpr int kPreRecordSeconds = 15;
     static constexpr int kWaveformBinCount = WaveformAnalyzer::kBinCount;
 
     // oboe::AudioStreamDataCallback
@@ -104,6 +123,16 @@ private:
     void encoderThreadLoop();
     void resetSilenceGate();
     void publishSilenceGateState();
+    /** Allocates the per-stream limiter and pre-record history once the format is known. */
+    void configureCaptureProcessing();
+    /** Unpublishes the limiter/history; callers must have stopped every capture source. */
+    void releaseCaptureProcessing();
+    /** Capture thread: recording gain plus safety limiter, in place. */
+    void applyGainAndLimit(int32_t* interleaved, size_t frameCount, int32_t channelCount);
+    /** Capture thread: sends processed frames to the recording ring or the pre-record history. */
+    void routeCapturedFrames(const int32_t* interleaved, size_t frameCount, int32_t channelCount);
+    /** Encoder thread: waits for the capture thread to stop filling history, then copies it. */
+    bool takePreRecordedAudio(std::vector<int32_t>& out);
     static size_t bytesPerFrameFor(oboe::AudioFormat format, int32_t channelCount);
 
     /** Shared tail of both capture paths once a canonical stereo I32 frame batch is in hand:
@@ -119,7 +148,26 @@ private:
     std::unique_ptr<RingBuffer> mRingBuffer;
     std::unique_ptr<RingBuffer> mLiveRingBuffer;
     std::unique_ptr<AudioWriter> mWriter;
+    std::unique_ptr<AudioWriter> mCompanionWriter;  // guarded by mWriterMutex
+    std::unique_ptr<AudioWriter> mPendingCompanion; // guarded by mControlMutex
+    std::atomic<int32_t> mCompanionErrorCode{0};
     std::unique_ptr<WaveformAnalyzer> mWaveformAnalyzer;
+    // Published to the capture thread through the atomics below; storage only changes while
+    // every capture source is stopped (open/close), so the capture thread never sees a freed one.
+    std::unique_ptr<SafetyLimiter> mLimiterStorage;
+    std::atomic<SafetyLimiter*> mLimiter{nullptr};
+    std::atomic<bool> mLimiterEnabled{true};
+    std::atomic<float> mLimiterReductionDb{0.0f};
+    std::unique_ptr<PreRecordHistory> mHistoryStorage;
+    std::atomic<PreRecordHistory*> mHistory{nullptr};
+    std::atomic<bool> mPreRecordEnabled{true};
+    bool mPreRecordAtStart = false; // set before the encoder thread starts
+    // Capture thread writes history only while !mHistoryFrozen. It sets the flag the first time
+    // it sees mRecording, after which the encoder thread may read the history safely.
+    std::atomic<bool> mHistoryFrozen{false};
+    std::atomic<bool> mHistoryClearRequested{false};
+    std::atomic<int64_t> mPreRecordedMillis{0};
+    std::atomic<uint64_t> mTrailingSilenceFrames{0};
     std::thread mEncoderThread;
 
     mutable std::mutex mControlMutex; // guards start/stop/pause transitions (not the realtime path)

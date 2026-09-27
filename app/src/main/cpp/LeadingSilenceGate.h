@@ -41,6 +41,17 @@ public:
 
     bool awaiting() const { return mAwaiting; }
 
+    static bool isAudible(int32_t sample) { return sample >= kThreshold || sample <= -kThreshold; }
+
+    /** Index of the last frame holding an audible sample, or @p frameCount when all are silent. */
+    static size_t lastAudibleFrame(const int32_t* interleaved, size_t frameCount, int channelCount) {
+        const int channels = channelCount > 0 ? channelCount : 1;
+        for (size_t i = frameCount * channels; i > 0; --i) {
+            if (isAudible(interleaved[i - 1])) return (i - 1) / channels;
+        }
+        return frameCount;
+    }
+
     /** Frames dropped before the gate opened; excludes the pre-roll that was kept. */
     uint64_t discardedFrames() const { return mDiscardedFrames; }
 
@@ -76,8 +87,7 @@ private:
     size_t firstAudibleFrame(const int32_t* interleaved, size_t frameCount) const {
         const size_t samples = frameCount * mChannelCount;
         for (size_t i = 0; i < samples; ++i) {
-            const int32_t s = interleaved[i];
-            if (s >= kThreshold || s <= -kThreshold) return i / mChannelCount;
+            if (isAudible(interleaved[i])) return i / mChannelCount;
         }
         return frameCount;
     }
