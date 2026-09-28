@@ -50,6 +50,10 @@
 - Protect against overheating: at Android's "severe" thermal status the camera drops to
   15 fps and the video bitrate to 60 %; full quality returns when the phone cools down.
 
+### Settings
+- Add a "Support DJM REC" card at the bottom of Settings with a Buy me a coffee link, next
+  to the entry in the top-bar menu.
+
 ## v0.44.2 (2026-09-27)
 
 - Automatically trim the silence at the start of a recording. Mixers often take a few seconds

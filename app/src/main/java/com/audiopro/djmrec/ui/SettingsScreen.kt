@@ -11,6 +11,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Coffee
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -181,6 +183,26 @@ fun SettingsScreen(viewModel: MainViewModel) {
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
                     )
+                }
+            }
+        }
+        Text("Support DJM REC", style = MaterialTheme.typography.titleLarge)
+        Surface(shape = RoundedCornerShape(20.dp), tonalElevation = 1.dp) {
+            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "DJM REC is free and made for DJs. If it saved your set, you can buy me a coffee.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary
+                )
+                OutlinedButton(
+                    onClick = {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://buymeacoffee.com/p2gr")))
+                    },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                ) {
+                    Icon(Icons.Filled.Coffee, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Buy me a coffee")
                 }
             }
         }
