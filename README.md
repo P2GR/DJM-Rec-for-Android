@@ -32,10 +32,13 @@ research live on the separate
 
 ## Start recording
 
-1. Connect the mixer's **PC/Mac USB port** to your phone with a USB data cable, open DJM Rec and
-   allow USB access.
-2. Play audio and check both meters; automatic arming starts monitoring, not recording.
-3. Press **Record**, then **Save set** when finished. Files appear in **Sets** and `Music/DJMRec`.
+1. Connect the mixer's **USB-B port** (the one you would normally plug into your laptop) to your
+   phone with a **USB-B to USB-C data cable**. The DJM-A9 is the exception: it has a **USB-C port
+   at the top**, so USB-C to USB-C works there. The **MULTI I/O USB port** used for
+   *DJM Rec for iPhone* does **not** work with this app.
+2. Open DJM Rec and allow USB access.
+3. Play audio and check both meters; automatic arming starts monitoring, not recording.
+4. Press **Record**, then **Save set** when finished. Files appear in **Sets** and `Music/DJMRec`.
 
 Format, gain and USB channel pair are in **Recording setup** (0 dB gain keeps the input level).
 Keep USB connected during a set: force-stop, reboot or cable loss ends capture.
