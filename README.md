@@ -22,11 +22,12 @@ Install the **release APK**; the debug APK is for testing.
 | **DJM-450, DJM-750MK2, DJM-900NXS2, DJM-A9, DJM-V10** | ✅ Supported |
 | DJM-V5, DJM-S11 | 🧪 Experimental |
 | XDJ-XZ, XDJ-AZ, OPUS-QUAD, OMNIS-DUO | 🧪 Experimental |
-| XDJ-RX3 | ⚠️ No recording input |
+| XDJ-RX3 | ⚠️ Not possible — USB audio is playback-only |
 | Other USB audio interfaces | May work with a compatible USB audio input |
 
 Use the mixer's **PC/Mac USB audio port** with a USB data cable. Experimental support is not a
-guarantee. Pro DJ Link and USB protocol research live on the separate
+guarantee. On the XDJ-RX3, use MASTER REC to USB storage instead. Pro DJ Link and USB protocol
+research live on the separate
 [`experimental` branch](https://github.com/P2GR/DJM-Rec-for-Android/tree/experimental).
 
 ## Start recording
