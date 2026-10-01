@@ -1,23 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Match standard UAC devices plus supported Pioneer vendor-class devices.
-    Fine-grained interface/endpoint validation still happens in UsbAudioManager.
+    Devices that make Android offer to open DJM Rec when they are plugged in
+    ("Open DJM Rec for Android to handle ...?").
+
+    Only AlphaTheta / Pioneer DJ mixers and all-in-ones (vendor 0x2B73 = 11123), matched by
+    model: a vendor-only entry would also catch AlphaTheta controllers and CDJs, and a generic
+    class="1" (USB audio) entry would catch every headset, USB-C audio dongle, microphone and
+    webcam. Keep this list in sync with PioneerMixerProfile and AllInOneProfile.
+
+    Other USB audio interfaces still work without an entry here: UsbAudioManager finds them
+    when the app is open and requests USB permission itself.
 -->
 <resources>
-    <usb-device vendor-id="11123" product-id="45" />  <!-- XDJ-XZ -->
-    <usb-device vendor-id="11123" product-id="61" />  <!-- XDJ-RX3: detect and explain capture limitations -->
-    <usb-device vendor-id="11123" product-id="67" />  <!-- OPUS-QUAD -->
-    <usb-device vendor-id="11123" product-id="72" />  <!-- OMNIS-DUO -->
-    <usb-device vendor-id="11123" product-id="74" />  <!-- XDJ-AZ -->
-    <usb-device class="1" />
+    <!-- Mixers (PioneerMixerProfile) -->
     <usb-device vendor-id="11123" product-id="10" />  <!-- DJM-900NXS2 -->
     <usb-device vendor-id="11123" product-id="19" />  <!-- DJM-450 -->
     <usb-device vendor-id="11123" product-id="27" />  <!-- DJM-750MK2 -->
     <usb-device vendor-id="11123" product-id="52" />  <!-- DJM-V10 -->
+    <usb-device vendor-id="11123" product-id="55" />  <!-- DJM-S11 -->
     <usb-device vendor-id="11123" product-id="60" />  <!-- DJM-A9 -->
     <usb-device vendor-id="11123" product-id="88" />  <!-- DJM-V5 -->
     <usb-device vendor-id="11123" product-id="89" />  <!-- DJM-V5-LF -->
     <usb-device vendor-id="11123" product-id="90" />  <!-- DJM-V5-W -->
     <usb-device vendor-id="11123" product-id="91" />  <!-- DJM-V5-W-LF -->
-    <usb-device vendor-id="11123" product-id="55" />  <!-- DJM-S11 -->
+
+    <!-- All-in-one systems (AllInOneProfile) -->
+    <usb-device vendor-id="11123" product-id="45" />  <!-- XDJ-XZ -->
+    <usb-device vendor-id="11123" product-id="61" />  <!-- XDJ-RX3: detect and explain capture limitations -->
+    <usb-device vendor-id="11123" product-id="67" />  <!-- OPUS-QUAD -->
+    <usb-device vendor-id="11123" product-id="72" />  <!-- OMNIS-DUO -->
+    <usb-device vendor-id="11123" product-id="74" />  <!-- XDJ-AZ -->
 </resources>
