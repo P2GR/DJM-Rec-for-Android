@@ -13,11 +13,6 @@
 Requires Android 10+, a 64-bit ARM phone with USB host support, and a USB data cable.
 Install the **release APK**; the debug APK is for testing.
 
-<img src="docs/images/feature-record.png" alt="Recorder with live 3-band waveform and stereo meters" width="24%">
-<img src="docs/images/feature-multitrack.png" alt="Advanced mode: every mixer channel recorded as its own track" width="24%">
-<img src="docs/images/feature-live.png" alt="Go Live: stream to YouTube, Mixcloud or RTMP while recording" width="24%">
-<img src="docs/images/feature-safe-capture.png" alt="Safe capture settings: safety limiter, pre-record buffer and auto-stop" width="24%">
-
 </div>
 
 ## Supported devices
