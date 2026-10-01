@@ -1,5 +1,32 @@
 # Changelog
 
+## v0.46.0 (2026-10-01)
+
+### Multitrack recording (Advanced mode)
+- Add Advanced mode in Recording setup: record every input pair of the mixer as its own track
+  next to the master. Works with any USB audio input that has more than 2 channels; a trailing
+  odd channel becomes a mono track.
+- Show a multitrack view while it is on: one lane per track with a live 3-band waveform on a
+  shared timeline, a level meter, an arm button and its own gain (-24 to +12 dB). At 0 dB a
+  track is recorded exactly as it arrives; above 0 dB its own limiter keeps peaks under
+  -1 dBFS without touching the other tracks. The master keeps its gain, safety limiter, MP3
+  copy and livestream feed.
+- On the DJM-A9 and DJM-750MK2, choose what each USB pair carries (a channel post- or
+  pre-fader, Mic, Rec Out, crossfader sides) from the track's source menu. Advanced mode starts
+  with the master on the master slot and every channel post-fader. The app verifies each
+  change with the mixer and restores the previous routing when capture stops.
+- Save the tracks lossless (an MP3 set records its tracks as FLAC) in a folder next to the set,
+  `Music/DJMRec/mix_<date> tracks/`, named after their source. Tracks start and stop on the same
+  sample as the master, including the pre-record buffer and the leading-silence trim, roll over
+  to new WAV parts together and are covered by crash recovery. A failing track never stops the
+  master or the other tracks.
+
+### USB
+- Only offer to open DJM Rec when an AlphaTheta/Pioneer mixer or all-in-one is plugged in, not
+  for every USB audio device (headsets, USB-C audio adapters, microphones, webcams). Other USB
+  audio interfaces still work: open the app and allow access.
+- The DJM-V5 and DJM-S11 are now supported mixers (previously experimental).
+
 ## v0.45.0 (2026-09-27)
 
 ### Recording
