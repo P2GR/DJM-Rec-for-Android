@@ -50,17 +50,34 @@ object RecordingOutputManager {
         partIndex: Int
     ): PendingRecordingOutput? = createNamed(context, displayName(sessionId, format, partIndex), format, partIndex)
 
+    /**
+     * One multitrack track file, in a folder next to the set (`Music/DJMRec/<set> tracks/`) so
+     * the Sets list keeps showing one entry per set. [trackNumber] is 1-based, as shown in the UI.
+     */
+    fun createTrack(
+        context: Context,
+        sessionId: String,
+        trackNumber: Int,
+        label: String,
+        format: RecordingFormat,
+        partIndex: Int
+    ): PendingRecordingOutput? = createNamed(
+        context, trackDisplayName(trackNumber, label, format, partIndex), format, partIndex,
+        relativePath = trackFolder(sessionId)
+    )
+
     /** A pending file in Music/DJMRec with an explicit name, e.g. an edited copy of a set. */
     fun createNamed(
         context: Context,
         displayName: String,
         format: RecordingFormat,
-        partIndex: Int = 1
+        partIndex: Int = 1,
+        relativePath: String = RELATIVE_PATH
     ): PendingRecordingOutput? = runCatching {
         val values = ContentValues().apply {
             put(MediaStore.Audio.Media.DISPLAY_NAME, displayName)
             put(MediaStore.Audio.Media.MIME_TYPE, mimeType(format))
-            put(MediaStore.Audio.Media.RELATIVE_PATH, RELATIVE_PATH)
+            put(MediaStore.Audio.Media.RELATIVE_PATH, relativePath)
             put(MediaStore.Audio.Media.IS_PENDING, 1)
             put(MediaStore.Audio.Media.DATE_ADDED, System.currentTimeMillis() / 1000)
         }
@@ -227,6 +244,23 @@ object RecordingOutputManager {
             ""
         }
         return "mix_${sessionId}$suffix.${format.extension}"
+    }
+
+    /** `Music/DJMRec/mix_<session> tracks`: matches the set's own file name. */
+    internal fun trackFolder(sessionId: String): String = "$RELATIVE_PATH/mix_$sessionId tracks"
+
+    /** e.g. "02 CH1 Post-fader.wav"; WAV rollover parts get the set's `_partNN` suffix. */
+    internal fun trackDisplayName(trackNumber: Int, label: String, format: RecordingFormat, partIndex: Int): String {
+        val number = trackNumber.coerceIn(1, 99).toString().padStart(2, '0')
+        val cleaned = label.map { if (it.isISOControl() || it in "/\\:*?\"<>|") ' ' else it }
+            .joinToString("").replace(Regex("\\s+"), " ").trim().take(60).trimEnd('.', ' ')
+        val name = cleaned.ifEmpty { "Track $number" }
+        val suffix = if (format == RecordingFormat.WAV && partIndex > 1) {
+            "_part${partIndex.toString().padStart(2, '0')}"
+        } else {
+            ""
+        }
+        return "$number $name$suffix.${format.extension}"
     }
 
     private fun ParcelFileDescriptor.closeQuietly() {

@@ -1,10 +1,12 @@
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include <oboe/Oboe.h>
 
@@ -12,6 +14,7 @@
 #include "PreRecordHistory.h"
 #include "RingBuffer.h"
 #include "SafetyLimiter.h"
+#include "TrackBus.h"
 #include "UsbIsoAudioSource.h"
 #include "WaveformAnalyzer.h"
 #include "writers/AudioWriter.h"
@@ -44,6 +47,12 @@ enum class SourceMode { None, Oboe, UsbIso };
  *
  * Exactly one recording session is supported at a time, matching the app's single-mixer,
  * single-session use case.
+ *
+ * Multitrack ("advanced mode", raw USB path only): every wire channel also runs through a
+ * TrackBus, and each recording-ring frame carries the processed master pair followed by
+ * every processed wire channel. Pre-record history, the leading-silence gate and the encoder
+ * therefore handle master and tracks as one stream, so each armed track's file starts and
+ * stops on exactly the same frame as the master file.
  */
 class UsbAudioEngine : public oboe::AudioStreamDataCallback, public oboe::AudioStreamErrorCallback {
 public:
@@ -59,6 +68,26 @@ public:
      * Returns the measured sample rate on success, or -1 on failure.
      */
     int openUsbIso(const UsbIsoAudioSource::Config& isoConfig, int32_t sampleRateHint);
+
+    // --- Multitrack (only when openUsbIso() ran with Config::emitAllChannels) ---
+    /** Wire channels feeding the tracks, or 0 when multitrack is off. */
+    int getTrackChannelCount() const;
+    /** Opens track @p track's writer for the next startRecording*(); call while not recording. */
+    bool prepareTrackFd(int track, int fd, ContainerFormat format);
+    void clearPendingTracks();
+    /** Next WAV part for track @p track, swapped in by the next rollRecordingFd(). */
+    bool prepareTrackRollFd(int track, int fd, ContainerFormat format);
+    /** Bit t set once track t's writer failed; the master and the other tracks continue. */
+    uint32_t getTrackErrorMask() const;
+    void setTrackGainDb(int track, float gainDb);
+    void setTrackWaveformsEnabled(bool enabled);
+    /** TrackBus::kLevelStride floats per channel; returns the channel count written. */
+    int getTrackLevels(float* out, int maxChannels);
+    void getTrackWaveformBins(int track, float* outBins) const;
+    /** First channel of the pair recorded as the master; -1 while AUTO is still choosing. */
+    int getMasterChannelOffset() const;
+    int setPioneerTrackSource(int output, int source);
+    int getPioneerTrackSource(int output);
 
     bool startRecording(const std::string& path, ContainerFormat format);
     bool startRecordingFd(int fd, ContainerFormat format);
@@ -118,7 +147,9 @@ public:
     void onErrorAfterClose(oboe::AudioStream* stream, oboe::Result error) override;
 
 private:
-    UsbAudioEngine() = default;
+    UsbAudioEngine() {
+        for (auto& gain : mTrackGainLinear) gain.store(1.0f, std::memory_order_relaxed);
+    }
 
     void encoderThreadLoop();
     void resetSilenceGate();
@@ -138,7 +169,11 @@ private:
     /** Shared tail of both capture paths once a canonical stereo I32 frame batch is in hand:
      *  updates the VU meter atomics and (if recording) writes into mRingBuffer. Called from
      *  the libusb event thread by UsbIsoAudioSource's callback. */
-    void onUsbIsoFrames(const int32_t* interleavedStereo, size_t frameCount);
+    void onUsbIsoFrames(const int32_t* interleavedStereo, const int32_t* allChannels,
+                        int wireChannels, size_t frameCount);
+    /** Encoder thread, writer lock held: writes each armed track from combined ring frames. */
+    void writeTrackFrames(const int32_t* combined, size_t frameCount, std::vector<int32_t>& scratch);
+    std::unique_ptr<AudioWriter> makeTrackWriter(int track, int fd, ContainerFormat format);
     void writeLiveFrames(const int32_t* interleaved, size_t frameCount, int32_t channelCount);
 
     std::shared_ptr<oboe::AudioStream> mStream;
@@ -152,6 +187,18 @@ private:
     std::unique_ptr<AudioWriter> mPendingCompanion; // guarded by mControlMutex
     std::atomic<int32_t> mCompanionErrorCode{0};
     std::unique_ptr<WaveformAnalyzer> mWaveformAnalyzer;
+    // Multitrack. Published like the limiter: storage only changes while capture is stopped.
+    std::unique_ptr<TrackBus> mTrackBusStorage;
+    std::atomic<TrackBus*> mTrackBus{nullptr};
+    std::atomic<bool> mTrackWaveformsEnabled{false};
+    std::array<std::atomic<float>, TrackBus::kMaxTracks> mTrackGainLinear{};
+    int mTrackChannels = 0;   // wire channels in the track bus; fixed while a stream is open
+    int mRingChannels = 2;    // master channels + mTrackChannels, per recording-ring frame
+    std::vector<TrackLayout> mTrackLayout;
+    std::array<std::unique_ptr<AudioWriter>, TrackBus::kMaxTracks> mTrackWriters;        // mWriterMutex
+    std::array<std::unique_ptr<AudioWriter>, TrackBus::kMaxTracks> mPendingTrackWriters; // mControlMutex
+    std::array<std::unique_ptr<AudioWriter>, TrackBus::kMaxTracks> mPendingTrackRolls;   // mControlMutex
+    std::atomic<uint32_t> mTrackErrorMask{0};
     // Published to the capture thread through the atomics below; storage only changes while
     // every capture source is stopped (open/close), so the capture thread never sees a freed one.
     std::unique_ptr<SafetyLimiter> mLimiterStorage;

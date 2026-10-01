@@ -42,7 +42,7 @@ Java_com_audiopro_djmrec_audio_AudioEngine_openUsbIso(
     jint clockControlInterfaceNumber, jint clockSourceId, jboolean clockSupportsFrequencySet,
     jint feedbackEndpointAddress, jint feedbackMaxPacketSize, jint vendorId, jint productId,
     jbyteArray rawDescriptors,
-    jint sampleRateHint) {
+    jint sampleRateHint, jboolean multitrack) {
     djmrec::UsbIsoAudioSource::Config config;
     config.fd = fd;
     config.interfaceNumber = interfaceNumber;
@@ -61,6 +61,8 @@ Java_com_audiopro_djmrec_audio_AudioEngine_openUsbIso(
     config.feedbackMaxPacketSize = feedbackMaxPacketSize;
     config.vendorId = vendorId;
     config.productId = productId;
+    config.emitAllChannels = multitrack == JNI_TRUE;
+    config.disableRouteFallback = multitrack == JNI_TRUE;
     if (rawDescriptors) {
         const jsize length = env->GetArrayLength(rawDescriptors);
         const auto* bytes = env->GetByteArrayElements(rawDescriptors, nullptr);
@@ -268,5 +270,88 @@ Java_com_audiopro_djmrec_audio_AudioEngine_clearPendingCompanion(JNIEnv* /*env*/
 JNIEXPORT jint JNICALL
 Java_com_audiopro_djmrec_audio_AudioEngine_getCompanionErrorCode(JNIEnv* /*env*/, jobject /*thiz*/) {
     return UsbAudioEngine::instance().getCompanionErrorCode();
+}
+
+// --- Multitrack ------------------------------------------------------------------------
+
+JNIEXPORT jint JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_getTrackChannelCount(JNIEnv* /*env*/, jobject /*thiz*/) {
+    return UsbAudioEngine::instance().getTrackChannelCount();
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_prepareTrackFd(
+    JNIEnv* /*env*/, jobject /*thiz*/, jint track, jint fd, jint format) {
+    return UsbAudioEngine::instance().prepareTrackFd(track, fd, static_cast<ContainerFormat>(format))
+        ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_clearPendingTracks(JNIEnv* /*env*/, jobject /*thiz*/) {
+    UsbAudioEngine::instance().clearPendingTracks();
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_prepareTrackRollFd(
+    JNIEnv* /*env*/, jobject /*thiz*/, jint track, jint fd, jint format) {
+    return UsbAudioEngine::instance().prepareTrackRollFd(track, fd, static_cast<ContainerFormat>(format))
+        ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_getTrackErrorMask(JNIEnv* /*env*/, jobject /*thiz*/) {
+    return static_cast<jint>(UsbAudioEngine::instance().getTrackErrorMask());
+}
+
+JNIEXPORT void JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_setTrackGainDb(
+    JNIEnv* /*env*/, jobject /*thiz*/, jint track, jfloat gainDb) {
+    UsbAudioEngine::instance().setTrackGainDb(track, gainDb);
+}
+
+JNIEXPORT void JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_setTrackWaveformsEnabled(
+    JNIEnv* /*env*/, jobject /*thiz*/, jboolean enabled) {
+    UsbAudioEngine::instance().setTrackWaveformsEnabled(enabled == JNI_TRUE);
+}
+
+JNIEXPORT jfloatArray JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_getTrackLevels(JNIEnv* env, jobject /*thiz*/) {
+    constexpr int kMaxFloats = djmrec::TrackBus::kMaxChannels * djmrec::TrackBus::kLevelStride;
+    float levels[kMaxFloats];
+    const int channels = UsbAudioEngine::instance().getTrackLevels(levels, djmrec::TrackBus::kMaxChannels);
+    if (channels < 0) return nullptr; // busy: keep the previous reading
+    const jsize count = static_cast<jsize>(channels * djmrec::TrackBus::kLevelStride);
+    jfloatArray result = env->NewFloatArray(count);
+    if (count > 0) env->SetFloatArrayRegion(result, 0, count, levels);
+    return result;
+}
+
+JNIEXPORT jfloatArray JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_getTrackWaveformBins(
+    JNIEnv* env, jobject /*thiz*/, jint track) {
+    constexpr int kFloats = UsbAudioEngine::kWaveformBinCount * 4 + 2;
+    float bins[kFloats];
+    UsbAudioEngine::instance().getTrackWaveformBins(track, bins);
+    jfloatArray result = env->NewFloatArray(kFloats);
+    env->SetFloatArrayRegion(result, 0, kFloats, bins);
+    return result;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_getMasterChannelOffset(JNIEnv* /*env*/, jobject /*thiz*/) {
+    return UsbAudioEngine::instance().getMasterChannelOffset();
+}
+
+JNIEXPORT jint JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_setPioneerTrackSource(
+    JNIEnv* /*env*/, jobject /*thiz*/, jint output, jint source) {
+    return UsbAudioEngine::instance().setPioneerTrackSource(output, source);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_audiopro_djmrec_audio_AudioEngine_getPioneerTrackSource(
+    JNIEnv* /*env*/, jobject /*thiz*/, jint output) {
+    return UsbAudioEngine::instance().getPioneerTrackSource(output);
 }
 } // extern "C"

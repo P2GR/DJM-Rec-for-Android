@@ -27,8 +27,15 @@ public:
     static constexpr int32_t kThreshold = 2147484;
     static constexpr int kPreRollMillis = 500;
 
-    void reset(bool enabled, int channelCount, int sampleRate) {
+    /**
+     * @param detectChannels how many leading channels of each frame decide audibility (the
+     *   master pair in multitrack mode); every channel is still kept and emitted, so tracks
+     *   stay aligned with the master. 0 or out of range means all channels.
+     */
+    void reset(bool enabled, int channelCount, int sampleRate, int detectChannels = 0) {
         mChannelCount = channelCount > 0 ? channelCount : 1;
+        mDetectChannels = detectChannels > 0 && detectChannels < mChannelCount
+            ? detectChannels : mChannelCount;
         mAwaiting = enabled;
         mDiscardedFrames = 0;
         mPreRollFill = 0;
@@ -45,9 +52,19 @@ public:
 
     /** Index of the last frame holding an audible sample, or @p frameCount when all are silent. */
     static size_t lastAudibleFrame(const int32_t* interleaved, size_t frameCount, int channelCount) {
-        const int channels = channelCount > 0 ? channelCount : 1;
-        for (size_t i = frameCount * channels; i > 0; --i) {
-            if (isAudible(interleaved[i - 1])) return (i - 1) / channels;
+        return lastAudibleFrame(interleaved, frameCount, channelCount, channelCount);
+    }
+
+    /** As above, but only the first @p detectChannels of each @p stride-wide frame count. */
+    static size_t lastAudibleFrame(const int32_t* interleaved, size_t frameCount, int stride,
+                                   int detectChannels) {
+        const int channels = stride > 0 ? stride : 1;
+        const int detect = detectChannels > 0 && detectChannels < channels ? detectChannels : channels;
+        for (size_t frame = frameCount; frame > 0; --frame) {
+            const int32_t* samples = interleaved + (frame - 1) * channels;
+            for (int ch = 0; ch < detect; ++ch) {
+                if (isAudible(samples[ch])) return frame - 1;
+            }
         }
         return frameCount;
     }
@@ -85,9 +102,11 @@ public:
 
 private:
     size_t firstAudibleFrame(const int32_t* interleaved, size_t frameCount) const {
-        const size_t samples = frameCount * mChannelCount;
-        for (size_t i = 0; i < samples; ++i) {
-            if (isAudible(interleaved[i])) return i / mChannelCount;
+        for (size_t frame = 0; frame < frameCount; ++frame) {
+            const int32_t* samples = interleaved + frame * mChannelCount;
+            for (int ch = 0; ch < mDetectChannels; ++ch) {
+                if (isAudible(samples[ch])) return frame;
+            }
         }
         return frameCount;
     }
@@ -123,6 +142,7 @@ private:
     }
 
     int mChannelCount = 2;
+    int mDetectChannels = 2;
     bool mAwaiting = false;
     uint64_t mDiscardedFrames = 0;
     std::vector<int32_t> mPreRoll;

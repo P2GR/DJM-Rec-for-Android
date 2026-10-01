@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <android/log.h>
+#include <cmath>
 #include <cstring>
 #include <sstream>
 
@@ -53,6 +54,7 @@ int UsbAudioEngine::open(int32_t audioManagerDeviceId, int32_t sampleRateHint, i
     }
     releaseCaptureProcessing();
     mSourceMode = SourceMode::Oboe;
+    mTrackChannels = 0; // multitrack needs the raw USB path's full wire frame
 
     mChannelCount = channelCount;
     switch (bitDepthHint) {
@@ -125,6 +127,7 @@ int UsbAudioEngine::open(int32_t audioManagerDeviceId, int32_t sampleRateHint, i
     // We keep the hardware-reported bit depth (from the USB descriptor) for file headers even
     // though the wire format might be padded into I32 — this is the *true* fidelity of the source.
     mFormat.bitsPerSample = bitDepthHint;
+    mRingChannels = mFormat.channelCount;
 
     mAaudioFramesSinceLog = 0;
     mAaudioBytesSinceLog = 0;
@@ -175,12 +178,20 @@ int UsbAudioEngine::openUsbIso(const UsbIsoAudioSource::Config& isoConfig, int32
     releaseCaptureProcessing();
     mSourceMode = SourceMode::UsbIso;
 
-    // The extracted output is always exactly one stereo pair, regardless of how many channels
-    // are actually present on the wire (isoConfig.totalChannels) -- that wire channel count is
-    // only used internally by UsbIsoAudioSource for its demux math.
+    // The master is always exactly one stereo pair, regardless of how many channels are
+    // actually present on the wire (isoConfig.totalChannels). In multitrack mode every wire
+    // channel additionally feeds the track bus.
+    mTrackChannels = isoConfig.emitAllChannels && isoConfig.totalChannels <= TrackBus::kMaxChannels
+        ? isoConfig.totalChannels : 0;
+    UsbIsoAudioSource::Config sourceConfig = isoConfig;
+    sourceConfig.emitAllChannels = mTrackChannels > 0;
+    sourceConfig.disableRouteFallback = isoConfig.disableRouteFallback || mTrackChannels > 0;
     mUsbIsoSource = std::make_unique<UsbIsoAudioSource>();
     const std::string error = mUsbIsoSource->start(
-        isoConfig, [this](const int32_t* frames, size_t count) { onUsbIsoFrames(frames, count); });
+        sourceConfig,
+        [this](const int32_t* stereo, const int32_t* allChannels, int wireChannels, size_t count) {
+            onUsbIsoFrames(stereo, allChannels, wireChannels, count);
+        });
 
     if (!error.empty()) {
         LOGE("Failed to start USB iso capture: %s", error.c_str());
@@ -208,7 +219,8 @@ int UsbAudioEngine::openUsbIso(const UsbIsoAudioSource::Config& isoConfig, int32
     mFormat.sampleRate = measuredSampleRate;
     mFormat.channelCount = 2;
     mFormat.bitsPerSample = isoConfig.bitResolution;
-    const size_t canonicalBytesPerFrame = bytesPerFrameFor(oboe::AudioFormat::I32, 2);
+    mRingChannels = mFormat.channelCount + mTrackChannels;
+    const size_t canonicalBytesPerFrame = bytesPerFrameFor(oboe::AudioFormat::I32, mRingChannels);
     // 4 s of headroom: on Record the encoder first writes up to 15 s of pre-recorded audio.
     const size_t ringBufferFrames = static_cast<size_t>(mFormat.sampleRate) * 4;
     mRingBuffer = std::make_unique<RingBuffer>(ringBufferFrames * canonicalBytesPerFrame);
@@ -218,13 +230,14 @@ int UsbAudioEngine::openUsbIso(const UsbIsoAudioSource::Config& isoConfig, int32
 
     mStreamOpen.store(true, std::memory_order_release);
     LOGI("USB iso capture open: %d Hz, 2ch extracted from a %dch wire "
-         "format, format=I32 canonical",
-            mFormat.sampleRate, isoConfig.totalChannels);
+         "format, format=I32 canonical, multitrack channels=%d",
+            mFormat.sampleRate, isoConfig.totalChannels, mTrackChannels);
 
         return mFormat.sampleRate;
 }
 
-void UsbAudioEngine::onUsbIsoFrames(const int32_t* interleavedStereo, size_t frameCount) {
+void UsbAudioEngine::onUsbIsoFrames(const int32_t* interleavedStereo, const int32_t* allChannels,
+                                    int wireChannels, size_t frameCount) {
     // --- Invoked on UsbIsoAudioSource's libusb event thread: no blocking I/O below. ---
     // Mirrors the tail of onAudioReady() below -- meter update + optional ring-buffer write --
     // but always against a canonical, already-2-channel buffer (no per-format decode needed
@@ -248,7 +261,39 @@ void UsbAudioEngine::onUsbIsoFrames(const int32_t* interleavedStereo, size_t fra
         mWaveformAnalyzer->pushFrames(processedStereo, frameCount);
     }
     writeLiveFrames(processedStereo, frameCount, 2);
-    routeCapturedFrames(processedStereo, frameCount, 2);
+
+    TrackBus* bus = mTrackBus.load(std::memory_order_acquire);
+    if (!bus) {
+        routeCapturedFrames(processedStereo, frameCount, 2);
+        return;
+    }
+    // Multitrack: process every wire channel, then queue [master pair | all channels] frames
+    // so the encoder writes the master and each track from the same frames.
+    const int channels = bus->channels();
+    static thread_local std::vector<int32_t> tracks;
+    static thread_local std::vector<int32_t> combined;
+    const size_t trackSamples = frameCount * static_cast<size_t>(channels);
+    if (tracks.size() < trackSamples) tracks.resize(trackSamples);
+    if (allChannels && wireChannels == channels) {
+        std::memcpy(tracks.data(), allChannels, trackSamples * sizeof(int32_t));
+    } else {
+        std::fill(tracks.begin(), tracks.begin() + static_cast<std::ptrdiff_t>(trackSamples), 0);
+    }
+    float gains[TrackBus::kMaxTracks];
+    for (int t = 0; t < bus->trackCount(); ++t) gains[t] = mTrackGainLinear[t].load(std::memory_order_relaxed);
+    bus->process(tracks.data(), frameCount, gains, mLimiterEnabled.load(std::memory_order_relaxed),
+                 mTrackWaveformsEnabled.load(std::memory_order_relaxed));
+
+    const int ringChannels = 2 + channels;
+    const size_t combinedSamples = frameCount * static_cast<size_t>(ringChannels);
+    if (combined.size() < combinedSamples) combined.resize(combinedSamples);
+    for (size_t f = 0; f < frameCount; ++f) {
+        int32_t* dst = combined.data() + f * ringChannels;
+        dst[0] = processedStereo[f * 2];
+        dst[1] = processedStereo[f * 2 + 1];
+        std::memcpy(dst + 2, tracks.data() + f * channels, static_cast<size_t>(channels) * sizeof(int32_t));
+    }
+    routeCapturedFrames(combined.data(), frameCount, ringChannels);
 }
 
 oboe::DataCallbackResult UsbAudioEngine::onAudioReady(oboe::AudioStream* /*stream*/, void* audioData,
@@ -391,8 +436,14 @@ void UsbAudioEngine::configureCaptureProcessing() {
     auto limiter = std::make_unique<SafetyLimiter>();
     limiter->configure(mFormat.sampleRate, mFormat.channelCount);
     mLimiterStorage = std::move(limiter);
+    if (mTrackChannels > 0) {
+        mTrackBusStorage = std::make_unique<TrackBus>(mFormat.sampleRate, mTrackChannels);
+        mTrackLayout = mTrackBusStorage->layout();
+        mTrackBus.store(mTrackBusStorage.get(), std::memory_order_release);
+    }
+    // History frames match recording-ring frames (master plus every track channel).
     mHistoryStorage = std::make_unique<PreRecordHistory>(
-        mFormat.sampleRate, mFormat.channelCount, kPreRecordSeconds);
+        mFormat.sampleRate, mRingChannels, kPreRecordSeconds);
     mHistoryFrozen.store(false, std::memory_order_relaxed);
     mHistoryClearRequested.store(false, std::memory_order_relaxed);
     mLimiterReductionDb.store(0.0f, std::memory_order_relaxed);
@@ -403,8 +454,13 @@ void UsbAudioEngine::configureCaptureProcessing() {
 void UsbAudioEngine::releaseCaptureProcessing() {
     mLimiter.store(nullptr, std::memory_order_release);
     mHistory.store(nullptr, std::memory_order_release);
+    mTrackBus.store(nullptr, std::memory_order_release);
     mLimiterStorage.reset();
     mHistoryStorage.reset();
+    mTrackBusStorage.reset();
+    mTrackLayout.clear();
+    for (auto& writer : mPendingTrackWriters) writer.reset();
+    for (auto& writer : mPendingTrackRolls) writer.reset();
 }
 
 bool UsbAudioEngine::takePreRecordedAudio(std::vector<int32_t>& out) {
@@ -446,6 +502,7 @@ bool UsbAudioEngine::startRecording(const std::string& path, ContainerFormat for
         LOGE("Writer failed to open output file: %s", path.c_str());
         mWriter.reset();
         mPendingCompanion.reset();
+        for (auto& writer : mPendingTrackWriters) writer.reset();
         return false;
     }
 
@@ -460,9 +517,13 @@ bool UsbAudioEngine::startRecording(const std::string& path, ContainerFormat for
     mPreRecordedMillis.store(0, std::memory_order_relaxed);
     mTrailingSilenceFrames.store(0, std::memory_order_relaxed);
     mCompanionErrorCode.store(0, std::memory_order_relaxed);
+    mTrackErrorMask.store(0, std::memory_order_relaxed);
     {
         std::lock_guard<std::mutex> writerLock(mWriterMutex);
         mCompanionWriter = std::move(mPendingCompanion);
+        for (size_t t = 0; t < mTrackWriters.size(); ++t) {
+            mTrackWriters[t] = std::move(mPendingTrackWriters[t]);
+        }
     }
     // Keep live history: monitoring is already writing the analyzer on the audio thread.
     mRecording.store(true, std::memory_order_release);
@@ -484,6 +545,7 @@ bool UsbAudioEngine::startRecordingFd(int fd, ContainerFormat format) {
         LOGE("Writer failed to open MediaStore fd");
         mWriter.reset();
         mPendingCompanion.reset();
+        for (auto& writer : mPendingTrackWriters) writer.reset();
         return false;
     }
 
@@ -498,9 +560,13 @@ bool UsbAudioEngine::startRecordingFd(int fd, ContainerFormat format) {
     mPreRecordedMillis.store(0, std::memory_order_relaxed);
     mTrailingSilenceFrames.store(0, std::memory_order_relaxed);
     mCompanionErrorCode.store(0, std::memory_order_relaxed);
+    mTrackErrorMask.store(0, std::memory_order_relaxed);
     {
         std::lock_guard<std::mutex> writerLock(mWriterMutex);
         mCompanionWriter = std::move(mPendingCompanion);
+        for (size_t t = 0; t < mTrackWriters.size(); ++t) {
+            mTrackWriters[t] = std::move(mPendingTrackWriters[t]);
+        }
     }
     // Keep live history: monitoring is already writing the analyzer on the audio thread.
     mRecording.store(true, std::memory_order_release);
@@ -521,13 +587,26 @@ bool UsbAudioEngine::rollRecordingFd(int fd, ContainerFormat format) {
     if (!next->openFd(fd, mFormat)) return false;
 
     std::unique_ptr<AudioWriter> previous;
+    std::array<std::unique_ptr<AudioWriter>, TrackBus::kMaxTracks> previousTracks;
     {
+        // One lock for master and tracks: every file's part boundary lands on the same frame.
         std::lock_guard<std::mutex> writerLock(mWriterMutex);
         previous = std::move(mWriter);
         mWriter = std::move(next);
+        for (size_t t = 0; t < mTrackWriters.size(); ++t) {
+            if (!mPendingTrackRolls[t]) continue;
+            previousTracks[t] = std::move(mTrackWriters[t]);
+            mTrackWriters[t] = std::move(mPendingTrackRolls[t]);
+        }
     }
     const bool finalized = !previous || previous->close();
     if (!finalized) mRecordingErrorCode.store(3, std::memory_order_release);
+    for (size_t t = 0; t < previousTracks.size(); ++t) {
+        if (previousTracks[t] && !previousTracks[t]->close()) {
+            LOGE("Track %zu part failed to finalize; the master recording continues", t + 1);
+            mTrackErrorMask.fetch_or(1u << t, std::memory_order_release);
+        }
+    }
     LOGI("Recording rolled to next MediaStore part (previous finalized=%d)", finalized);
     // Swap succeeded and next writer is live. Finalization failure is exposed separately via
     // getRecordingErrorCode(); reporting roll failure here could make caller delete active part.
@@ -546,6 +625,14 @@ int64_t UsbAudioEngine::checkpointRecording() {
         !mCompanionWriter->checkpoint()) {
         LOGW("Companion writer checkpoint failed; the master recording continues");
         mCompanionErrorCode.store(2, std::memory_order_release);
+    }
+    for (size_t t = 0; t < mTrackWriters.size(); ++t) {
+        const uint32_t bit = 1u << t;
+        if (mTrackWriters[t] && (mTrackErrorMask.load(std::memory_order_relaxed) & bit) == 0 &&
+            !mTrackWriters[t]->checkpoint()) {
+            LOGW("Track %zu checkpoint failed; the master recording continues", t + 1);
+            mTrackErrorMask.fetch_or(bit, std::memory_order_release);
+        }
     }
     return static_cast<int64_t>(mWriter->bytesWritten());
 }
@@ -664,7 +751,16 @@ int64_t UsbAudioEngine::stopRecording() {
             }
             mCompanionWriter.reset();
         }
+        for (size_t t = 0; t < mTrackWriters.size(); ++t) {
+            if (!mTrackWriters[t]) continue;
+            if (!mTrackWriters[t]->close()) {
+                LOGE("Track %zu writer failed while finalizing", t + 1);
+                mTrackErrorMask.fetch_or(1u << t, std::memory_order_release);
+            }
+            mTrackWriters[t].reset();
+        }
     }
+    for (auto& writer : mPendingTrackRolls) writer.reset();
     // Monitoring resumes filling the pre-record history from empty; the capture thread owns
     // the clear so it never races a write.
     mHistoryClearRequested.store(true, std::memory_order_relaxed);
@@ -691,31 +787,47 @@ void UsbAudioEngine::closeEngine() {
     releaseCaptureProcessing();
     mPendingCompanion.reset();
     mRingBuffer.reset();
+    mTrackChannels = 0;
     mSourceMode = SourceMode::None;
     mStreamOpen.store(false, std::memory_order_release);
 }
 
 void UsbAudioEngine::encoderThreadLoop() {
     constexpr size_t kChunkFrames = 960; // ~20ms chunks @48kHz; small enough for low file-write latency
-    std::vector<int32_t> chunk(kChunkFrames * mFormat.channelCount);
+    // Ring frames hold the master channels, then (multitrack only) every track channel.
+    const int masterChannels = mFormat.channelCount;
+    const int ringChannels = mRingChannels;
+    std::vector<int32_t> chunk(kChunkFrames * ringChannels);
+    std::vector<int32_t> masterScratch;
+    std::vector<int32_t> trackScratch;
     uint64_t framesEncoded = 0;
-    const size_t bytesPerFrame = sizeof(int32_t) * mFormat.channelCount;
+    const size_t bytesPerFrame = sizeof(int32_t) * ringChannels;
     // Writes frames that passed the leading-silence gate; elapsed time counts only audio
     // that actually lands in the file.
     auto writeEncoded = [&](const int32_t* frames, size_t frameCount) {
         std::lock_guard<std::mutex> writerLock(mWriterMutex);
-        if (!mWriter || !mWriter->writeFrames(frames, frameCount)) return false;
+        const int32_t* master = frames;
+        if (ringChannels != masterChannels) {
+            masterScratch.resize(frameCount * masterChannels);
+            for (size_t f = 0; f < frameCount; ++f) {
+                std::memcpy(masterScratch.data() + f * masterChannels, frames + f * ringChannels,
+                            static_cast<size_t>(masterChannels) * sizeof(int32_t));
+            }
+            master = masterScratch.data();
+        }
+        if (!mWriter || !mWriter->writeFrames(master, frameCount)) return false;
         if (mCompanionWriter && mCompanionErrorCode.load(std::memory_order_relaxed) == 0 &&
-            !mCompanionWriter->writeFrames(frames, frameCount)) {
+            !mCompanionWriter->writeFrames(master, frameCount)) {
             LOGE("Companion writer failed; the master recording continues");
             mCompanionErrorCode.store(1, std::memory_order_release);
         }
+        if (ringChannels != masterChannels) writeTrackFrames(frames, frameCount, trackScratch);
         framesEncoded += frameCount;
         mElapsedMillis.store(
             static_cast<int64_t>(framesEncoded * 1000 / mFormat.sampleRate),
             std::memory_order_relaxed);
         const size_t lastAudible =
-            LeadingSilenceGate::lastAudibleFrame(frames, frameCount, mFormat.channelCount);
+            LeadingSilenceGate::lastAudibleFrame(master, frameCount, masterChannels);
         if (lastAudible == frameCount) {
             mTrailingSilenceFrames.fetch_add(frameCount, std::memory_order_relaxed);
         } else {
@@ -728,11 +840,11 @@ void UsbAudioEngine::encoderThreadLoop() {
     if (mPreRecordAtStart) {
         std::vector<int32_t> preRecorded;
         if (takePreRecordedAudio(preRecorded)) {
-            const size_t totalFrames = preRecorded.size() / mFormat.channelCount;
+            const size_t totalFrames = preRecorded.size() / ringChannels;
             for (size_t offset = 0; offset < totalFrames; offset += kChunkFrames) {
                 const size_t count = std::min(kChunkFrames, totalFrames - offset);
                 const bool wasAwaiting = mSilenceGate.awaiting();
-                if (!mSilenceGate.process(preRecorded.data() + offset * mFormat.channelCount,
+                if (!mSilenceGate.process(preRecorded.data() + offset * ringChannels,
                                           count, writeEncoded)) {
                     LOGE("Encoder write failed while writing the pre-record buffer");
                     mRecordingErrorCode.store(1, std::memory_order_release);
@@ -790,8 +902,9 @@ void UsbAudioEngine::encoderThreadLoop() {
 }
 
 void UsbAudioEngine::resetSilenceGate() {
+    // Only the master decides when audio starts; tracks are trimmed on the same frame.
     mSilenceGate.reset(mTrimLeadingSilence.load(std::memory_order_acquire),
-                       mFormat.channelCount, mFormat.sampleRate);
+                       mRingChannels, mFormat.sampleRate, mFormat.channelCount);
     mTrimmedLeadingMillis.store(0, std::memory_order_relaxed);
     mAwaitingAudio.store(mSilenceGate.awaiting(), std::memory_order_release);
 }
@@ -872,6 +985,8 @@ std::string UsbAudioEngine::getDiagnosticSummary() {
         << "pre_recorded_ms=" << mPreRecordedMillis.load(std::memory_order_relaxed) << '\n'
         << "trailing_silence_ms=" << getTrailingSilenceMillis() << '\n'
         << "companion_error_code=" << mCompanionErrorCode.load(std::memory_order_relaxed) << '\n'
+        << "multitrack_channels=" << mTrackChannels << " ring_channels=" << mRingChannels
+        << " track_error_mask=" << mTrackErrorMask.load(std::memory_order_relaxed) << '\n'
         << "levels_db=peak_l:" << mLeftPeakDb.load(std::memory_order_relaxed)
         << " rms_l:" << mLeftRmsDb.load(std::memory_order_relaxed)
         << " peak_r:" << mRightPeakDb.load(std::memory_order_relaxed)
@@ -957,6 +1072,127 @@ int32_t UsbAudioEngine::getCompanionErrorCode() const {
 bool UsbAudioEngine::isAwaitingAudio() const {
     return mRecording.load(std::memory_order_acquire) &&
            mAwaitingAudio.load(std::memory_order_acquire);
+}
+
+// --- Multitrack -------------------------------------------------------------------------
+
+void UsbAudioEngine::writeTrackFrames(const int32_t* combined, size_t frameCount,
+                                      std::vector<int32_t>& scratch) {
+    const int masterChannels = mFormat.channelCount;
+    const int ringChannels = mRingChannels;
+    const uint32_t failed = mTrackErrorMask.load(std::memory_order_relaxed);
+    for (size_t t = 0; t < mTrackLayout.size() && t < mTrackWriters.size(); ++t) {
+        AudioWriter* writer = mTrackWriters[t].get();
+        const uint32_t bit = 1u << t;
+        if (!writer || (failed & bit) != 0) continue;
+        const TrackLayout& track = mTrackLayout[t];
+        scratch.resize(frameCount * static_cast<size_t>(track.width));
+        for (size_t f = 0; f < frameCount; ++f) {
+            const int32_t* src = combined + f * ringChannels + masterChannels + track.first;
+            for (int ch = 0; ch < track.width; ++ch) scratch[f * track.width + ch] = src[ch];
+        }
+        if (!writer->writeFrames(scratch.data(), frameCount)) {
+            // A full or failing track file never stops the master or the other tracks.
+            LOGE("Track %zu writer failed; the master recording continues", t + 1);
+            mTrackErrorMask.fetch_or(bit, std::memory_order_release);
+        }
+    }
+}
+
+std::unique_ptr<AudioWriter> UsbAudioEngine::makeTrackWriter(int track, int fd, ContainerFormat format) {
+    if (fd < 0 || track < 0 || track >= static_cast<int>(mTrackLayout.size())) return nullptr;
+    std::unique_ptr<AudioWriter> writer;
+    switch (format) {
+        case ContainerFormat::Wav: writer = std::make_unique<WavWriter>(); break;
+        case ContainerFormat::Flac: writer = std::make_unique<FlacWriter>(); break;
+        case ContainerFormat::Mp3: writer = std::make_unique<Mp3Writer>(); break;
+    }
+    AudioFormatInfo trackFormat = mFormat;
+    trackFormat.channelCount = mTrackLayout[track].width;
+    if (!writer->openFd(fd, trackFormat)) {
+        LOGE("Track %d writer failed to open MediaStore fd", track + 1);
+        return nullptr;
+    }
+    return writer;
+}
+
+int UsbAudioEngine::getTrackChannelCount() const {
+    const TrackBus* bus = mTrackBus.load(std::memory_order_acquire);
+    return bus ? bus->channels() : 0;
+}
+
+bool UsbAudioEngine::prepareTrackFd(int track, int fd, ContainerFormat format) {
+    std::lock_guard<std::mutex> lock(mControlMutex);
+    if (!mStreamOpen.load() || mRecording.load() || track < 0 ||
+        track >= static_cast<int>(mPendingTrackWriters.size())) return false;
+    mPendingTrackWriters[track] = makeTrackWriter(track, fd, format);
+    return mPendingTrackWriters[track] != nullptr;
+}
+
+void UsbAudioEngine::clearPendingTracks() {
+    std::lock_guard<std::mutex> lock(mControlMutex);
+    for (auto& writer : mPendingTrackWriters) writer.reset();
+    for (auto& writer : mPendingTrackRolls) writer.reset();
+}
+
+bool UsbAudioEngine::prepareTrackRollFd(int track, int fd, ContainerFormat format) {
+    std::lock_guard<std::mutex> lock(mControlMutex);
+    if (!mRecording.load() || track < 0 || track >= static_cast<int>(mPendingTrackRolls.size())) return false;
+    mPendingTrackRolls[track] = makeTrackWriter(track, fd, format);
+    return mPendingTrackRolls[track] != nullptr;
+}
+
+uint32_t UsbAudioEngine::getTrackErrorMask() const {
+    return mTrackErrorMask.load(std::memory_order_acquire);
+}
+
+void UsbAudioEngine::setTrackGainDb(int track, float gainDb) {
+    if (track < 0 || track >= TrackBus::kMaxTracks || !std::isfinite(gainDb)) return;
+    mTrackGainLinear[track].store(std::pow(10.0f, std::clamp(gainDb, -24.0f, 12.0f) / 20.0f),
+                                  std::memory_order_relaxed);
+}
+
+void UsbAudioEngine::setTrackWaveformsEnabled(bool enabled) {
+    mTrackWaveformsEnabled.store(enabled, std::memory_order_release);
+}
+
+int UsbAudioEngine::getTrackLevels(float* out, int maxChannels) {
+    // Polled by the UI: never wait behind a slow open or a mixer routing change.
+    std::unique_lock<std::mutex> lock(mControlMutex, std::try_to_lock);
+    if (!lock.owns_lock()) return -1;
+    TrackBus* bus = mTrackBus.load(std::memory_order_acquire);
+    return bus ? bus->readLevels(out, maxChannels) : 0;
+}
+
+void UsbAudioEngine::getTrackWaveformBins(int track, float* outBins) const {
+    std::unique_lock<std::mutex> lock(mControlMutex, std::try_to_lock);
+    const TrackBus* bus = lock.owns_lock() ? mTrackBus.load(std::memory_order_acquire) : nullptr;
+    if (bus) {
+        bus->readWaveform(track, outBins);
+    } else {
+        std::memset(outBins, 0, (kWaveformBinCount * 4 + 2) * sizeof(float));
+    }
+}
+
+int UsbAudioEngine::getMasterChannelOffset() const {
+    std::unique_lock<std::mutex> lock(mControlMutex, std::try_to_lock);
+    if (!lock.owns_lock()) return -1;
+    if (mSourceMode == SourceMode::UsbIso && mUsbIsoSource) return mUsbIsoSource->resolvedChannelOffset();
+    return mSourceMode == SourceMode::Oboe ? 0 : -1;
+}
+
+int UsbAudioEngine::setPioneerTrackSource(int output, int source) {
+    std::lock_guard<std::mutex> lock(mControlMutex);
+    if (mSourceMode != SourceMode::UsbIso || !mUsbIsoSource || mTrackChannels == 0) {
+        return UsbIsoAudioSource::kRouteUnsupported;
+    }
+    return mUsbIsoSource->setPioneerOutputSource(output, source);
+}
+
+int UsbAudioEngine::getPioneerTrackSource(int output) {
+    std::lock_guard<std::mutex> lock(mControlMutex);
+    if (mSourceMode != SourceMode::UsbIso || !mUsbIsoSource) return -1;
+    return mUsbIsoSource->readPioneerOutputSource(output);
 }
 
 } // namespace djmrec

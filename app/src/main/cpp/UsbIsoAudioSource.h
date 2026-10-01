@@ -64,6 +64,11 @@ public:
         int vendorId = -1;
         int productId = -1;
         std::vector<uint8_t> rawDescriptors;
+        // Multitrack ("advanced mode"): also hand every decoded wire channel to the callback,
+        // and never re-route all Pioneer outputs to MIX when the stream starts silent -- that
+        // fallback would overwrite the per-track routing.
+        bool emitAllChannels = false;
+        bool disableRouteFallback = false;
     };
 
     struct TransferStatsSnapshot {
@@ -76,9 +81,13 @@ public:
         uint64_t resubmitFailures = 0;
     };
 
-    /** Canonical (left-justified, sign-extended) int32 interleaved STEREO frames.
+    /** Canonical (left-justified, sign-extended) int32 interleaved STEREO frames, plus -- only
+     *  when Config::emitAllChannels -- the same frames with every wire channel (@p allChannels,
+     *  @p wireChannels per frame; null otherwise).
      *  Invoked on this object's internal libusb event-handling thread -- must not block. */
-    using FrameCallback = std::function<void(const int32_t* interleavedStereo, size_t frameCount)>;
+    using FrameCallback = std::function<void(const int32_t* interleavedStereo,
+                                             const int32_t* allChannels, int wireChannels,
+                                             size_t frameCount)>;
 
     UsbIsoAudioSource() = default;
     ~UsbIsoAudioSource();
@@ -102,6 +111,25 @@ public:
     int waitForMeasuredSampleRate(int timeoutMs);
 
     TransferStatsSnapshot getTransferStats() const;
+
+    /** First channel of the stereo pair being emitted; -1 while AUTO has not locked a pair. */
+    int resolvedChannelOffset() const { return mResolvedChannelOffset.load(std::memory_order_relaxed); }
+
+    /**
+     * Multitrack only: routes Pioneer USB output @p output (0-based pair) to vendor source
+     * @p source. The previous route is read first and the change verified by reading it back,
+     * so stop() can restore it; outputs whose route cannot be read are refused. Blocking
+     * control transfers -- call from a control thread, never the audio callback. Returns 0 on
+     * success or a negative kRoute* error.
+     */
+    int setPioneerOutputSource(int output, int source);
+    /** Current vendor source of Pioneer USB output @p output, or -1 when it cannot be read. */
+    int readPioneerOutputSource(int output);
+
+    static constexpr int kRouteUnsupported = -1;
+    static constexpr int kRouteUnreadable = -2;
+    static constexpr int kRouteWriteFailed = -3;
+    static constexpr int kRouteNotVerified = -4;
 
     /** Release-safe, read-only snapshot used by exported support reports. */
     std::string diagnosticSummary() const;
@@ -164,6 +192,7 @@ private:
     std::vector<uint8_t> mCarryover; // partial-frame bytes carried over between packets
     std::vector<uint8_t> mWorking;   // scratch: carryover + newest packet, reused per call
     std::vector<int32_t> mScratch;   // reusable decode buffer, grown as needed
+    std::vector<int32_t> mWideScratch; // every decoded wire channel (Config::emitAllChannels)
     std::vector<uint32_t> mPairPeaks;
     ChannelActivity mChannelActivity;
     std::atomic<int> mResolvedChannelOffset{-1};

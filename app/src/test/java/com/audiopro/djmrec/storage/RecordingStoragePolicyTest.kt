@@ -25,6 +25,28 @@ class RecordingStoragePolicyTest {
     }
 
     @Test
+    fun `track files live in a folder named after the set`() {
+        assertEquals("Music/DJMRec/mix_20260814_120000 tracks", RecordingOutputManager.trackFolder("20260814_120000"))
+    }
+
+    @Test
+    fun `track file names carry the track number and source`() {
+        assertEquals("02 CH1 Post-fader.wav",
+            RecordingOutputManager.trackDisplayName(2, "CH1 Post-fader", RecordingFormat.WAV, 1))
+        assertEquals("03 USB 5-6_part02.wav",
+            RecordingOutputManager.trackDisplayName(3, "USB 5-6", RecordingFormat.WAV, 2))
+        assertEquals("04 USB 7-8.flac",
+            RecordingOutputManager.trackDisplayName(4, "USB 7-8", RecordingFormat.FLAC, 2))
+    }
+
+    @Test
+    fun `track file names drop characters storage rejects`() {
+        assertEquals("05 Mic A B.wav",
+            RecordingOutputManager.trackDisplayName(5, " Mic / A:B? ", RecordingFormat.WAV, 1))
+        assertEquals("06 Track 06.wav", RecordingOutputManager.trackDisplayName(6, "...", RecordingFormat.WAV, 1))
+    }
+
+    @Test
     fun `24-bit stereo estimate matches PCM byte rate`() {
         assertEquals(288_000L, RecordingStoragePolicy.worstCaseBytesPerSecond(48_000, 2, 24))
     }

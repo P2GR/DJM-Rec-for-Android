@@ -47,6 +47,13 @@ public:
     void pushFrames(const int32_t* interleavedStereo, size_t frameCount);
 
     /**
+     * Same as above for one track inside a wider interleaved frame: reads @p channels (1 or 2)
+     * samples starting at @p offset of every @p stride-sample frame. A mono track is analyzed
+     * as identical left and right so its bins match a stereo track's scale.
+     */
+    void pushFrames(const int32_t* interleaved, size_t frameCount, int stride, int offset, int channels);
+
+    /**
      * Copies the most recently committed waveform snapshot into @p outBins,
      * which must be at least kBinCount * 4 floats. Layout:
      *   [amp0, low0, mid0, high0, amp1, low1, mid1, high1, ...]

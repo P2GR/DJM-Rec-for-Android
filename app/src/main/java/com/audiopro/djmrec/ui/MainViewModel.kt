@@ -16,6 +16,7 @@ import com.audiopro.djmrec.BuildConfig
 import com.audiopro.djmrec.DjmRecApplication
 import com.audiopro.djmrec.audio.AudioEngine
 import com.audiopro.djmrec.audio.ChannelLevel
+import com.audiopro.djmrec.audio.MultitrackLayout
 import com.audiopro.djmrec.audio.RecordingFormat
 import com.audiopro.djmrec.audio.RecordingHealth
 import com.audiopro.djmrec.audio.RecordingState
@@ -35,9 +36,15 @@ import com.audiopro.djmrec.streaming.YouTubeBroadcastState
 import com.audiopro.djmrec.streaming.YouTubeBroadcastStatus
 import com.audiopro.djmrec.streaming.YouTubeFinishResult
 import com.audiopro.djmrec.streaming.YouTubeLiveSession
+import com.audiopro.djmrec.usb.PioneerTrackRouting
 import com.audiopro.djmrec.usb.UsbAudioDeviceInfo
 import com.audiopro.djmrec.usb.UsbAudioManager
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -62,6 +69,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val KEY_DJMREC_PORT_MODE = "djmrec_port_mode"
         private const val KEY_WAVEFORM_ENABLED = "waveform_enabled"
         private const val KEY_ONBOARDING_COMPLETE = "onboarding_complete"
+        private const val KEY_ADVANCED_MODE = "advanced_mode"
     }
 
     private val usbAudioManager = (application as DjmRecApplication).usbAudioManager
@@ -94,7 +102,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun captureChannelOffset(device: UsbAudioDeviceInfo): Int =
         _usbChannelOffset.value.takeIf { it >= 0 }
             ?: device.allInOneProfile?.recordChannelOffset
-            ?: if (device.pioneerMixerProfile != null) UsbAudioManager.AUTO_CHANNEL_OFFSET else 0
+            ?: if (multitrackFor(device)) defaultMultitrackMasterOffset(device)
+            else if (device.pioneerMixerProfile != null) UsbAudioManager.AUTO_CHANNEL_OFFSET else 0
+
+    /**
+     * Advanced mode never auto-picks the master: with channels routed to other pairs, the
+     * loudest pair can be a deck instead of the mix. Mixers with a routing catalog put the
+     * master on their master slot; other Pioneer profiles use their MIX pair; anything else
+     * USB 1/2.
+     */
+    private fun defaultMultitrackMasterOffset(device: UsbAudioDeviceInfo): Int =
+        PioneerTrackRouting.catalogFor(device.pioneerMixerProfile)?.masterOffset
+            ?: device.pioneerMixerProfile?.defaultCaptureChannelOffset
+            ?: 0
+
+    /** Advanced mode is on and this input has more than the master pair to record. */
+    private fun multitrackFor(device: UsbAudioDeviceInfo?): Boolean =
+        device != null && _advancedMode.value && device.requiresIsoCapture &&
+            MultitrackLayout.isAvailable(device.channelCount)
     private val sessionEvents = (application as DjmRecApplication).sessionEvents
     val lastSaved = sessionEvents.lastSaved.asStateFlow()
     // Default ON unless the user granted the battery-optimization exemption (Background usage):
@@ -252,11 +277,51 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _djmrecPortMode = MutableStateFlow(false)
     val djmrecPortMode: StateFlow<Boolean> = _djmrecPortMode.asStateFlow()
 
+    // --- Multitrack (advanced mode) ---
+    private val _advancedMode = MutableStateFlow(prefs.getBoolean(KEY_ADVANCED_MODE, false))
+    val advancedMode: StateFlow<Boolean> = _advancedMode.asStateFlow()
+    private val _trackChannels = MutableStateFlow(0)
+    private val _masterChannelOffset = MutableStateFlow(-1)
+    private val _trackLevelsRaw = MutableStateFlow(FloatArray(0))
+    private val _multitrackSettings = MutableStateFlow(MultitrackSettings())
+    val multitrackSettings: StateFlow<MultitrackSettings> = _multitrackSettings.asStateFlow()
+    /** Waveform histories for the multitrack timeline; [timelineRevision] ticks on new data. */
+    val multitrackTimeline = MultitrackTimeline()
+    private val _timelineRevision = MutableStateFlow(0L)
+    val timelineRevision: StateFlow<Long> = _timelineRevision.asStateFlow()
+
+    /** True while the open capture session records every track (advanced mode, raw USB path). */
+    val multitrackActive: StateFlow<Boolean> = _trackChannels
+        .combine(_advancedMode) { channels, advanced -> advanced && channels > 0 }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    val multitrackTracks: StateFlow<List<MultitrackTrack>> = combine(
+        usbAudioManager.deviceState, _advancedMode, _trackChannels, _masterChannelOffset, _multitrackSettings
+    ) { device, advanced, openChannels, resolvedMaster, settings ->
+        if (device == null || !advanced || !MultitrackLayout.isAvailable(device.channelCount) ||
+            !device.requiresIsoCapture) return@combine emptyList()
+        // Before capture opens, preview the tracks the device will provide.
+        val channels = if (openChannels > 0) openChannels else device.channelCount
+        val master = resolvedMaster.takeIf { it >= 0 } ?: captureChannelOffset(device)
+        MultitrackRows.build(device, channels, master, settings)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** One reading per track, in [multitrackTracks] order. */
+    val trackLevels: StateFlow<List<StereoLevels>> = combine(_trackLevelsRaw, multitrackTracks) { raw, tracks ->
+        MultitrackLayout.trackLevels(raw, tracks.map { it.channels })
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
     @SuppressLint("StaticFieldLeak")
     private var boundService: RecordingService? = null
     private var isBound = false
     private var uiVisible = false
     private var waveformVisible = false
+    private var multitrackVisible = false
+
+    fun setMultitrackVisible(visible: Boolean) {
+        multitrackVisible = visible
+        boundService?.setMultitrackVisible(visible)
+    }
 
     fun setUiVisible(visible: Boolean) {
         uiVisible = visible
@@ -287,6 +352,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             viewModelScope.launch { service.waveformBins.collect { _waveformBins.value = it } }
             viewModelScope.launch { service.health.collect { _recordingHealth.value = it } }
             viewModelScope.launch { service.liveState.collect { _liveStreamState.value = it } }
+            viewModelScope.launch { service.trackLevels.collect { _trackLevelsRaw.value = it } }
+            viewModelScope.launch { service.masterChannelOffset.collect { _masterChannelOffset.value = it } }
+            viewModelScope.launch {
+                service.trackChannels.collect { channels ->
+                    _trackChannels.value = channels
+                    multitrackTimeline.clear()
+                    _timelineRevision.value++
+                    if (channels > 0) {
+                        pushTrackGains()
+                        applyTrackRouting()
+                    } else {
+                        _multitrackSettings.value = _multitrackSettings.value.copy(
+                            currentSources = emptyMap(), routingErrors = emptyMap()
+                        )
+                    }
+                }
+            }
+            viewModelScope.launch {
+                service.waveformBins.collect { bins ->
+                    if (!_advancedMode.value) return@collect
+                    multitrackTimeline.master.accept(bins)
+                    _timelineRevision.value++
+                }
+            }
+            viewModelScope.launch {
+                service.trackWaveforms.collect { snapshots ->
+                    if (snapshots.isEmpty()) return@collect
+                    multitrackTimeline.acceptTracks(snapshots)
+                    _timelineRevision.value++
+                }
+            }
+            service.setMultitrackVisible(multitrackVisible)
+            pushTrackGains()
             livePreview?.let(service::attachLivePreview)
             ensureLiveMonitoring()
         }
@@ -320,6 +418,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val storedPair = prefs.getInt(pairKey, UsbAudioManager.AUTO_CHANNEL_OFFSET)
                 _usbChannelOffset.value = storedPair.takeIf { it >= 0 && it % 2 == 0 && it + 1 < device.channelCount }
                     ?: UsbAudioManager.AUTO_CHANNEL_OFFSET
+                _multitrackSettings.value = loadMultitrackSettings(device)
+                pushTrackGains()
                 delay(250L)
                 if (_recordingState.value is RecordingState.Idle ||
                     _recordingState.value is RecordingState.Error) {
@@ -395,22 +495,145 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // the whole point of exposing the picker: audition pairs against live audio, the same
         // way the Windows Setting Utility lets you flip MIX/REC OUT between USB pairs and watch
         // levels move. Never auto-restart out of Recording/Paused -- that would kill a take.
-        if (_recordingState.value is RecordingState.Monitoring) {
-            val context = getApplication<Application>()
-            _recordingState.value = RecordingState.Preparing
-            viewModelScope.launch {
-                sendCommand(RecordingService.ACTION_STOP)
-                val stopped = withTimeoutOrNull(5_000L) {
-                    boundService?.state?.first { it is RecordingState.Idle || it is RecordingState.Error }
-                }
-                if (stopped == null) {
-                    _recordingState.value = RecordingState.Error("Could not change the USB pair. Stop capture and reconnect the mixer.")
-                } else {
-                    _recordingState.value = stopped
-                    startMonitoringDevice(context)
-                }
+        restartMonitoring("Could not change the USB pair. Stop capture and reconnect the mixer.")
+    }
+
+    private fun restartMonitoring(failureMessage: String) {
+        if (_recordingState.value !is RecordingState.Monitoring) return
+        val context = getApplication<Application>()
+        _recordingState.value = RecordingState.Preparing
+        viewModelScope.launch {
+            sendCommand(RecordingService.ACTION_STOP)
+            val stopped = withTimeoutOrNull(5_000L) {
+                boundService?.state?.first { it is RecordingState.Idle || it is RecordingState.Error }
+            }
+            if (stopped == null) {
+                _recordingState.value = RecordingState.Error(failureMessage)
+            } else {
+                _recordingState.value = stopped
+                startMonitoringDevice(context)
             }
         }
+    }
+
+    /**
+     * Advanced mode records every input pair as its own track next to the master. Capture
+     * reopens so the native engine can carry every channel (only while not recording).
+     */
+    fun setAdvancedMode(enabled: Boolean) {
+        if (saving.value || liveStreamState.value.isActive || enabled == _advancedMode.value) return
+        if (_recordingState.value is RecordingState.Recording ||
+            _recordingState.value is RecordingState.Paused ||
+            _recordingState.value is RecordingState.Preparing) return
+        prefs.edit().putBoolean(KEY_ADVANCED_MODE, enabled).apply()
+        _advancedMode.value = enabled
+        multitrackTimeline.clear()
+        restartMonitoring("Could not switch advanced mode. Stop capture and reconnect the mixer.")
+    }
+
+    private fun trackSettingsKey(device: UsbAudioDeviceInfo) = "mt_${device.vendorId}_${device.productId}"
+
+    private fun loadMultitrackSettings(device: UsbAudioDeviceInfo): MultitrackSettings {
+        val key = trackSettingsKey(device)
+        val tracks = MultitrackLayout.tracks(device.channelCount)
+        return MultitrackSettings(
+            armed = tracks.mapNotNull { track ->
+                prefs.getString("${key}_armed_${track.index}", null)?.let { track.index to (it == "1") }
+            }.toMap(),
+            gainsDb = tracks.associate { it.index to prefs.getFloat("${key}_gain_${it.index}", 0f) },
+            chosenSources = tracks.mapNotNull { track ->
+                prefs.getInt("${key}_source_${track.index}", -1).takeIf { it >= 0 }?.let { track.index to it }
+            }.toMap()
+        )
+    }
+
+    private fun captureSettingsLocked(): Boolean = saving.value ||
+        _recordingState.value is RecordingState.Recording ||
+        _recordingState.value is RecordingState.Paused
+
+    fun setTrackArmed(track: Int, armed: Boolean) {
+        val device = deviceState.value ?: return
+        if (captureSettingsLocked()) return
+        prefs.edit().putString("${trackSettingsKey(device)}_armed_$track", if (armed) "1" else "0").apply()
+        _multitrackSettings.value = _multitrackSettings.value.let { it.copy(armed = it.armed + (track to armed)) }
+    }
+
+    /** Applies immediately; [persist] = false while a slider is still moving. */
+    fun setTrackGainDb(track: Int, gainDb: Float, persist: Boolean = true) {
+        val device = deviceState.value ?: return
+        if (captureSettingsLocked()) return
+        val value = (Math.round(gainDb.coerceIn(-24f, 12f) * 2f) / 2f)
+        if (persist) prefs.edit().putFloat("${trackSettingsKey(device)}_gain_$track", value).apply()
+        _multitrackSettings.value = _multitrackSettings.value.let { it.copy(gainsDb = it.gainsDb + (track to value)) }
+        boundService?.setTrackGainDb(track, value)
+    }
+
+    /** Engine track gains are global; push this mixer's values (0 dB for unused tracks). */
+    private fun pushTrackGains() {
+        val service = boundService ?: return
+        val gains = _multitrackSettings.value.gainsDb
+        for (track in 0 until MultitrackLayout.MAX_TRACKS) service.setTrackGainDb(track, gains[track] ?: 0f)
+    }
+
+    /** Switches the mixer source of one track's USB pair (Pioneer mixers with a routing catalog). */
+    fun setTrackSource(track: Int, source: Int) {
+        val device = deviceState.value ?: return
+        if (captureSettingsLocked()) return
+        prefs.edit().putInt("${trackSettingsKey(device)}_source_$track", source).apply()
+        _multitrackSettings.value = _multitrackSettings.value.let {
+            it.copy(chosenSources = it.chosenSources + (track to source), routingErrors = it.routingErrors - track)
+        }
+        if (multitrackActive.value) viewModelScope.launch { routeTrack(track, source) }
+    }
+
+    /**
+     * Applies each track's chosen (or preset) mixer source when a multitrack session opens,
+     * then reads every route back for the labels. The native side restores the previous
+     * routes when capture stops.
+     */
+    private fun applyTrackRouting() {
+        val device = deviceState.value ?: return
+        val catalog = PioneerTrackRouting.catalogFor(device.pioneerMixerProfile) ?: return
+        val master = _masterChannelOffset.value.takeIf { it >= 0 } ?: captureChannelOffset(device)
+        viewModelScope.launch {
+            catalog.outputs.indices.filter { it * 2 != master }.forEach { output ->
+                val desired = _multitrackSettings.value.chosenSources[output] ?: catalog.preset[output]
+                routeTrack(output, desired)
+            }
+            val service = boundService ?: return@launch
+            val current = withContext(Dispatchers.IO) {
+                catalog.outputs.indices.associateWith { service.readTrackSource(it) }.filterValues { it >= 0 }
+            }
+            _multitrackSettings.value = _multitrackSettings.value.copy(currentSources = current)
+        }
+    }
+
+    private suspend fun routeTrack(output: Int, source: Int) {
+        val service = boundService ?: return
+        val result = withContext(Dispatchers.IO) { service.setTrackSource(output, source) }
+        val readBack = withContext(Dispatchers.IO) { service.readTrackSource(output) }
+        val error = when (result) {
+            0 -> null
+            -2 -> "This mixer cannot report this route, so it stays as set on the mixer."
+            -4 -> "The mixer did not confirm this source, so its own setting was kept."
+            else -> "Could not change this source. Check the USB connection."
+        }
+        _multitrackSettings.value = _multitrackSettings.value.let { settings ->
+            settings.copy(
+                currentSources = if (readBack >= 0) settings.currentSources + (output to readBack) else settings.currentSources - output,
+                routingErrors = if (error != null) settings.routingErrors + (output to error) else settings.routingErrors - output
+            )
+        }
+    }
+
+    /** Armed tracks for ACTION_START; the master pair is the set itself, never a track file. */
+    private fun Intent.putTrackPlan(): Intent {
+        if (!multitrackActive.value && !multitrackFor(deviceState.value)) return this
+        val armed = multitrackTracks.value.filter { it.armed && !it.isMaster }
+        if (armed.isEmpty()) return this
+        putExtra(RecordingService.EXTRA_TRACKS_ARMED, armed.map { it.index }.toIntArray())
+        putExtra(RecordingService.EXTRA_TRACK_LABELS, armed.map { it.fileLabel }.toTypedArray())
+        return this
     }
 
     fun setForceAndroidCapture(enabled: Boolean) {
@@ -432,6 +655,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 Intent(context, RecordingService::class.java)
                     .setAction(RecordingService.ACTION_START)
                     .putExtra(RecordingService.EXTRA_FORMAT, _selectedFormat.value.nativeValue)
+                    .putTrackPlan()
             )
             return
         }
@@ -443,6 +667,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 Intent(context, RecordingService::class.java)
                     .setAction(RecordingService.ACTION_START)
                     .putExtra(RecordingService.EXTRA_FORMAT, _selectedFormat.value.nativeValue)
+                    .putTrackPlan()
             )
             return
         }
@@ -467,6 +692,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             putExtra(RecordingService.EXTRA_SAMPLE_RATE, sampleRate)
             putExtra(RecordingService.EXTRA_BIT_DEPTH, captureBitDepth)
             putExtra(RecordingService.EXTRA_FORMAT, _selectedFormat.value.nativeValue)
+            putTrackPlan()
 
             val handle = if (device.requiresIsoCapture && !androidCapture) {
                 usbAudioManager.openIsoCaptureHandle()
@@ -495,6 +721,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 putExtra(RecordingService.EXTRA_USB_VENDOR_ID, handle.vendorId)
                 putExtra(RecordingService.EXTRA_USB_PRODUCT_ID, handle.productId)
                 putExtra(RecordingService.EXTRA_USB_RAW_DESCRIPTORS, handle.rawDescriptors)
+                putExtra(RecordingService.EXTRA_MULTITRACK, multitrackFor(device))
             } else {
                 putExtra(RecordingService.EXTRA_CAPTURE_MODE, RecordingService.CAPTURE_MODE_AAUDIO)
                 putExtra(RecordingService.EXTRA_DEVICE_ID, device.audioManagerDeviceId)
@@ -548,6 +775,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 putExtra(RecordingService.EXTRA_USB_VENDOR_ID, handle.vendorId)
                 putExtra(RecordingService.EXTRA_USB_PRODUCT_ID, handle.productId)
                 putExtra(RecordingService.EXTRA_USB_RAW_DESCRIPTORS, handle.rawDescriptors)
+                putExtra(RecordingService.EXTRA_MULTITRACK, multitrackFor(device))
             } else {
                 putExtra(RecordingService.EXTRA_CAPTURE_MODE, RecordingService.CAPTURE_MODE_AAUDIO)
                 putExtra(RecordingService.EXTRA_DEVICE_ID, device.audioManagerDeviceId)

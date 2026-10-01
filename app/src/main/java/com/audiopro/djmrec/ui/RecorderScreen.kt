@@ -48,6 +48,9 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
     val format by viewModel.selectedFormat.collectAsState()
     val gain by viewModel.recordingGainDb.collectAsState()
     val saved by viewModel.lastSaved.collectAsState()
+    val advanced by viewModel.advancedMode.collectAsState()
+    val multitrackActive by viewModel.multitrackActive.collectAsState()
+    val multitrackTracks by viewModel.multitrackTracks.collectAsState()
     var setupOpen by rememberSaveable { mutableStateOf(false) }
     var stopPrompt by rememberSaveable { mutableStateOf(false) }
     var detailsOpen by rememberSaveable { mutableStateOf(false) }
@@ -123,12 +126,18 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
                                 style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold,
                                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
                         }
-                        Text(if (waveform) "3-BAND" else "METERS", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+                        Text(if (advanced && device != null) "MULTITRACK" else if (waveform) "3-BAND" else "METERS",
+                            style = MaterialTheme.typography.labelSmall, color = TextSecondary)
                     }
-                    if (waveform && !compact) LiveRgbWaveform(viewModel.waveformBins, Modifier.fillMaxWidth().weight(1f), smooth = smooth,
-                        active = state is RecordingState.Monitoring || active, onVisible = viewModel::setWaveformVisible)
-                    else if (!compact) Spacer(Modifier.weight(1f))
-                    StereoVuMeter(levels)
+                    if (advanced && device != null && !compact) {
+                        // Advanced mode: one lane per input pair; the master lane carries the set's meter.
+                        MultitrackPanel(viewModel, onOpenSetup = { setupOpen = true }, modifier = Modifier.fillMaxWidth().weight(1f))
+                    } else {
+                        if (waveform && !compact) LiveRgbWaveform(viewModel.waveformBins, Modifier.fillMaxWidth().weight(1f), smooth = smooth,
+                            active = state is RecordingState.Monitoring || active, onVisible = viewModel::setWaveformVisible)
+                        else if (!compact) Spacer(Modifier.weight(1f))
+                        StereoVuMeter(levels)
+                    }
                 }
             }
         }
@@ -167,7 +176,10 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
         }
         Column {
             Text(elapsedText(elapsed), style = MaterialTheme.typography.headlineLarge.copy(fontFamily = FontFamily.Monospace))
-            Text("${format.name} / ${if (gain > 0) "+" else ""}$gain dB", style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+            val armedTracks = if (multitrackActive) multitrackTracks.count { it.armed } else 0
+            Text("${format.name} / ${if (gain > 0) "+" else ""}$gain dB" +
+                if (armedTracks > 0) " / +$armedTracks track${if (armedTracks == 1) "" else "s"}" else "",
+                style = MaterialTheme.typography.labelMedium, color = TextSecondary)
         }
         val reducedMotion = rememberReducedMotion()
         AnimatedContent(
@@ -243,7 +255,10 @@ fun RecorderScreen(viewModel: MainViewModel, onOpenLibrary: () -> Unit = {}) {
             text = {
                 Text(listOfNotNull(recording.notice,
                     "${recording.name}\n${elapsedText(recording.durationMillis)} / Music/DJMRec",
-                    recording.alsoSaved?.let { "MP3 copy: $it" }).joinToString("\n\n"))
+                    recording.alsoSaved?.let { "MP3 copy: $it" },
+                    recording.tracksFolder?.takeIf { recording.tracksSaved > 0 }?.let {
+                        "${recording.tracksSaved} track file${if (recording.tracksSaved == 1) "" else "s"}: $it"
+                    }).joinToString("\n\n"))
             },
             confirmButton = { TextButton(onClick = { viewModel.dismissSavedRecording(); onOpenLibrary() }) { Text("Open sets") } },
             dismissButton = { TextButton(onClick = viewModel::dismissSavedRecording) { Text("Done") } })
@@ -281,13 +296,37 @@ internal fun RecordingSetupControls(viewModel: MainViewModel) {
     Slider(gain.toFloat(), { viewModel.setRecordingGainDb(it.toInt()) }, enabled = enabled,
         valueRange = 0f..12f, steps = 11, modifier = Modifier.semantics { contentDescription = "Recording gain in decibels" })
     Text("0 dB preserves input level. Keep peaks below 0 dBFS.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-    if (device?.requiresIsoCapture == true) {
-        Text("Stereo input pair", style = MaterialTheme.typography.titleSmall)
-        ChannelPairSelector(pair, device!!.channelCount / 2, enabled, viewModel::setUsbChannelOffset)
-        Text(device?.allInOneProfile?.recordChannelOffset?.let { "Auto: master return on USB ${it + 1}/${it + 2}." }
-            ?: if (device?.pioneerMixerProfile == null) "Auto uses USB 1/2. Choose another pair to audition it before recording."
-            else "Auto locks an audible pair; S11 uses dedicated REC OUT. Selection is remembered per mixer.",
+    val advanced by viewModel.advancedMode.collectAsState()
+    val multitrackCapable = device?.let { it.requiresIsoCapture && MultitrackLayout.isAvailable(it.channelCount) }
+    HorizontalDivider(color = OutlineSubtle)
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Advanced mode", style = MaterialTheme.typography.bodyMedium)
+            Text(
+                when (multitrackCapable) {
+                    false -> "This input has a single stereo pair, so there are no extra tracks to record."
+                    else -> "Record every input pair as its own track next to the master, with per-track gain and waveform."
+                },
+                style = MaterialTheme.typography.bodySmall, color = TextSecondary
+            )
+        }
+        Switch(advanced, viewModel::setAdvancedMode, enabled = enabled,
+            modifier = Modifier.semantics { contentDescription = "Advanced mode: multitrack recording" })
+    }
+    if (advanced && multitrackCapable == true) {
+        Text("Track files are saved lossless (an MP3 set records its tracks as FLAC) in a folder next to the set, " +
+            "starting and stopping on the same sample as the master.",
             style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+    }
+    if (device?.requiresIsoCapture == true) {
+        Text(if (advanced) "Master pair" else "Stereo input pair", style = MaterialTheme.typography.titleSmall)
+        ChannelPairSelector(pair, device!!.channelCount / 2, enabled, viewModel::setUsbChannelOffset)
+        Text(when {
+            advanced -> "Auto puts the master on the mixer's master slot (USB 1/2 on other devices). The other pairs become tracks."
+            else -> device?.allInOneProfile?.recordChannelOffset?.let { "Auto: master return on USB ${it + 1}/${it + 2}." }
+                ?: if (device?.pioneerMixerProfile == null) "Auto uses USB 1/2. Choose another pair to audition it before recording."
+                else "Auto locks an audible pair; S11 uses dedicated REC OUT. Selection is remembered per mixer."
+        }, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
     }
 }
 

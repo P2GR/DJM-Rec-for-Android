@@ -92,6 +92,17 @@ void WaveformAnalyzer::pushFrames(const int32_t* interleavedStereo, size_t frame
     }
 }
 
+void WaveformAnalyzer::pushFrames(const int32_t* interleaved, size_t frameCount, int stride,
+                                  int offset, int channels) {
+    if (!interleaved || stride <= 0 || offset < 0 || channels < 1 || offset + channels > stride) return;
+    for (size_t i = 0; i < frameCount; ++i) {
+        const int32_t* frame = interleaved + i * static_cast<size_t>(stride) + offset;
+        const float left = static_cast<float>(frame[0]) / kMaxAmplitude;
+        const float right = channels > 1 ? static_cast<float>(frame[1]) / kMaxAmplitude : left;
+        accumulateSample(left, right);
+    }
+}
+
 void WaveformAnalyzer::accumulateSample(float left, float right) {
     BinAccum& bin = mCurrent;
     // Never sum L+R before analysis: opposite-phase stereo is still real audio.

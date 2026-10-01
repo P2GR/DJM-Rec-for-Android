@@ -38,6 +38,8 @@ import com.audiopro.djmrec.audio.RecordingHealthInput
 import com.audiopro.djmrec.audio.RecordingHealthLevel
 import com.audiopro.djmrec.audio.RecordingState
 import com.audiopro.djmrec.audio.StereoLevels
+import com.audiopro.djmrec.audio.MultitrackLayout
+import com.audiopro.djmrec.audio.TrackRecordingPlan
 import com.audiopro.djmrec.storage.PendingRecordingOutput
 import com.audiopro.djmrec.storage.RecordingOutputManager
 import com.audiopro.djmrec.storage.RecordingSessionStore
@@ -97,6 +99,13 @@ class RecordingService : LifecycleService() {
         const val EXTRA_LIVE_VIDEO_BITRATE = "extra_live_video_bitrate"
         /** Also save camera video + mixer audio as MP4 segments in Movies/DJMRec. */
         const val EXTRA_LIVE_RECORD_VIDEO = "extra_live_record_video"
+
+        /** Advanced mode: open raw USB capture with every channel on the native track bus. */
+        const val EXTRA_MULTITRACK = "extra_multitrack"
+        /** ACTION_START: native track indices to record as their own files next to the master. */
+        const val EXTRA_TRACKS_ARMED = "extra_tracks_armed"
+        /** ACTION_START: file label per entry of [EXTRA_TRACKS_ARMED], e.g. "CH1 Post-fader". */
+        const val EXTRA_TRACK_LABELS = "extra_track_labels"
 
         /** [EXTRA_CAPTURE_MODE] value: standard AAudio/AudioRecord path via [EXTRA_DEVICE_ID]. */
         const val CAPTURE_MODE_AAUDIO = 0
@@ -185,6 +194,20 @@ class RecordingService : LifecycleService() {
     private val _health = MutableStateFlow(RecordingHealth.Ready)
     val health: StateFlow<RecordingHealth> = _health.asStateFlow()
 
+    // --- Multitrack (advanced mode) ---
+    /** Wire channels on the native track bus; 0 when the open session is not multitrack. */
+    private val _trackChannels = MutableStateFlow(0)
+    val trackChannels: StateFlow<Int> = _trackChannels.asStateFlow()
+    /** Raw AudioEngine.getTrackLevels() reading: three floats per wire channel. */
+    private val _trackLevels = MutableStateFlow(FloatArray(0))
+    val trackLevels: StateFlow<FloatArray> = _trackLevels.asStateFlow()
+    /** One waveform snapshot per track (AudioEngine.getTrackWaveformBins layout). */
+    private val _trackWaveforms = MutableStateFlow<List<FloatArray>>(emptyList())
+    val trackWaveforms: StateFlow<List<FloatArray>> = _trackWaveforms.asStateFlow()
+    /** First channel of the pair recorded as the master; -1 until known. */
+    private val _masterChannelOffset = MutableStateFlow(-1)
+    val masterChannelOffset: StateFlow<Int> = _masterChannelOffset.asStateFlow()
+
     private val _liveState = MutableStateFlow(LiveStreamState())
     val liveState: StateFlow<LiveStreamState> = _liveState.asStateFlow()
     private lateinit var liveStreamController: LiveStreamController
@@ -205,6 +228,14 @@ class RecordingService : LifecycleService() {
     private var currentOutput: PendingRecordingOutput? = null
     /** MP3 copy written alongside a WAV/FLAC set, when enabled. */
     private var currentCompanion: PendingRecordingOutput? = null
+    /** Multitrack files of the current recording, by native track index. */
+    private val currentTrackOutputs = sortedMapOf<Int, PendingRecordingOutput>()
+    private val currentTrackLabels = mutableMapOf<Int, String>()
+    private var currentTrackFormat = RecordingFormat.WAV
+    private var trackBytesPerSecond = 0L
+    private var pendingTrackPlan = TrackRecordingPlan.NONE
+    private var multitrackSession = false
+    @Volatile private var multitrackVisible = false
     private var currentSessionId: String? = null
     private var currentPartIndex = 0
     private var currentPartStartedElapsed = 0L
@@ -241,6 +272,10 @@ class RecordingService : LifecycleService() {
                 _elapsedMillis.value = AudioEngine.getElapsedMillis()
                 _awaitingAudio.value = AudioEngine.isAwaitingAudio()
                 _limiterReductionDb.value = AudioEngine.takeLimiterReductionDb()
+                if (multitrackSession) {
+                    AudioEngine.getTrackLevels()?.let { _trackLevels.value = it }
+                    AudioEngine.getMasterChannelOffset().takeIf { it >= 0 }?.let { _masterChannelOffset.value = it }
+                }
                 monitorHandler.postDelayed(this, if (uiVisible) METER_UPDATE_INTERVAL_MS else 1_000L)
             }
         }
@@ -250,8 +285,12 @@ class RecordingService : LifecycleService() {
         override fun run() {
             if (_state.value is RecordingState.Recording || _state.value is RecordingState.Paused ||
                 _state.value is RecordingState.Monitoring) {
-                if (waveformEnabled && uiVisible && waveformVisible) {
+                if (waveformEnabled && uiVisible && (waveformVisible || multitrackVisible)) {
                     _waveformBins.value = AudioEngine.getWaveformBins()
+                    if (multitrackVisible && multitrackSession) {
+                        val tracks = MultitrackLayout.tracks(_trackChannels.value).size
+                        _trackWaveforms.value = List(tracks) { AudioEngine.getTrackWaveformBins(it) }
+                    }
                     monitorHandler.postDelayed(this, WAVEFORM_UPDATE_INTERVAL_MS)
                 }
             }
@@ -280,7 +319,8 @@ class RecordingService : LifecycleService() {
             val remaining = if (freeBytes == Long.MAX_VALUE) Long.MAX_VALUE
             else RecordingStoragePolicy.remainingSeconds(
                 freeBytes,
-                bytesPerSecond + if (currentCompanion != null) MP3_COPY_BYTES_PER_SECOND else 0L
+                bytesPerSecond + trackBytesPerSecond +
+                    if (currentCompanion != null) MP3_COPY_BYTES_PER_SECOND else 0L
             )
             val stats = AudioEngine.getUsbIsoTransferStats()
             val packetDelta = if (usbHealthInitialized) stats.getOrElse(0) { 0 } - lastUsbStats.getOrElse(0) { 0 } else 1
@@ -456,13 +496,50 @@ class RecordingService : LifecycleService() {
         updateVisualWork()
     }
 
+    /** The multitrack timeline is on screen: poll every track's waveform too. */
+    fun setMultitrackVisible(visible: Boolean) {
+        multitrackVisible = visible
+        updateVisualWork()
+    }
+
     private fun updateVisualWork() {
         if (!::monitorHandler.isInitialized) return
         monitorHandler.post {
-            AudioEngine.setWaveformEnabled(waveformEnabled && uiVisible && waveformVisible)
+            val anyWaveform = waveformEnabled && uiVisible && (waveformVisible || multitrackVisible)
+            AudioEngine.setWaveformEnabled(anyWaveform)
+            AudioEngine.setTrackWaveformsEnabled(waveformEnabled && uiVisible && multitrackVisible)
             monitorHandler.removeCallbacks(waveformRunnable)
-            if (waveformEnabled && uiVisible && waveformVisible) monitorHandler.post(waveformRunnable)
+            if (anyWaveform) monitorHandler.post(waveformRunnable)
         }
+    }
+
+    /** -24..+12 dB per track; applies immediately, also while recording. */
+    fun setTrackGainDb(track: Int, gainDb: Float) = AudioEngine.setTrackGainDb(track, gainDb)
+
+    /**
+     * Routes Pioneer USB output [output] to [source] for multitrack. Blocking USB control
+     * transfers: call off the main thread. Returns 0 or a negative native error code.
+     */
+    fun setTrackSource(output: Int, source: Int): Int =
+        if (multitrackSession) AudioEngine.setPioneerTrackSource(output, source) else -1
+
+    /** Current vendor source of Pioneer USB output [output], or -1. Blocking. */
+    fun readTrackSource(output: Int): Int =
+        if (multitrackSession) AudioEngine.getPioneerTrackSource(output) else -1
+
+    private fun resetMultitrackState() {
+        multitrackSession = false
+        _trackChannels.value = 0
+        _trackLevels.value = FloatArray(0)
+        _trackWaveforms.value = emptyList()
+        _masterChannelOffset.value = -1
+    }
+
+    private fun trackPlanFrom(intent: Intent): TrackRecordingPlan {
+        val tracks = intent.getIntArrayExtra(EXTRA_TRACKS_ARMED)?.toList().orEmpty()
+        val labels = intent.getStringArrayExtra(EXTRA_TRACK_LABELS)?.toList().orEmpty()
+        return if (tracks.isNotEmpty() && tracks.size == labels.size) TrackRecordingPlan(tracks, labels)
+        else TrackRecordingPlan.NONE
     }
 
     fun setRecordingGainDb(gainDb: Int) {
@@ -529,7 +606,8 @@ class RecordingService : LifecycleService() {
                         bitDepth = bitDepth,
                         channelOffset = intent.getIntExtra(EXTRA_USB_CHANNEL_OFFSET, 0),
                         sampleRateHint = sampleRate,
-                        monitorOnly = true
+                        monitorOnly = true,
+                        multitrack = intent.getBooleanExtra(EXTRA_MULTITRACK, false)
                     )
                 } else {
                     val deviceId = intent.getIntExtra(EXTRA_DEVICE_ID, -1)
@@ -539,6 +617,7 @@ class RecordingService : LifecycleService() {
             }
 
             ACTION_START -> {
+                pendingTrackPlan = trackPlanFrom(intent)
                 // If already monitoring, just begin encoding.
                 if (_state.value is RecordingState.Monitoring) {
                     currentFormat = recordingFormatFrom(intent)
@@ -588,7 +667,8 @@ class RecordingService : LifecycleService() {
                         channelOffset = intent.getIntExtra(EXTRA_USB_CHANNEL_OFFSET, 0),
                         sampleRateHint = sampleRate,
                         format = format,
-                        monitorOnly = false
+                        monitorOnly = false,
+                        multitrack = intent.getBooleanExtra(EXTRA_MULTITRACK, false)
                     )
                 } else {
                     val deviceId = intent.getIntExtra(EXTRA_DEVICE_ID, -1)
@@ -696,6 +776,7 @@ class RecordingService : LifecycleService() {
         if (_state.value is RecordingState.Recording || _state.value is RecordingState.Monitoring) return
         _state.value = RecordingState.Preparing
         isUsbIsoSession = false
+        resetMultitrackState()
         isMonitoringOnly = monitorOnly
         currentBitDepth = bitDepth
         currentOutputChannels = 2
@@ -746,11 +827,13 @@ class RecordingService : LifecycleService() {
         channelOffset: Int,
         sampleRateHint: Int,
         format: RecordingFormat = RecordingFormat.WAV,
-        monitorOnly: Boolean = false
+        monitorOnly: Boolean = false,
+        multitrack: Boolean = false
     ) {
         if (_state.value is RecordingState.Recording || _state.value is RecordingState.Monitoring) return
         _state.value = RecordingState.Preparing
         isUsbIsoSession = true
+        resetMultitrackState()
         isMonitoringOnly = monitorOnly
         currentBitDepth = bitDepth
         currentOutputChannels = 2
@@ -770,7 +853,7 @@ class RecordingService : LifecycleService() {
                     totalChannels, subframeSize, bitDepth, channelOffset,
                     clockControlInterfaceNumber, clockSourceId, clockSupportsFrequencySet,
                     feedbackEndpointAddress, feedbackMaxPacketSize, vendorId, productId,
-                    rawDescriptors, sampleRateHint
+                    rawDescriptors, sampleRateHint, multitrack
                 )
                 if (abandonStaleOpen(token)) return@post
                 if (negotiatedRate <= 0) {
@@ -782,6 +865,9 @@ class RecordingService : LifecycleService() {
                     return@post
                 }
                 updateRecordingFormat(negotiatedRate, bitDepth)
+                _trackChannels.value = AudioEngine.getTrackChannelCount()
+                multitrackSession = _trackChannels.value > 0
+                _masterChannelOffset.value = AudioEngine.getMasterChannelOffset()
 
                 if (monitorOnly) {
                     beginMonitoring(token)
@@ -857,9 +943,17 @@ class RecordingService : LifecycleService() {
     private fun beginEncodingOrFail(bitDepth: Int, format: RecordingFormat, openToken: Int = sessionOpenToken) {
         if (abandonStaleOpen(openToken)) return
         val freeBytes = RecordingOutputManager.freeBytes()
-        val requiredBytes = RecordingStoragePolicy.requiredStartBytes(bytesPerSecond)
+        val plannedTracks = if (multitrackSession) {
+            val layout = MultitrackLayout.tracks(_trackChannels.value)
+            pendingTrackPlan.tracks.mapNotNull { layout.getOrNull(it) }
+        } else emptyList()
+        trackBytesPerSecond = MultitrackLayout.bytesPerSecond(currentSampleRate, bitDepth, 0, plannedTracks)
+        val requiredBytes = RecordingStoragePolicy.requiredStartBytes(bytesPerSecond + trackBytesPerSecond)
         if (freeBytes != Long.MAX_VALUE && freeBytes < requiredBytes) {
-            failEncoding("Not enough free storage. At least 256 MB is required.")
+            failEncoding(
+                if (trackBytesPerSecond > 0) "Not enough free storage for the master and its tracks. Arm fewer tracks or free up space."
+                else "Not enough free storage. At least 256 MB is required."
+            )
             return
         }
 
@@ -895,17 +989,24 @@ class RecordingService : LifecycleService() {
         } else {
             null
         }
+        val trackPlan = pendingTrackPlan
+        pendingTrackPlan = TrackRecordingPlan.NONE
+        val tracks = if (multitrackSession) prepareTrackOutputs(sessionId, format, trackPlan) else emptyMap()
         val started = AudioEngine.startRecordingFd(output.descriptor.fd, format.nativeValue)
         runCatching { output.descriptor.close() }
         if (!started) {
             RecordingOutputManager.abandon(this, output)
             companion?.let { RecordingOutputManager.abandon(this, it) }
+            tracks.values.forEach { RecordingOutputManager.abandon(this, it) }
             AudioEngine.clearPendingCompanion()
+            AudioEngine.clearPendingTracks()
             RecordingSessionStore.complete(this)
             failEncoding("Failed to start ${format.name} encoder")
             return
         }
         currentCompanion = companion
+        currentTrackOutputs.clear()
+        currentTrackOutputs.putAll(tracks)
 
         currentOutput = output
         currentSessionId = sessionId
@@ -927,9 +1028,45 @@ class RecordingService : LifecycleService() {
             RecordingHealthLevel.GOOD,
             "Recording healthy",
             freeBytes,
-            RecordingStoragePolicy.remainingSeconds(freeBytes, bytesPerSecond)
+            RecordingStoragePolicy.remainingSeconds(freeBytes, bytesPerSecond + trackBytesPerSecond)
         )
         startPolling()
+    }
+
+    /**
+     * Creates and journals one file per planned track and hands each to the native engine.
+     * Track files are lossless; an MP3 set records its tracks as FLAC. A failure skips only
+     * that track: the master always records.
+     */
+    private fun prepareTrackOutputs(
+        sessionId: String,
+        format: RecordingFormat,
+        plan: TrackRecordingPlan
+    ): Map<Int, PendingRecordingOutput> {
+        if (plan.isEmpty) return emptyMap()
+        val trackFormat = if (format == RecordingFormat.MP3) RecordingFormat.FLAC else format
+        currentTrackFormat = trackFormat
+        currentTrackLabels.clear()
+        val prepared = sortedMapOf<Int, PendingRecordingOutput>()
+        plan.tracks.zip(plan.labels).forEach { (track, label) ->
+            val output = RecordingOutputManager.createTrack(this, sessionId, track + 1, label, trackFormat, 1)
+            if (output == null) {
+                Log.w(TAG, "Could not create track ${track + 1}; recording without it")
+                return@forEach
+            }
+            val journaled = runCatching { RecordingSessionStore.addPart(this, output.toRecord()) }.isSuccess
+            val opened = journaled && AudioEngine.prepareTrackFd(track, output.descriptor.fd, trackFormat.nativeValue)
+            runCatching { output.descriptor.close() }
+            if (!opened) {
+                Log.w(TAG, "Track ${track + 1} could not be opened; recording without it")
+                RecordingOutputManager.abandon(this, output)
+                if (journaled) runCatching { RecordingSessionStore.markFinalized(this, output.uri) }
+                return@forEach
+            }
+            prepared[track] = output
+            currentTrackLabels[track] = label
+        }
+        return prepared
     }
 
     private fun failEncoding(message: String) {
@@ -1010,10 +1147,26 @@ class RecordingService : LifecycleService() {
             requestSafetyStop("Could not create next WAV part. Recording finalized safely.", captureLost = false)
             return
         }
+        // Track parts are swapped in by the same native roll, on the master's frame. A track
+        // whose next part cannot be prepared keeps writing its current part.
+        val nextTracks = sortedMapOf<Int, PendingRecordingOutput>()
+        if (currentTrackFormat == RecordingFormat.WAV) currentTrackOutputs.keys.forEach { track ->
+            val label = currentTrackLabels[track].orEmpty()
+            val part = RecordingOutputManager.createTrack(this, sessionId, track + 1, label, RecordingFormat.WAV, nextIndex)
+                ?: return@forEach
+            if (AudioEngine.prepareTrackRollFd(track, part.descriptor.fd, RecordingFormat.WAV.nativeValue)) {
+                nextTracks[track] = part
+            } else {
+                RecordingOutputManager.abandon(this, part)
+            }
+            runCatching { part.descriptor.close() }
+        }
         val rolled = AudioEngine.rollRecordingFd(next.descriptor.fd, RecordingFormat.WAV.nativeValue)
         runCatching { next.descriptor.close() }
         if (!rolled) {
             RecordingOutputManager.abandon(this, next)
+            nextTracks.values.forEach { RecordingOutputManager.abandon(this, it) }
+            AudioEngine.clearPendingTracks()
             requestSafetyStop("Could not continue WAV recording. Current part finalized safely.", captureLost = false)
             return
         }
@@ -1026,6 +1179,14 @@ class RecordingService : LifecycleService() {
             elapsed - currentPartStartedElapsed
         )
         if (previousFinalized) RecordingSessionStore.markFinalized(this, previous.uri)
+        nextTracks.forEach { (track, part) ->
+            runCatching { RecordingSessionStore.addPart(this, part.toRecord()) }
+            currentTrackOutputs.put(track, part)?.let { finished ->
+                if (RecordingOutputManager.finalize(this, finished, elapsed - currentPartStartedElapsed)) {
+                    RecordingSessionStore.markFinalized(this, finished.uri)
+                }
+            }
+        }
         currentOutput = next
         currentPartIndex = nextIndex
         currentPartStartedElapsed = elapsed
@@ -1123,6 +1284,7 @@ class RecordingService : LifecycleService() {
                 _elapsedMillis.value = 0L
                 _levels.value = StereoLevels(floorLevel, floorLevel)
                 _waveformBins.value = emptyWaveform
+                resetMultitrackState()
                 _health.value = RecordingHealth.Ready
                 dismissNotification()
                 stopSelf()
@@ -1137,23 +1299,32 @@ class RecordingService : LifecycleService() {
                     val savedOutput = currentOutput
                     val companionName = currentCompanion?.displayName
                     val partStart = currentPartStartedElapsed
+                    val sessionId = currentSessionId
                     val duration = AudioEngine.stopRecording()
+                    val (tracks, trackNotice) = trackSummary()
                     val finalized = finalizeCurrentOutput(duration)
                     val complete = finalized && RecordingSessionStore.completeIfFinalized(this@RecordingService)
-                    StopResult((duration - partStart).coerceAtLeast(0L), complete, savedOutput, companionName)
+                    StopResult(
+                        (duration - partStart).coerceAtLeast(0L), complete, savedOutput, companionName,
+                        tracks, sessionId?.takeIf { tracks > 0 }?.let(RecordingOutputManager::trackFolder), trackNotice
+                    )
                 } }
             }
             currentSessionId = null
             currentPartIndex = 0
-            val (duration, complete, savedOutput, companionName) =
-                result.getOrDefault(StopResult(0L, false, null, null))
+            val stop = result.getOrDefault(StopResult(0L, false, null, null))
+            val (duration, complete, savedOutput, companionName) = stop
             if (!complete) {
                 stopSessionWithError("Recording stopped; publication failed. Recovery will retry on next launch.",
                     alreadyStopped = true, captureLost = false)
             } else {
                 savedOutput?.let {
                     events.lastSaved.value = com.audiopro.djmrec.audio.SavedRecording(
-                        it.uri, it.displayName, duration, notice = notice, alsoSaved = companionName
+                        it.uri, it.displayName, duration,
+                        notice = listOfNotNull(notice, stop.trackNotice).joinToString(" ").ifEmpty { null },
+                        alsoSaved = companionName,
+                        tracksSaved = stop.tracksSaved,
+                        tracksFolder = stop.tracksFolder
                     )
                 }
                 _state.value = RecordingState.Monitoring
@@ -1188,6 +1359,7 @@ class RecordingService : LifecycleService() {
         _state.value = RecordingState.Idle
         _levels.value = StereoLevels(floorLevel, floorLevel)
         _waveformBins.value = emptyWaveform
+        resetMultitrackState()
         // Clear callbacks first, then let the monitor thread run the final cancel: any
         // notification update already executing there is serialized before it, so it cannot
         // re-post the ongoing notification after it has been removed.
@@ -1199,12 +1371,38 @@ class RecordingService : LifecycleService() {
 
     private fun finalizeCurrentOutput(totalDurationMillis: Long): Boolean {
         val companionFinalized = finalizeCompanionOutput(totalDurationMillis)
-        val output = currentOutput ?: return companionFinalized
+        val tracksFinalized = finalizeTrackOutputs(totalDurationMillis)
+        val output = currentOutput ?: return companionFinalized && tracksFinalized
         val partDuration = (totalDurationMillis - currentPartStartedElapsed).coerceAtLeast(0)
         val finalized = RecordingOutputManager.finalize(this, output, partDuration)
         if (finalized) runCatching { RecordingSessionStore.markFinalized(this, output.uri) }
         currentOutput = null
-        return finalized && companionFinalized
+        return finalized && companionFinalized && tracksFinalized
+    }
+
+    /** Publishes every track file; each one's last part spans the master's last part. */
+    private fun finalizeTrackOutputs(totalDurationMillis: Long): Boolean {
+        if (currentTrackOutputs.isEmpty()) return true
+        val partDuration = (totalDurationMillis - currentPartStartedElapsed).coerceAtLeast(0)
+        var allFinalized = true
+        currentTrackOutputs.values.forEach { output ->
+            val finalized = RecordingOutputManager.finalize(this, output, partDuration)
+            if (finalized) runCatching { RecordingSessionStore.markFinalized(this, output.uri) }
+            allFinalized = allFinalized && finalized
+        }
+        currentTrackOutputs.clear()
+        return allFinalized
+    }
+
+    /** Track count and a notice for tracks that failed mid-set, for the saved-set dialog. */
+    private fun trackSummary(): Pair<Int, String?> {
+        val count = currentTrackOutputs.size
+        if (count == 0) return 0 to null
+        val failedMask = AudioEngine.getTrackErrorMask()
+        val failed = currentTrackOutputs.keys.filter { failedMask and (1 shl it) != 0 }.map { it + 1 }
+        val notice = if (failed.isEmpty()) null
+            else "Track ${failed.joinToString(", ")} stopped early (storage error); the master and the other tracks are complete."
+        return count to notice
     }
 
     /** The MP3 copy spans the whole set (it never rolls over like WAV parts). */
@@ -1259,6 +1457,7 @@ class RecordingService : LifecycleService() {
         AudioEngine.close()
         releaseIsoConnectionIfNeeded()
         releaseWakeLock()
+        resetMultitrackState()
         currentSessionId = null
         currentPartIndex = 0
         isMonitoringOnly = false
@@ -1288,6 +1487,7 @@ class RecordingService : LifecycleService() {
             releaseIsoConnectionIfNeeded()
         }
         releaseWakeLock()
+        resetMultitrackState()
         _state.value = RecordingState.Error("USB mixer disconnected")
         _health.value = RecordingHealth(RecordingHealthLevel.ERROR, "USB mixer disconnected")
         dismissNotification()
@@ -1531,5 +1731,8 @@ private data class StopResult(
     val partDurationMillis: Long,
     val complete: Boolean,
     val savedOutput: PendingRecordingOutput?,
-    val companionName: String?
+    val companionName: String?,
+    val tracksSaved: Int = 0,
+    val tracksFolder: String? = null,
+    val trackNotice: String? = null
 )

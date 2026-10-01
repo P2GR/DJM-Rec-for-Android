@@ -908,6 +908,50 @@ void UsbIsoAudioSource::routeAllPioneerOutputsToMix() {
     }
 }
 
+int UsbIsoAudioSource::readPioneerOutputSource(int output) {
+    if (!mHandle || !mMixerProfile || !mRunning.load(std::memory_order_acquire)) return -1;
+    int source = -1;
+    return readPioneerRouteSource(mHandle, *mMixerProfile, output, source) ? source : -1;
+}
+
+int UsbIsoAudioSource::setPioneerOutputSource(int output, int source) {
+    if (!mHandle || !mMixerProfile || !mRunning.load(std::memory_order_acquire) ||
+        !mConfig.disableRouteFallback || output < 0 || output >= mMixerProfile->outputCount ||
+        source < 0 || source > 0xFF) {
+        return kRouteUnsupported;
+    }
+    int currentSource = -1;
+    if (!readPioneerRouteSource(mHandle, *mMixerProfile, output, currentSource)) {
+        // Same rule as the MIX routing: never make a change that cannot be restored.
+        LOGW("%s USB output %d route is unreadable; refusing an unrestorable track route",
+             mMixerProfile->name, output + 1);
+        return kRouteUnreadable;
+    }
+    if (currentSource != source) {
+        if (!writePioneerRouteSource(mHandle, *mMixerProfile, output, source)) return kRouteWriteFailed;
+        int verifiedSource = -1;
+        if (!readPioneerRouteSource(mHandle, *mMixerProfile, output, verifiedSource) ||
+            verifiedSource != source) {
+            LOGW("%s USB output %d track source did not verify: expected=0x%02x actual=0x%02x",
+                 mMixerProfile->name, output + 1, source, verifiedSource);
+            writePioneerRouteSource(mHandle, *mMixerProfile, output, currentSource);
+            return kRouteNotVerified;
+        }
+    }
+    {
+        std::lock_guard<std::mutex> lock(mDiagnosticMutex);
+        // Keep the route from before the first change: that is what stop() puts back.
+        if (!mPioneerRoutesChanged[output] && currentSource != source) {
+            mPioneerOriginalSources[output] = currentSource;
+            mPioneerRoutesChanged[output] = true;
+        }
+        mPioneerAppliedSources[output] = source;
+    }
+    LOGI("%s USB output %d routed to track source 0x%02x (was 0x%02x)", mMixerProfile->name,
+         output + 1, source, currentSource);
+    return 0;
+}
+
 void UsbIsoAudioSource::restorePioneerRecordingRoute() {
     if (!mHandle || !mMixerProfile) return;
     for (int output = 0; output < mMixerProfile->outputCount; ++output) {
@@ -1037,17 +1081,37 @@ void UsbIsoAudioSource::demuxAndEmit(const uint8_t* data, size_t length) {
         const int selectedOffset = std::max(
             0, mResolvedChannelOffset.load(std::memory_order_relaxed));
         const int offsetBytes = selectedOffset * subframe;
+        const bool legacy24 = mMixerProfile && mConfig.bitResolution <= 24;
 
-        for (size_t f = 0; f < completeFrames; ++f) {
-            const uint8_t* frameBase = mWorking.data() + f * frameSize + offsetBytes;
-            for (int ch = 0; ch < 2; ++ch) {
-                const uint8_t* s = frameBase + static_cast<size_t>(mConfig.totalChannels == 1 ? 0 : ch) * subframe;
-                mScratch[f * 2 + ch] = decodeUsbPcm(s, subframe, mMixerProfile && mConfig.bitResolution <= 24);
+        if (mConfig.emitAllChannels) {
+            // Decode every wire channel once; the stereo pair is then a view into the same
+            // samples, so the master and the tracks can never disagree about a frame.
+            const int channels = mConfig.totalChannels;
+            const size_t wideSamples = completeFrames * static_cast<size_t>(channels);
+            if (mWideScratch.size() < wideSamples) mWideScratch.resize(wideSamples);
+            for (size_t f = 0; f < completeFrames; ++f) {
+                const uint8_t* frameBase = mWorking.data() + f * frameSize;
+                int32_t* wide = mWideScratch.data() + f * channels;
+                for (int ch = 0; ch < channels; ++ch) {
+                    wide[ch] = decodeUsbPcm(frameBase + static_cast<size_t>(ch) * subframe, subframe, legacy24);
+                }
+                for (int ch = 0; ch < 2; ++ch) {
+                    mScratch[f * 2 + ch] = wide[channels == 1 ? 0 : selectedOffset + ch];
+                }
+            }
+        } else {
+            for (size_t f = 0; f < completeFrames; ++f) {
+                const uint8_t* frameBase = mWorking.data() + f * frameSize + offsetBytes;
+                for (int ch = 0; ch < 2; ++ch) {
+                    const uint8_t* s = frameBase + static_cast<size_t>(mConfig.totalChannels == 1 ? 0 : ch) * subframe;
+                    mScratch[f * 2 + ch] = decodeUsbPcm(s, subframe, legacy24);
+                }
             }
         }
 
         if (mCallback) {
-            mCallback(mScratch.data(), completeFrames);
+            mCallback(mScratch.data(), mConfig.emitAllChannels ? mWideScratch.data() : nullptr,
+                      mConfig.totalChannels, completeFrames);
         }
 
         mFramesSincePeakLog += completeFrames;
@@ -1078,7 +1142,9 @@ void UsbIsoAudioSource::demuxAndEmit(const uint8_t* data, size_t length) {
                     mPioneerFallbackStage.store(3, std::memory_order_relaxed);
                 } else if (mNonZeroBytesSincePeakLog == 0 && fallbackStage == 1) {
                     mPioneerFallbackStage.store(2, std::memory_order_relaxed);
-                    routeAllPioneerOutputsToMix();
+                    // Multitrack routes every output on purpose; a silent start (nothing
+                    // playing yet) must not collapse them all onto MIX.
+                    if (!mConfig.disableRouteFallback) routeAllPioneerOutputsToMix();
                 } else if (mNonZeroBytesSincePeakLog == 0 && fallbackStage == 2) {
                     LOGW("%s fallback strategies exhausted: all MIX routes still produce an "
                          "all-zero capture payload", mMixerProfile->name);

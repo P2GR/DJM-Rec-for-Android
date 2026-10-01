@@ -51,6 +51,8 @@ object AudioEngine {
      * @param extractChannelOffset 0-indexed first channel of the stereo pair to pull out.
      * @param sampleRateHint trusted as-is; nothing in this path negotiates a rate back from
      *   the device the way AAudio does.
+     * @param multitrack advanced mode: also run every wire channel through the track bus so
+     *   each stereo pair can be metered and recorded as its own file next to the master.
      * @return `sampleRateHint` on success, or -1 on failure.
      */
     external fun openUsbIso(
@@ -71,7 +73,8 @@ object AudioEngine {
         vendorId: Int,
         productId: Int,
         rawDescriptors: ByteArray,
-        sampleRateHint: Int
+        sampleRateHint: Int,
+        multitrack: Boolean
     ): Int
 
     /**
@@ -175,4 +178,43 @@ object AudioEngine {
 
     /** Non-zero once the companion writer failed; the master recording is unaffected. */
     external fun getCompanionErrorCode(): Int
+
+    // --- Multitrack (only after openUsbIso(..., multitrack = true)) ---
+
+    /** Wire channels feeding the tracks, or 0 when multitrack is off. */
+    external fun getTrackChannelCount(): Int
+
+    /** Opens track [track]'s file for the next [startRecordingFd]; call while not recording. */
+    external fun prepareTrackFd(track: Int, fd: Int, format: Int): Boolean
+
+    external fun clearPendingTracks()
+
+    /** Next WAV part for [track]; the next [rollRecordingFd] swaps it in on the master's frame. */
+    external fun prepareTrackRollFd(track: Int, fd: Int, format: Int): Boolean
+
+    /** Bit t is set once track t's file failed; the master and the other tracks continue. */
+    external fun getTrackErrorMask(): Int
+
+    /** -24..+12 dB. Above 0 dB the track's own limiter keeps peaks under -1 dBFS. */
+    external fun setTrackGainDb(track: Int, gainDb: Float)
+
+    external fun setTrackWaveformsEnabled(enabled: Boolean)
+
+    /**
+     * Three floats per wire channel: peak dBFS since the previous call, smoothed RMS dBFS and
+     * 1f when it clipped since the previous call. Null while the engine is busy opening.
+     */
+    external fun getTrackLevels(): FloatArray?
+
+    /** Same layout as [getWaveformBins], for one track. */
+    external fun getTrackWaveformBins(track: Int): FloatArray
+
+    /** First channel of the pair recorded as the master; -1 while AUTO is still choosing. */
+    external fun getMasterChannelOffset(): Int
+
+    /** Routes Pioneer USB output [output] to vendor [source]; 0 or a negative error code. */
+    external fun setPioneerTrackSource(output: Int, source: Int): Int
+
+    /** Current vendor source of Pioneer USB output [output], or -1 when unreadable. */
+    external fun getPioneerTrackSource(output: Int): Int
 }
